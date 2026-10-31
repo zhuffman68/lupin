@@ -7,6 +7,8 @@ alternate publisher, its tests, generated upload copies and active download
 instructions were removed after the 1.0.2 publication. All **39 remaining
 release-tool tests** pass. This release-workflow/documentation cleanup does not
 change the tagged application or its verified installer hashes.
+The previous hosted project is saved as an owner-only draft; a fresh editor
+reload confirms the setting and an anonymous page check returns HTTP 404.
 
 ## Published 1.0.2
 
