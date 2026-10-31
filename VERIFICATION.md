@@ -1,5 +1,13 @@
 # Verification — 2026-10-31
 
+## Current release workflow
+
+GitHub Releases is the sole distribution and update source. The optional
+alternate publisher, its tests, generated upload copies and active download
+instructions were removed after the 1.0.2 publication. All **39 remaining
+release-tool tests** pass. This release-workflow/documentation cleanup does not
+change the tagged application or its verified installer hashes.
+
 ## Published 1.0.2
 
 [The public stable release](https://github.com/zhuffman68/lupin/releases/tag/v1.0.2)

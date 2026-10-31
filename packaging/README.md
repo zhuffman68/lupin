@@ -100,22 +100,15 @@ historical migration was skipped; ordinary same-version upgrade/removal checks
 still run. Wine test Python processes set Qt offscreen internally, independently
 of Wine forwarding environment variables.
 
-## Updating itch.io
+## Publishing GitHub releases
 
-Install the official [Butler CLI](https://itch.io/docs/butler/installing.html) and authorize it once with `butler login`. From a checkout containing the three current packages and `dist/SHA256SUMS.txt`:
-
-```sh
-python scripts/publish_itch.py --dry-run
-python scripts/publish_itch.py
-```
-
-The default target is `zhuffman68/lupin`; `--project username/slug` selects another project. Dry-run validates checksums and prepares the local upload folders without network access. A real upload also checks the anonymous page's password form before and after publishing. It never changes project visibility or the shared password. Butler keeps authorization outside the repository; no credential belongs in source control.
-
-The four stable channels are `windows-installer`, `linux-arch`, `linux-debian` and `checksums`. Subsequent uploads update the same channels, use the app's version number, and skip identical content. Source-only publisher checks run with `python -m unittest discover -s scripts/tests -q`.
-
-Butler serves browser downloads as ZIP wrappers containing the native installer/package and an `INSTALL.txt` explaining extraction and installation. Original native package hashes apply after extraction.
-
-Existing files uploaded manually through the browser are separate from Butler channels. The publisher leaves them in place; remove superseded manual entries from Edit project once the new channels are verified. Page descriptions, screenshots and password settings remain managed through the itch.io dashboard.
+[GitHub Releases](https://github.com/zhuffman68/lupin/releases) is the sole download
+and update source. After the native packages pass their installation checks,
+prepare checksums and signed update metadata using the
+[update guide](../docs/UPDATES.md#preparing-a-release). Publish the three native
+packages with their checksums, signed metadata, build information, verification
+report and changelog on the matching stable version tag. Verify anonymous
+downloads and the previous client’s update offer after publication.
 
 The app and native Linux packages are named Lupin/lupin. Pacman and DEB metadata explicitly replace `classic-price-lens`; test migration from v0.8.0 and upgrade through v0.9.0 and v0.10.0 before release. Internal installation/settings/desktop/portal IDs stay stable to preserve user data and sharing. Windows shortcuts use a fresh `lupin-scaled.ico` resource path. Public archives use Lupin/lupin names.
 

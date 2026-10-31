@@ -2,7 +2,7 @@
 
 **Tools for MapleStory Classic World.** Market prices, item search with images, EXP/meso tracking and local Korean translation in both directions.
 
-1. Download the Windows installer from the [latest GitHub release](https://github.com/zhuffman68/lupin/releases/latest) or [itch.io](https://zhuffman68.itch.io/lupin). Extract it if itch.io wraps it in a ZIP.
+1. Download the Windows installer from the [latest GitHub release](https://github.com/zhuffman68/lupin/releases/latest).
 2. Run the **Windows-x64-Setup.exe** installer, then open Lupin from Start. Administrator access is not required.
 3. Choose the game's display and click **Start reading**. A real display is preselected. Keep the game's bottom status bar visible.
 

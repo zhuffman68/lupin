@@ -82,7 +82,6 @@ in [VERIFICATION.md](../VERIFICATION.md).
 | `test_arch_package.py`, `test_linux_packages.py`, `test_windows_installer.py` | Check install, upgrade, uninstall and installed offline behavior in isolated environments. |
 | `qa_common.py`, `windows_stage.py` | Select exact QA artifacts, isolate test desktops, report migration coverage and reject incomplete Windows release stages. |
 | `release_checksums.py`, `release_updates.py` | Validate the three release artifacts and prepare signed GitHub update metadata. |
-| `publish_itch.py` | Validate and upload the existing itch.io channels through Butler. |
 | `export_icons.py` | Export platform icons from the approved native Lupin master. |
 
 All tools in the table live under `scripts/`. Follow the
