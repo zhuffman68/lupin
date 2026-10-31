@@ -1,5 +1,37 @@
 # Verification — 2026-10-31
 
+## Published 1.0.2
+
+[The public stable release](https://github.com/zhuffman68/lupin/releases/tag/v1.0.2)
+contains Windows Setup, Arch/Manjaro and Debian/Ubuntu packages, checksums, signed
+update metadata, build information and the final package verification report.
+The tag peels to `32ed1ec19ae9f174f5047db1a787e3df4ffe63ea`; both staged
+application/test trees match that clean commit, including all 244 files.
+
+- All four installed-platform suites pass **985 tests** each: five skips on
+  Arch/Manjaro, Debian 12 and Ubuntu 22.04; thirty skips under Windows Wine.
+  Each passes an exact 1.0.1 upgrade, removal and a separate fresh-install cycle.
+  Both actual local translation workers run; Linux's native local-page market
+  helper also passes. User settings/cache markers survive the transactions.
+- The new sales-ledger regressions pass with both rebuilt readers. Private
+  replay recovers the six actual shop listings without pricing the summary.
+  The ordinary inventory-description path remains available.
+- Anonymous downloads of all three packages match the signed manifest, GitHub
+  API digests, checksums and local files. The pinned Ed25519 signature verifies.
+  The public API and browser latest-release link both resolve to 1.0.2.
+- The exact tagged 1.0.1 updater offers 1.0.2 for all three package targets;
+  the exact 1.0.2 client correctly reports no newer release. These are protocol
+  checks on Linux, without installation or physical Windows input/capture.
+- Native Windows game capture, production WebView2, mixed DPI and physical
+  hotkeys remain unverified. Historical 0.8.0/0.9.0/0.10.0 migration artifacts
+  are absent and explicitly skipped. No useful delta met the size threshold.
+
+The host application, installed package and approved sharing session are
+preserved. Publication never installs the update on the host. See the release's
+[full verification report](https://github.com/zhuffman68/lupin/releases/download/v1.0.2/VERIFICATION-1.0.2.md)
+for package transactions, isolation and platform limits. Later verification-only
+documentation commits do not change the tagged application or packages.
+
 ## 1.0.2 source and native preflight
 
 The full source suite passes **991 Python tests in 167.053 seconds**, with three
