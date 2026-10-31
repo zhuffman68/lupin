@@ -1,4 +1,4 @@
-//! Bind a fitted native comparison pair to its captured inventory source.
+//! Bind a horizontal native comparison pair to its captured inventory source.
 //! No names, market data, game state or input are used to choose the panel.
 use crate::tooltip_surface::{Dot, rgb, title_light};
 use minerva_core::{Frame, ItemCapture};
@@ -38,13 +38,15 @@ struct Inventory {
 #[derive(Clone, Copy)]
 struct Panel {
     rect: BoxRect,
+    title: BoxRect,
     cap: bool,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct PairBinding {
     source: BoxRect,
     scope: (i32, i32, u32, u32),
     panels: [Panel; 2],
+    comparison_ink: Vec<u8>,
     scale: f32,
 }
 
@@ -98,15 +100,18 @@ fn source(
             return Some(old.clone());
         }
     }
-    // This correction concerns a source close to the right game edge. Other
-    // layouts keep the normal single/linked/equipped reader path.
-    if px < 0 || py < 0 || px as u32 >= frame.width || py as u32 >= frame.height
-        || frame.width.saturating_sub(px as u32) > 480 {
+    // Search only the bounded neighbourhood which can contain this source's
+    // header. Its distance from any game/capture edge does not identify the
+    // hovered item: a fitted description pair may end well beyond its window.
+    if px < 0 || py < 0 || px as u32 >= frame.width || py as u32 >= frame.height {
         return None;
     }
-    let x0 = (px as u32).saturating_sub(440);
-    let x1 = ((px as u32) + 440).min(frame.width);
-    let y0 = (py as u32).saturating_sub(640);
+    let search_scale = scale_hint.filter(|s| (0.65..=2.1).contains(s)).unwrap_or(2.1);
+    let reach_x = (220.0 * search_scale).ceil() as u32;
+    let reach_y = (300.0 * search_scale).ceil() as u32;
+    let x0 = (px as u32).saturating_sub(reach_x);
+    let x1 = ((px as u32) + reach_x).min(frame.width);
+    let y0 = (py as u32).saturating_sub(reach_y);
     let y1 = (py as u32).min(frame.height);
     let w = x1 - x0;
     let h = y1 - y0;
@@ -176,7 +181,6 @@ fn source(
             if r.right() > frame.width
                 || r.bottom() > frame.height
                 || !r.contains(px, py)
-                || frame.width - r.right() > (24.0 * s).ceil() as u32
             {
                 continue;
             }
@@ -363,8 +367,23 @@ fn panel(frame: &Frame, dot: Dot, s: f32) -> Option<Panel> {
     }
     Some(Panel {
         rect,
+        title: BoxRect {
+            x: dot.x0,
+            y: dot.y0.saturating_sub((6.0 * s).ceil() as u32),
+            w: rect.right().saturating_sub(dot.x0),
+            h: ((dot.y1 - dot.y0) + (12.0 * s).ceil() as u32)
+                .min(frame.height - dot.y0.saturating_sub((6.0 * s).ceil() as u32)),
+        },
         cap: cap.is_some(),
     })
+}
+
+fn title_ink_guard(frame: &Frame, rect: BoxRect) -> Vec<u8> {
+    // Retain the captured title's bright ink, not its translucent background:
+    // moving scenery cannot make an unchanged equipped item a new source.
+    (rect.y..rect.bottom()).flat_map(|y| (rect.x..rect.right()).map(move |x| {
+        u8::from(title_light(rgb(frame, x, y)).is_some_and(|v| v >= 150))
+    })).collect()
 }
 
 fn title_marker(frame: &Frame, dot: Dot) -> bool {
@@ -441,7 +460,7 @@ impl Selector {
             };
         };
         let s = inv.scale;
-        if self.pair.is_some_and(|pair| pair.scope != scope || pair.source != inv.rect) {
+        if self.pair.as_ref().is_some_and(|pair| pair.scope != scope || pair.source != inv.rect) {
             self.pair = None;
         }
         let gx = inv.rect.x + (7.0 * s).round() as u32;
@@ -518,12 +537,19 @@ impl Selector {
             // A known pair can briefly lose one cyan marker while both native
             // frames remain. That is not proof of an ordinary single popup:
             // nearest-marker fallback could then price the equipped comparison.
-            if self.pair.is_some_and(|pair| pair.panels.into_iter()
-                .all(|panel| panel_still_present(frame, panel, pair.scale))) {
+            if self.pair.as_ref().is_some_and(|pair| {
+                let comparison = pair.panels[1];
+                pair.panels.into_iter().all(|panel| panel_still_present(frame, panel, pair.scale))
+                    || (panel_still_present(frame, comparison, pair.scale)
+                        && title_ink_guard(frame, comparison.title) == pair.comparison_ink)
+            }) {
                 metadata["state"] = json!("rejected");
                 return Association { panel: None, rejected: true, metadata };
             }
-            // A genuinely departed pair leaves the ordinary single path intact.
+            // A departed comparison leaves the ordinary primary/single path
+            // intact. The old comparison cannot authorize itself just because
+            // its primary vanished; a genuinely different single title or an
+            // independent source/capture scope can establish a fresh reading.
             self.bound_source = None;
             self.pair = None;
             return Association {
@@ -541,12 +567,22 @@ impl Selector {
                 && (a.cap || b.cap)
                 && a.rect.w as f32 / b.rect.w as f32 >= 0.7
                 && a.rect.w as f32 / b.rect.w as f32 <= 1.4;
-            let fitted = b.rect.right().abs_diff(inv.rect.right()) <= (8.0 * s).ceil() as u32
-                && frame.width.saturating_sub(b.rect.right()) <= (24.0 * s).ceil() as u32
-                && a.rect.x + ((30.0 * s).round() as u32) < inv.rect.x;
-            if paired && fitted && !panels.iter().any(|p| p.rect.contains(px, py)) {
+            // This proven layout family always places the hovered item's
+            // primary description on the left and the equipped comparison on
+            // the right. Bind it to the actual grid cell, not to a screen edge
+            // or whichever marker happens to be nearest. The envelope must be
+            // adjacent to that cell, so an unrelated clicked pair cannot win.
+            let margin = (48.0 * s).ceil() as i64;
+            let near_source = slot.is_some_and(|slot| {
+                i64::from(a.rect.x) <= i64::from(slot.right()) + margin
+                    && i64::from(b.rect.right()) + margin >= i64::from(slot.x)
+                    && i64::from(a.rect.y) <= i64::from(slot.bottom()) + margin
+                    && i64::from(a.rect.bottom().max(b.rect.bottom())) + margin >= i64::from(slot.y)
+            });
+            if paired && near_source && !panels.iter().any(|p| p.rect.contains(px, py)) {
                 chosen = Some(a.rect);
-                self.pair = Some(PairBinding { source: inv.rect, scope, panels: [a, b], scale: s });
+                self.pair = Some(PairBinding { source: inv.rect, scope, panels: [a, b],
+                    comparison_ink: title_ink_guard(frame, b.title), scale: s });
             }
         }
         let rejected = chosen.is_none();
@@ -556,15 +592,34 @@ impl Selector {
             "inventory-primary"
         });
         if let Some(rect) = chosen {
+            metadata["version"] = json!(2);
+            metadata["sourceKind"] = json!("inventory");
+            metadata["layout"] = json!("primary-left");
             metadata["panel"] = rect.global(capture);
+            metadata["comparison"] = panels[1].rect.global(capture);
+            metadata["pointer"] = json!({"x":capture.pointer.x,"y":capture.pointer.y});
+            // The frontend compares the cell outside the union of old/new
+            // cursor footprints. Exact whole-cell hashes would flicker merely
+            // because a captured hand moves within an otherwise stable slot.
+            let inset = (6.0 * s).ceil() as u32;
+            let cursor_x = (px as u32).saturating_sub(inset);
+            let cursor_y = (py as u32).saturating_sub(inset);
+            metadata["cursor"] = BoxRect {
+                x: cursor_x,
+                y: cursor_y,
+                w: (32.0 * s).ceil().min((frame.width - cursor_x) as f32) as u32,
+                h: (36.0 * s).ceil().min((frame.height - cursor_y) as f32) as u32,
+            }.global(capture);
             let h = (12.0 * s).round().max(4.0) as u32;
             let w = s.round().max(1.0) as u32;
-            let y = rect.y + (42.0 * s).round() as u32;
-            for x in [rect.x, rect.right().saturating_sub((3.0 * s).ceil() as u32)] {
-                metadata["guards"]
-                    .as_array_mut()
-                    .unwrap()
-                    .push(BoxRect { x, y, w, h }.global(capture));
+            for panel in &panels {
+                let y = panel.rect.y + (42.0 * s).round() as u32;
+                for x in [panel.rect.x, panel.rect.right().saturating_sub((3.0 * s).ceil() as u32)] {
+                    metadata["guards"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(BoxRect { x, y, w, h }.global(capture));
+                }
             }
         }
         Association {
@@ -581,6 +636,7 @@ mod tests {
     use minerva_core::ScreenPoint;
 
     fn paint(f: &mut Frame, x: u32, y: u32, w: u32, h: u32, p: [u8; 3]) {
+        assert!(x + w <= f.width && y + h <= f.height, "fixture paint outside captured pixels");
         for yy in y..y + h {
             for xx in x..x + w {
                 let at = ((yy * f.width + xx) * 4) as usize;
@@ -589,15 +645,20 @@ mod tests {
         }
     }
     fn fixture(tab: u32, gap: u32) -> (ItemCapture, Vec<Dot>, BoxRect) {
+        fixture_at(tab, gap, 1500, 900, 1293, 90, 1024, 180)
+    }
+    fn fixture_at(tab: u32, gap: u32, width: u32, height: u32,
+                  inventory_x: u32, inventory_y: u32, primary_x: u32, primary_y: u32)
+        -> (ItemCapture, Vec<Dot>, BoxRect) {
         let mut f = Frame {
-            width: 1500,
-            height: 900,
-            rgba: [20, 35, 20, 255].repeat(1500 * 900),
+            width,
+            height,
+            rgba: [20, 35, 20, 255].repeat((width * height) as usize),
             at_ms: 1000,
         };
         let inv = BoxRect {
-            x: 1293,
-            y: 90,
+            x: inventory_x,
+            y: inventory_y,
             w: 207,
             h: 285,
         };
@@ -628,14 +689,14 @@ mod tests {
             );
         }
         let b = BoxRect {
-            x: 1263,
-            y: 180,
+            x: primary_x + gap + 236,
+            y: primary_y,
             w: 236,
             h: 240,
         };
         let a = BoxRect {
             x: b.x - gap - 236,
-            y: 180,
+            y: primary_y,
             w: 236,
             h: 270,
         };
@@ -670,8 +731,8 @@ mod tests {
                 frame: f,
                 origin: ScreenPoint { x: 1700, y: -200 },
                 pointer: ScreenPoint {
-                    x: 1700 + 1378,
-                    y: -200 + 152,
+                    x: 1700 + inventory_x as i32 + 85,
+                    y: -200 + inventory_y as i32 + 62,
                 },
             },
             dots,
@@ -680,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn source_slot_and_fitted_pair_choose_primary_before_ocr() {
+    fn source_slot_and_horizontal_pair_choose_primary_before_ocr() {
         for tab in [0, 4] {
             let (capture, dots, expected) = fixture(tab, 3);
             let mut selector = Selector::default();
@@ -691,12 +752,62 @@ mod tests {
             assert_eq!(result.metadata["panel"]["x"], expected.x + 1700);
             assert_eq!(result.metadata["source"]["y"], -110);
             assert_eq!(result.metadata["slot"]["width"], 32);
-            assert_eq!(result.metadata["guards"].as_array().unwrap().len(), 3);
+            assert_eq!(result.metadata["guards"].as_array().unwrap().len(), 5);
+            assert_eq!(result.metadata["version"], 2);
+            assert_eq!(result.metadata["layout"], "primary-left");
+            assert_eq!(result.metadata["sourceKind"], "inventory");
+            assert_eq!(result.metadata["comparison"]["x"], 1700 + 1263);
+            assert_eq!(result.metadata["pointer"]["x"], capture.pointer.x);
             assert_eq!(
                 selector.select(&capture, &dots, None).metadata["token"],
                 result.metadata["token"]
             );
         }
+    }
+
+    #[test]
+    fn inset_sources_and_pairs_at_multiple_edges_keep_the_hovered_primary() {
+        // The first case has the inventory 263px inside the right boundary;
+        // neither its right edge nor the comparison's right edge are equal.
+        // The other cases exercise left/top/bottom placement and a small game.
+        for (width, height, ix, iy, ax, ay) in [
+            (1500, 900, 1030, 90, 1024, 180),
+            (900, 600, 0, 0, 100, 90),
+            (900, 900, 600, 580, 200, 330),
+            (800, 600, 500, 30, 320, 120),
+        ] {
+            let (capture, dots, expected) = fixture_at(0, 3, width, height, ix, iy, ax, ay);
+            let result = Selector::default().select(&capture, &dots, Some(1.0));
+            assert_eq!(result.panel, Some(expected), "{}", result.metadata);
+            assert_eq!(result.metadata["state"], "inventory-primary");
+            // Unequal description heights are expected equipment comparisons.
+            assert_ne!(result.metadata["panel"]["height"], result.metadata["comparison"]["height"]);
+        }
+    }
+
+    #[test]
+    fn a_real_inventory_does_not_claim_a_remote_clicked_pair() {
+        let (capture, dots, _) = fixture_at(0, 3, 1500, 900, 100, 90, 500, 180);
+        let result = Selector::default().select(&capture, &dots, Some(1.0));
+        assert!(result.rejected);
+        assert!(result.panel.is_none());
+    }
+
+    #[test]
+    fn changed_cell_pixels_are_returned_as_fresh_source_proofs_not_old_item_names() {
+        let (mut capture, dots, expected) = fixture_at(0, 3, 1500, 900, 1030, 90, 1024, 180);
+        let mut selector = Selector::default();
+        let initial = selector.select(&capture, &dots, Some(1.0));
+        paint(&mut capture.frame, 1030 + 79, 90 + 47, 32, 32, [80, 10, 30]);
+        let current = selector.select(&capture, &dots, Some(1.0));
+        assert_eq!(current.panel, Some(expected));
+        assert_eq!(initial.metadata["slot"], current.metadata["slot"]);
+        // There is intentionally no retained OCR identity in this selector.
+        // The frontend compares these same-frame cell pixels independently of
+        // the primary name and the unchanged equipped comparison.
+        assert!(current.metadata.get("name").is_none());
+        assert_eq!(current.metadata["cursor"]["width"], 32);
+        assert_eq!(current.metadata["cursor"]["height"], 36);
     }
 
     #[test]
@@ -709,7 +820,10 @@ mod tests {
         capture.pointer.y = capture.origin.y + 152;
         capture.pointer.x = capture.origin.x + 1293 + 7 + 33; // Four-pixel grid gutter.
         assert!(Selector::default().select(&capture, &dots, None).rejected);
-        let (capture, dots, _) = fixture(0, 18);
+        // Keep both complete panels inside the capture. The 18px gap extends
+        // the comparison beyond fixture()'s 1500px edge, which is a different
+        // (single visible title) case, not evidence of a nonadjacent pair.
+        let (capture, dots, _) = fixture_at(0, 18, 1540, 900, 1293, 90, 1024, 180);
         assert!(Selector::default().select(&capture, &dots, None).rejected);
     }
 
@@ -789,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn actual_pair_departure_releases_the_ordinary_single_description_path() {
+    fn comparison_departure_releases_primary_but_primary_departure_cannot_authorize_comparison() {
         for removed in [0, 1] {
             let (mut capture, dots, primary) = fixture(0, 3);
             let mut selector = Selector::default();
@@ -798,10 +912,37 @@ mod tests {
             paint(&mut capture.frame, gone.x, gone.y, gone.w, gone.h, [20, 35, 20]);
             let remaining = if removed == 0 { &dots[1..] } else { &dots[..1] };
             let single = selector.select(&capture, remaining, None);
-            assert!(!single.rejected);
+            assert_eq!(single.rejected, removed == 0);
             assert!(single.panel.is_none());
-            assert_eq!(single.metadata["state"], "normal");
+            assert_eq!(single.metadata["state"], if removed == 0 { "rejected" } else { "normal" });
+            if removed == 0 {
+                for _ in 0..3 {
+                    assert!(selector.select(&capture, remaining, None).rejected);
+                }
+                // The same denial does not leak into an independent equipped
+                // or linked-item read outside the inventory source.
+                capture.pointer.x = capture.origin.x + 700;
+                assert!(!selector.select(&capture, remaining, None).rejected);
+            }
         }
+    }
+
+    #[test]
+    fn genuinely_new_single_title_does_not_inherit_the_old_comparison_denial() {
+        let (mut capture, dots, primary) = fixture(0, 3);
+        let mut selector = Selector::default();
+        assert!(selector.select(&capture, &dots, None).panel.is_some());
+        paint(&mut capture.frame, primary.x, primary.y, primary.w, primary.h, [20, 35, 20]);
+        let remaining = &dots[1..];
+        assert!(selector.select(&capture, remaining, None).rejected);
+        // Fresh independently visible title pixels establish a new ordinary
+        // single description, rather than the unchanged equipped comparison.
+        let x = 1263 + 17;
+        paint(&mut capture.frame, x, 192, 75, 12, [30, 30, 70]);
+        paint(&mut capture.frame, x, 192, 5, 12, [240, 240, 240]);
+        let single = selector.select(&capture, remaining, None);
+        assert!(!single.rejected);
+        assert_eq!(single.metadata["state"], "normal");
     }
 
     #[test]
@@ -850,7 +991,7 @@ mod tests {
             capture.frame.rgba.clone(),
         )
         .unwrap();
-        for scale in [1.25_f32, 1.5, 2.0] {
+        for scale in [1.0_f32, 1.25, 1.5, 2.0] {
             let resized = image::imageops::resize(
                 &original,
                 (original.width() as f32 * scale).round() as u32,

@@ -30,7 +30,7 @@ class ShopRowsTests(unittest.TestCase):
         self.assertEqual(self.memory.presentation_for(row,1),{'quantity':1,'mesos':100})
         expired=self.memory.observe(self.covered(),self.image,31)[0]
         self.assertIsNone(self.memory.presentation_for(expired,31))
-        self.assertIsNone(expired['presentation_price'])
+        self.assertFalse(expired['presentation_held'])
         self.assertFalse(expired['presentation_held'])
 
     def test_changed_page_invalidates_a_previously_returned_presentation(self):
@@ -181,12 +181,12 @@ class ShopRowsTests(unittest.TestCase):
         # scrollbar change still proves that the old page cannot be held.
         self.image.setPixelColor(363,160,QColor('white'))
         row=self.memory.observe(self.covered(),self.image,1,tooltip=QRect(200,250,220,200))[0]
-        self.assertIsNone(row['name']);self.assertIsNone(row['presentation_price'])
+        self.assertIsNone(row['name']);self.assertFalse(row['presentation_held'])
 
     def test_fully_hidden_guards_do_not_prove_a_page(self):
         self.image.fill(QColor('black'))
         row=self.memory.observe(self.covered(),self.image,1,tooltip=QRect(0,0,800,800))[0]
-        self.assertIsNone(row['name']);self.assertIsNone(row['presentation_price'])
+        self.assertIsNone(row['name']);self.assertFalse(row['presentation_held'])
 
     def test_animated_owner_portrait_is_not_a_page_guard(self):
         self.image.setPixelColor(110,120,QColor('white'))
@@ -200,6 +200,77 @@ class ShopRowsTests(unittest.TestCase):
         self.assertEqual(self.memory.observe(self.covered(),original,3)[0]['name'],'Work Gloves')
         original.setPixelColor(363,160,QColor('white'))
         self.assertIsNone(self.memory.observe(self.covered(),original,4)[0]['name'])
+
+    def contextual(self):
+        memory=ShopRows(identity=lambda row:row.get('_item_id'))
+        shop=deepcopy(self.shop)
+        shop['rows'][0].update(name='Blue Moon',_item_id=1041121,
+            _identity_evidence='icon',_identity_guard=('native icon',),_identity_epoch=1)
+        other=deepcopy(self.row);other['area']['y']+=50;other.update(name='Other Hat',_item_id=1000001)
+        shop['rows'].append(other)
+        memory.observe(shop,self.image,0)
+        return memory,shop
+
+    def test_identity_proof_downgrade_keeps_page_without_lending_old_id_or_quote(self):
+        memory,shop=self.contextual();page=memory.page_revision
+        visible=memory.observe(shop,self.image,1)[0]
+        memory.presentation_for(visible,1,quote_key='known item quote')
+        weak=deepcopy(shop);weak['rows'][0].pop('_item_id')
+        result=memory.observe(weak,self.image,2)
+        self.assertEqual(memory.page_revision,page);self.assertEqual(len(memory.rows),2)
+        self.assertNotIn('_item_id',result[0]);self.assertNotIn('_item_id',memory.rows[memory.slot(result[0])][0])
+        self.assertEqual(result[0]['price'],visible['price'])
+        self.assertNotIn(memory.slot(result[0]),memory.quote_proofs)
+        self.assertIsNone(memory.presentation_for(result[0],2,quote_key='known item quote'))
+        covered=deepcopy(weak)
+        covered['rows'][0].update(name=None,price=None,covered=True)
+        retained=memory.observe(covered,self.image,3)[0]
+        self.assertNotIn('_item_id',retained)
+        self.assertIsNone(memory.presentation_for(retained,3,quote_key='known item quote'))
+
+    def test_current_weak_identity_stays_weak_during_retention_and_exact_pixel_restore(self):
+        memory,shop=self.contextual();page=memory.page_revision
+        visible=memory.observe(shop,self.image,1)[0]
+        memory.presentation_for(visible,1,quote_key='known item quote')
+        weak=deepcopy(shop);weak['rows'][0].pop('_item_id')
+        weak['rows'][0].update(price=None,covered=True,_identity_reason='Icon covered')
+        retained=memory.observe(weak,self.image,2)[0]
+        self.assertEqual(memory.page_revision,page);self.assertNotIn('_item_id',retained)
+        self.assertNotIn('_identity_evidence',retained)
+        self.assertEqual(retained['_identity_reason'],'Icon covered')
+        self.assertIsNone(memory.presentation_for(retained,2,quote_key='known item quote'))
+        restored=memory.restore_visible(self.image,[retained],3)[0]
+        self.assertNotIn('_item_id',restored)
+        self.assertEqual(restored['price'],visible['price'])
+        self.assertIsNone(memory.presentation_for(restored,3,quote_key='known item quote'))
+
+    def test_weak_to_newly_proven_identity_and_shop_drag_do_not_claim_another_page(self):
+        memory,shop=self.contextual();page=memory.page_revision
+        weak=deepcopy(shop);weak['rows'][0].pop('_item_id')
+        weak['area']['x']+=30;weak['area']['y']+=20
+        for row in weak['rows']:row['area']['x']+=30;row['area']['y']+=20
+        result=memory.observe(weak,self.image,1)
+        self.assertEqual(memory.page_revision,page);self.assertNotIn('_item_id',result[0])
+        proven=deepcopy(weak);proven['rows'][0]['_item_id']=1041121
+        result=memory.observe(proven,self.image,2)
+        self.assertEqual(memory.page_revision,page);self.assertEqual(result[0]['_item_id'],1041121)
+
+    def test_two_positive_different_ids_invalidate_even_with_the_same_name_and_asking_price(self):
+        memory,shop=self.contextual();page=memory.page_revision
+        changed=deepcopy(shop);changed['rows'][0]['_item_id']=1032011
+        changed['rows'][1].update(name=None,price=None,covered=True)
+        result=memory.observe(changed,self.image,1)
+        self.assertGreater(memory.page_revision,page)
+        self.assertEqual(result[0]['_item_id'],1032011)
+        self.assertIsNone(result[1]['name'])
+
+    def test_a_changed_weak_label_tier_or_asking_price_still_invalidates_the_page(self):
+        for change in ({'name':'Different Moon'},{'tier':'chaos'},{'price':{'quantity':1,'mesos':999}}):
+            with self.subTest(change=change):
+                memory,shop=self.contextual();page=memory.page_revision
+                changed=deepcopy(shop);changed['rows'][0].pop('_item_id');changed['rows'][0].update(change)
+                memory.observe(changed,self.image,1)
+                self.assertGreater(memory.page_revision,page)
 
     def test_small_ocr_punctuation_changes_do_not_invalidate_other_covered_rows(self):
         shop=deepcopy(self.shop);other=deepcopy(self.row);other['area']['y']+=50;shop['rows'].append(other)

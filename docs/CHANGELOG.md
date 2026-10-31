@@ -5,6 +5,33 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## 1.0.2
+
+See [the patch record](PATCH_1.0.2.md) for validation and platform checks.
+
+- Shop sales-summary panels, including “Total Sales / Total Received,” are
+  excluded from item pricing so the actual shop listings can be read.
+- Shop browsing prioritizes newly visible listings for 1.5 seconds after scrolling,
+  including labels over an item description. Previous-page references cannot
+  move onto new listings, and normal hover behavior returns after browsing stops.
+- Duplicate item names require visible item evidence before receiving a market
+  reference. An unpriced Blue Moon top cannot inherit the earrings' price.
+- Late OCR and covered-row recovery cannot restore an asking price or item ID
+  after its visible source changes or the shop disappears.
+- Re-reading changed shop pixels preserves an active OCR request's timeout.
+  Search by exact item ID works even when market data is missing or old.
+- Clipped non-scroll names ignore hypothetical scroll-color hints, including
+  Ink-and-Wash Painting Name Tag Ring. Quotation typography and missing spacing
+  around quoted names receive conservative normalization.
+- Inventory descriptions and comparison panels are associated with the hovered
+  slot across supported window positions instead of choosing the nearest title.
+- Price status distinguishes unidentified items, unverified variants and missing
+  sales data. Combined-variant references remain withheld until verified.
+- Windows staging requires its reader and runtime resources. Package checks
+  select an explicit release and report missing migration coverage.
+- Retired provider-selection and overlay paths are removed while saved settings
+  and upgrade compatibility are preserved.
+
 ## 1.0.1
 
 - Tracking automatically holds when Classic World can no longer be recognized,
@@ -81,3 +108,14 @@ the time. Follow current development and installation guides for current command
 | 0.17.2 | Compact tracking cards, independent clocks and NPC-hover fixes. | [Notes](archive/patches/PATCH_0.17.2.md) |
 | 0.17.1 | Tracking placement and separate overlay visibility controls. | [Notes](archive/patches/PATCH_0.17.1.md) |
 | 0.17.0 | Pickup-based meso tracking, separate cards and clipboard writer. | [Notes](archive/patches/PATCH_0.17.0.md) |
+
+<br>
+
+<h3 align="center">Buy monkey a beer</h3>
+<!-- Balance the artwork's transparent padding so its visible centers align. -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/header-spacer.svg" width="9" alt=""><a href="https://www.paypal.me/zhuffman68"><img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/donate.png" width="190" align="middle" alt="Donate with PayPal"></a>
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/header-spacer.svg" width="32" alt=""><img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/lupin-beer.gif" width="96" alt="Lupin drinking a beer">
+</p>

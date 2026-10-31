@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from windows_stage import validate_windows_stage
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from price_lens import __version__
@@ -19,9 +21,11 @@ def main():
     compiler = args.iscc.resolve()
     if not compiler.is_file():
         raise FileNotFoundError(compiler)
+    stage = ROOT / 'dist/Lupin-Windows-x64'
+    validate_windows_stage(stage)
     # Upgrade cleanup is limited to paths this release verified as unused.
     # Inno normally leaves files omitted from the new archive in place.
-    report=json.loads((ROOT/'dist/Lupin-Windows-x64/runtime-trim.json').read_text())
+    report=json.loads((stage/'runtime-trim.json').read_text())
     cleanup=[]
     for entry in report['removed']:
         relative=Path(entry['path'])

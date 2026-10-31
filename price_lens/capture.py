@@ -16,6 +16,8 @@ from .capture_platform import uses_system_picker
 from .tracking_identity import name_proof
 from .tooltip_association import TooltipAssociation,association_state
 from .pickup_capture import PickupWorker
+from .shop_browsing import ShopBrowsing
+from .reader_request import SubmittedRequest
 
 
 class PixelReader(QObject):
@@ -24,6 +26,7 @@ class PixelReader(QObject):
     image_ready = Signal(QImage)
     area_changed = Signal()
     experience = Signal(dict)
+    shop_viewport_changed = Signal()
 
     def __init__(self, root, parent=None):
         super().__init__(parent)
@@ -37,7 +40,6 @@ class PixelReader(QObject):
         self._experience_enabled = False
         self.pickups_enabled = True
         self.tracking_epoch = 0
-        self.pending_tracking_epoch = 0
         self.tracking_frame_at = 0.0
         self.tracking_identity_area = None
         self.pickup_worker = None
@@ -45,15 +47,10 @@ class PixelReader(QObject):
         self.manual_game_area = None
         self.manual_game_guards = []
         self.manual_game_footer = None
-        self.pending_tracking_locate = False
-        self.tracking_location_origin = QPoint()
         self.prices_enabled = True
-        self.pending_locate_only = False
         self.last_experience = 0.0
         self.last_map_read = 0.0
         self.last_pickup = self.last_pickup_frame = 0.0
-        self.pending_experience = False
-        self.experience_source = None
         self.exclude_regions = lambda: []
         self.writer_regions = lambda: []
         self.timings = deque(maxlen=240)
@@ -69,25 +66,25 @@ class PixelReader(QObject):
         self.tooltip_retry_requested = False
         self.tooltip_retry_key = None
         self.tooltip_retry_at = 0.0
-        self.using_roi = False
         self.roi_clean = True
         self.shop_context = None
+        self.shop_browsing = ShopBrowsing(parent=self)
+        self.shop_tooltip_bounds = None
+        self.shop_exclusions = lambda: []
         self.crop = None
         self.auto_enabled = True
         self.live_source = False
         self.game_area = None
         self.game_guards = []
         self.game_footer = None
-        self.submitted_image = QImage()
+        self.submitted_request = None
+        self.active_request = None
         self.next_area_search = 0.0
         self.last_geometry_check = 0.0
         self.last_locator_check = 0.0
-        self.pending_local_roi = False
-        self.pending = False
         self.paused = False
         self.generation = 0
-        self.pending_generation = 0
-        self.pending_since = 0.0
+        self.rescan_requested = False
         self.buffer = b""
         self.kde_screen = None
         self.kde_desktop = None
@@ -130,11 +127,43 @@ class PixelReader(QObject):
                          if uses_system_picker() else "Capturing the selected display")
         self.stream.start(screen, desktop)
 
+    @property
+    def pending(self):return self.active_request is not None
+
+    @property
+    def pending_since(self):
+        request=self.active_request or self.submitted_request
+        return request.started_at if request is not None else 0.0
+
+    @property
+    def submitted_image(self):
+        return self.submitted_request.frame if self.submitted_request is not None else QImage()
+
+    @property
+    def using_roi(self):
+        return bool(self.submitted_request is not None and self.submitted_request.using_roi)
+
+    def submit(self,payload,*,mode,now=None,analysis_rect=None,using_roi=False,local_roi=False):
+        """Bind response authority and timeout to the pixels actually sent."""
+        started=time.monotonic() if now is None else now
+        request=SubmittedRequest(mode,self.image,self.pointer,self.image_sequence,self.generation,started,
+            shop_epoch=self.shop_browsing.epoch if mode=='prices' else None,
+            tracking_epoch=self.tracking_epoch if mode in ('experience','tracking-location') else None,
+            crop=self.crop.getRect() if self.crop is not None else None,
+            analysis_rect=analysis_rect.getRect() if analysis_rect is not None else None,
+            using_roi=using_roi,local_roi=local_roi,locate_game=bool(payload.get('auto_game')))
+        self.active_request=self.submitted_request=request
+        if mode=='prices':self.last_pointer=request.pointer
+        # EXP shares the transport but must not consume the pending price frame.
+        if mode!='experience':self.submitted_sequence=request.sequence
+        self.process.write((json.dumps(payload)+'\n').encode())
+
     def pause(self, keep_stream=False):
         self.generation += 1
         self.paused = True
         self.timer.stop()
         self.screenshot_timer.stop()
+        self.shop_browsing.reset()
         if keep_stream:
             self.stream.set_paused(True)
         else:
@@ -173,6 +202,7 @@ class PixelReader(QObject):
         self.last_frame = time.monotonic()
         self.mark_tracking_frame()
         self.image_sequence += 1
+        self.observe_shop_frame()
         self.image_ready.emit(self.image)
         self.scan()
 
@@ -185,8 +215,19 @@ class PixelReader(QObject):
             self.validate_area()
             self.mark_tracking_frame()
             self.image_sequence += 1
+            self.observe_shop_frame()
             self.image_ready.emit(self.image)
             self.scan()
+
+    def observe_shop_frame(self):
+        """A new captured viewport invalidates old OCR before it can draw."""
+        if not self.live_source or self.paused or not self.prices_enabled or self.shop_context is None:
+            return
+        source = self.image.copy(self.crop) if self.crop else self.image
+        if self.shop_browsing.observe_frame(source, self.shop_context,
+                tooltip=self.shop_tooltip_bounds, exclude=self.shop_exclusions()):
+            self.shop_fingerprint = None
+            self.shop_viewport_changed.emit()
 
     def load_image(self, path):
         self.pause()
@@ -252,6 +293,8 @@ class PixelReader(QObject):
             self.pickup_worker.invalidate()
         self.next_area_search = 0
         self.shop_rect = self.shop_fingerprint = self.shop_context = None
+        self.shop_tooltip_bounds = None
+        self.shop_browsing.reset()
         self.tooltip_rect = self.tooltip_fingerprint = None
         self.tooltip_association = None
         self.last_experience = self.last_map_read = self.last_pickup = self.last_pickup_frame = 0
@@ -317,7 +360,7 @@ class PixelReader(QObject):
                 and now-self.last_pickup >= .2 and self.last_frame > self.last_pickup_frame):
             self.scan_pickups(now)
         if self.pending:
-            if time.monotonic() - self.pending_since > 25:
+            if now > self.active_request.deadline_at:
                 self.process.kill()
                 self.status.emit("Screen reader timed out; restart the app")
             return
@@ -342,6 +385,7 @@ class PixelReader(QObject):
             elif exp_due:self.scan_experience(now)
             else:self.submitted_sequence=self.image_sequence
             return
+        force_rescan = self.rescan_requested
         image = self.image.copy(self.crop) if self.crop else self.image
         pointer = self.pointer
         if pointer and self.crop:
@@ -359,57 +403,57 @@ class PixelReader(QObject):
             patch = image.copy(self.shop_context or self.shop_rect)
             fingerprint = hashlib.blake2b(patch.constBits(), digest_size=8).digest()
             shop_hover_due = in_shop and (self.pointer != self.last_pointer or time.monotonic() - self.last_geometry_check >= 0.2)
-            if (fingerprint == self.shop_fingerprint and not shop_hover_due and (not hover_check or tooltip_same)
+            if (not force_rescan and fingerprint == self.shop_fingerprint and not shop_hover_due and (not hover_check or tooltip_same)
                     and (not self.auto_active or now-self.last_locator_check<1.0)):
                 self.submitted_sequence = self.image_sequence
                 if exp_due:self.scan_experience(now)
                 return
-        elif self.shop_rect is None and tooltip_same:
+        elif not force_rescan and self.shop_rect is None and tooltip_same:
             self.submitted_sequence = self.image_sequence
             if exp_due:self.scan_experience(now)
             return
-        if self.shop_rect is None and time.monotonic() - self.pending_since < 0.2:
+        if not force_rescan and self.shop_rect is None and time.monotonic() - self.pending_since < 0.2:
             return
         if exp_due and now-self.last_experience>=1.6:
             self.scan_experience(now)
             return
         origin = {"x": 0, "y": 0}
-        self.using_roi = bool(self.shop_rect and self.roi_clean and not hover_check)
-        self.pending_local_roi=bool(self.auto_active and self.using_roi and self.game_area
+        using_roi = bool(self.shop_rect and self.roi_clean and not hover_check)
+        local_roi=bool(self.auto_active and using_roi and self.game_area
                                    and now-self.last_locator_check<1.0)
-        if self.using_roi:
+        if using_roi:
             region = (self.shop_context or self.shop_rect).adjusted(-16, -16, 16, 16).intersected(image.rect())
-            if not self.auto_active or self.pending_local_roi:
+            if not self.auto_active or local_roi:
                 origin = {"x": region.x(), "y": region.y()}
                 image = image.copy(region)
-        if self.auto_active and not self.pending_local_roi:self.last_locator_check=now
+        if self.auto_active and not local_roi:self.last_locator_check=now
         image = image.convertToFormat(QImage.Format.Format_RGBA8888)
         path = Path(self.temp.name) / "frame.rgba"
         path.write_bytes(image.constBits())
-        self.pending = True
-        self.pending_locate_only=False
-        self.pending_tracking_locate=False
-        self.pending_experience = False
-        self.pending_generation = self.generation
-        self.pending_since = time.monotonic()
-        self.last_geometry_check = self.pending_since
-        self.submitted_sequence = self.image_sequence
-        self.submitted_image = self.image
-        self.last_pointer = self.pointer
+        self.rescan_requested = False
+        started=time.monotonic()
+        self.last_geometry_check = started
         request = {"path": str(path), "at_ms": int(self.last_frame * 1000),
                    "pointer": {"x": pointer[0], "y": pointer[1]} if pointer is not None else None,
                    "tooltip": bool(hover_check),
                    "tooltip_retry": bool(hover_check and self.tooltip_retry_requested),
                    "origin": origin,
-                   "auto_game": self.auto_active and not self.pending_local_roi,
-                   "roi": {"x": region.x(), "y": region.y(), "width": region.width(), "height": region.height()} if self.auto_active and self.using_roi and not self.pending_local_roi else None,
+                   "auto_game": self.auto_active and not local_roi,
+                   "roi": {"x": region.x(), "y": region.y(), "width": region.width(), "height": region.height()} if self.auto_active and using_roi and not local_roi else None,
                    "width": image.width(), "height": image.height()}
         crop_origin=self.crop.topLeft() if self.crop else QPoint()
         source_region=self.crop.intersected(self.image.rect()) if self.crop else self.image.rect()
         request['exclude']=[dict(zip(('x','y','width','height'),rect.intersected(source_region).translated(-crop_origin).getRect()))
                             for rect in self.writer_regions()[:8] if rect.intersects(source_region)]
         self.tooltip_retry_requested = False
-        self.process.write((json.dumps(request) + "\n").encode())
+        self.submit(request,mode='prices',now=started,using_roi=using_roi,local_roi=local_roi)
+
+    def request_rescan(self):
+        """Queue newest pixels without changing an active request's deadline."""
+        self.shop_fingerprint = None
+        self.rescan_requested = True
+        self.image_sequence += 1
+        QTimer.singleShot(0,self.scan)
 
     def retry_tooltip(self, key):
         now=time.monotonic()
@@ -419,17 +463,14 @@ class PixelReader(QObject):
         QTimer.singleShot(0,self.scan)
 
     def scan_location(self,now,tracking_only=False):
-        self.tracking_location_origin = self.crop.topLeft() if tracking_only and self.crop else QPoint()
         source = self.image.copy(self.crop) if tracking_only and self.crop else self.image
         image=source.convertToFormat(QImage.Format.Format_RGBA8888)
         path=Path(self.temp.name)/'location.rgba';path.write_bytes(image.constBits())
-        self.pending=True;self.pending_experience=False;self.pending_locate_only=True
-        self.pending_tracking_locate=tracking_only
-        self.pending_local_roi=False;self.pending_generation=self.generation
-        self.pending_since=self.last_locator_check=now
-        self.submitted_sequence=self.image_sequence;self.submitted_image=self.image
-        self.process.write((json.dumps({'path':str(path),'at_ms':int(self.last_frame*1000),
-             'auto_game':True,'locate_only':True,'width':image.width(),'height':image.height()})+'\n').encode())
+        self.last_locator_check=now
+        self.submit({'path':str(path),'at_ms':int(self.last_frame*1000),
+             'auto_game':True,'locate_only':True,'width':image.width(),'height':image.height()},
+             mode='tracking-location' if tracking_only else 'location',now=now,
+             analysis_rect=self.crop if tracking_only else None)
 
     def scan_experience(self, now):
         # Reuse this capture and this OCR process. Map search is infrequent;
@@ -446,19 +487,13 @@ class PixelReader(QObject):
             return
         path = Path(self.temp.name)/"experience.rgba"
         path.write_bytes(image.constBits())
-        self.pending = self.pending_experience = True
-        self.pending_locate_only = False
-        self.pending_tracking_locate = False
-        self.pending_generation = self.generation
-        self.pending_tracking_epoch = self.tracking_epoch
-        self.pending_since = self.last_experience = now
-        self.experience_source=(image,area.topLeft())
+        self.last_experience = now
         if read_map:
             self.last_map_read = now
         request = {"path":str(path),"width":image.width(),"height":image.height(),
                    "at_ms":int(self.last_frame*1000),"experience_only":True,"read_map":read_map,
                    "origin":{"x":area.x(),"y":area.y()}}
-        self.process.write((json.dumps(request)+"\n").encode())
+        self.submit(request,mode='experience',now=now,analysis_rect=area)
 
     @staticmethod
     def pickup_area(game):
@@ -498,14 +533,14 @@ class PixelReader(QObject):
                 and 0<=time.monotonic()*1000-result.get('atMs',0)<1500):
             self.experience.emit(result)
 
-    def accept_tracking_location(self,result):
-        self.pending_tracking_locate=False
+    def accept_tracking_location(self,result,request):
+        origin=QPoint(*request.analysis_origin)
         area=result.get('gameArea')
-        guards=[QRect(*(rect[k] for k in ('x','y','width','height'))).translated(self.tracking_location_origin)
+        guards=[QRect(*(rect[k] for k in ('x','y','width','height'))).translated(origin)
                 for rect in result.get('gameGuards') or []]
-        fingerprints=[(rect,self.guard_signature(self.submitted_image,rect)) for rect in guards]
+        fingerprints=[(rect,self.guard_signature(request.frame,rect)) for rect in guards]
         if area and fingerprints and all(self.guard_matches(self.image,rect,digest) for rect,digest in fingerprints):
-            selected=QRect(*(area[k] for k in ('x','y','width','height'))).translated(self.tracking_location_origin)
+            selected=QRect(*(area[k] for k in ('x','y','width','height'))).translated(origin)
             if self.crop is None or not self.crop.contains(selected):
                 selected=None
         else:
@@ -515,7 +550,7 @@ class PixelReader(QObject):
         self.manual_game_guards=fingerprints if selected is not None else []
         footer=result.get('gameFooter')
         self.manual_game_footer=(QRect(*(footer[k] for k in ('x','y','width','height')))
-            .translated(self.tracking_location_origin).intersected(selected)
+            .translated(origin).intersected(selected)
             if selected is not None and isinstance(footer,dict) else None)
         if selected is None:
             self.next_area_search=time.monotonic()+.4
@@ -527,36 +562,34 @@ class PixelReader(QObject):
         self.buffer += bytes(self.process.readAllStandardOutput())
         while b"\n" in self.buffer:
             line, self.buffer = self.buffer.split(b"\n", 1)
-            self.pending = False
+            request=self.active_request
+            self.active_request=None
+            if request is None:continue
             try:
                 result = json.loads(line)
-                if self.paused or self.pending_generation != self.generation:
+                if self.paused or request.generation != self.generation:
                     continue
                 if result.get("error"):
                     self.status.emit("Reader: " + result["error"])
                 else:
-                    if self.pending_tracking_locate:
-                        self.accept_tracking_location(result)
+                    if request.mode=='tracking-location':
+                        if request.tracking_epoch==self.tracking_epoch:self.accept_tracking_location(result,request)
                         continue
-                    if self.pending_experience:
+                    if request.mode=='experience':
                         if (self.experience_enabled and self.tracking_ready
-                                and self.pending_tracking_epoch==self.tracking_epoch
+                                and request.tracking_epoch==self.tracking_epoch
                                 and 0<=time.monotonic()*1000-result.get("atMs",0) < 1500):
-                            if self.pending_experience and self.experience_source:
-                                source,origin=self.experience_source
-                                self.experience_source=None
-                                experience=result.get('experience')
-                                if isinstance(experience,dict):
-                                    experience['nameProof']=name_proof(source,experience.get('area'),origin)
-                                    if experience['nameProof'] is not None:
-                                        self.tracking_identity_area=experience.get('area')
-                            result['trackingEpoch']=self.pending_tracking_epoch
+                            experience=result.get('experience')
+                            if isinstance(experience,dict):
+                                experience['nameProof']=name_proof(request.analysis_image(),experience.get('area'),QPoint(*request.analysis_origin))
+                                if experience['nameProof'] is not None:self.tracking_identity_area=experience.get('area')
+                            result['trackingEpoch']=request.tracking_epoch
                             self.experience.emit(result)
                         continue
-                    if self.auto_active and not self.pending_local_roi:
+                    if request.locate_game:
                         area = result.get("gameArea")
                         guards = [QRect(r["x"], r["y"], r["width"], r["height"]) for r in result.get("gameGuards") or []]
-                        fingerprints = [(r, self.guard_signature(self.submitted_image, r)) for r in guards]
+                        fingerprints = [(r, self.guard_signature(request.frame, r)) for r in guards]
                         if area and (not fingerprints or any(not self.guard_matches(self.image, r, digest) for r, digest in fingerprints)):
                             self.reset_area()
                             continue
@@ -571,24 +604,29 @@ class PixelReader(QObject):
                             self.next_area_search = time.monotonic() + 0.4
                         if changed:
                             self.area_changed.emit()
-                    if self.pending_locate_only:continue
+                    if request.mode=='location':continue
+                    if request.shop_epoch != self.shop_browsing.epoch:
+                        # Tracking replies have already been handled above.
+                        # Never populate new shop slots from an older viewport.
+                        self.request_rescan()
+                        continue
+                    result['shopViewportEpoch'] = request.shop_epoch
+                    result['_submitted_request']=request
                     area = (result.get("shop") or {}).get("area")
                     rows = (result.get("shop") or {}).get("rows") or []
                     clean = all(row.get("covered") or row.get("name") and row.get("price") for row in rows)
-                    if self.using_roi and area and not clean:
+                    if request.using_roi and area and not clean:
                         # A slightly moved shop can still be found inside the old
                         # crop while the tail of each price is clipped. Read the
                         # full current frame before publishing incomplete rows.
                         self.shop_rect = self.shop_fingerprint = None
-                        self.image_sequence += 1
-                        self.pending_since = 0
+                        self.request_rescan()
                         continue
                     self.roi_clean = bool(clean)
-                    if self.using_roi and area is None and (not self.auto_active or self.game_area):
+                    if request.using_roi and area is None and (not self.auto_active or self.game_area):
                         # A moved/closed shop triggers an immediate full search
                         # in the same captured frame, not another polling delay.
-                        self.image_sequence += 1
-                        self.pending_since = 0
+                        self.request_rescan()
                     self.shop_rect = QRect(area["x"], area["y"], area["width"], area["height"]) if area else None
                     # NPC buy/sell tables can share the player's shop palette
                     # without any readable player listings. That rectangle
@@ -601,7 +639,7 @@ class PixelReader(QObject):
                     else:
                         self.shop_context = None
                     if self.shop_rect:
-                        source = self.submitted_image.copy(self.crop) if self.crop else self.submitted_image
+                        source = request.source_image()
                         # Compare later frames with the frame actually recognised.
                         # New captures arriving during OCR must not disable caching.
                         self.shop_fingerprint = self.fingerprint(source, self.shop_context or self.shop_rect)
@@ -612,23 +650,24 @@ class PixelReader(QObject):
                     association=result.get('tooltipAssociation');state=association_state(association)
                     proof=None
                     if state=='inventory-primary':
-                        source=self.submitted_image.copy(self.crop) if self.crop else self.submitted_image
+                        source=request.source_image()
                         current=self.image.copy(self.crop) if self.crop else self.image
-                        read_point=self.last_pointer;current_point=self.pointer
+                        read_point=request.pointer;current_point=self.pointer
                         if self.crop:
                             if read_point is not None:read_point=(read_point[0]-self.crop.x(),read_point[1]-self.crop.y())
                             if current_point is not None:current_point=(current_point[0]-self.crop.x(),current_point[1]-self.crop.y())
-                        proof=TooltipAssociation.read(association,found,source)
+                        proof=TooltipAssociation.read(association,found,source,pointer=read_point)
                         if proof is None or not proof.contains_pointer(read_point) or not proof.matches(current,current_point):state='rejected'
                     if state=='rejected':
                         result['tooltipAssociation']={'state':'rejected'}
                         result['tooltip']={**(tooltip if isinstance(tooltip,dict) else {}),'found':None}
                         found=None;proof=None
                     self.tooltip_association=proof
+                    result['_tooltip_context']=proof
                     tooltip_area = found.get("area") if found else None
                     self.tooltip_rect = QRect(tooltip_area["x"], tooltip_area["y"], tooltip_area["width"], tooltip_area["height"]) if tooltip_area else None
                     if self.tooltip_rect and (proof is not None or self.image_sequence == self.submitted_sequence):
-                        source = self.submitted_image.copy(self.crop) if self.crop else self.submitted_image
+                        source = request.source_image()
                         self.tooltip_fingerprint = self.fingerprint(source, self.tooltip_rect)
                     else:
                         self.tooltip_fingerprint = None
@@ -636,7 +675,7 @@ class PixelReader(QObject):
                     self.timings.append({"capture_to_read_ms": round(self.latest_latency_ms, 1),
                                          "ocr_ms": round(result.get("ocrMs", 0), 1),
                                          "rows": len((result.get("shop") or {}).get("rows", []))})
-                    result["pointerAtRead"] = list(self.last_pointer) if self.last_pointer is not None else None
+                    result["pointerAtRead"] = list(request.pointer) if request.pointer is not None else None
                     self.reading.emit(result)
                     metrics = os.environ.get("CLASSIC_LENS_METRICS")
                     if metrics and time.monotonic() - self.last_metrics > 1:
@@ -654,7 +693,7 @@ class PixelReader(QObject):
             self.status.emit("Reader: " + message[-300:].strip())
 
     def on_finished(self, code, status):
-        self.pending = False
+        self.active_request = None
         if code:
             self.status.emit(f"Screen reader stopped ({code}); restart the app")
 

@@ -33,8 +33,11 @@ def stage_application(out):
     shutil.copy2(ROOT / "docs/KOREAN_CHAT.md", documentation / "KOREAN_CHAT.md")
     shutil.copy2(ROOT / "docs/DATABASE_SOURCES.md", documentation / "DATABASE_SOURCES.md")
     shutil.copy2(ROOT / "docs/UPDATES.md", documentation / "UPDATES.md")
+    shutil.copy2(ROOT / "docs/CHANGELOG.md", documentation / "CHANGELOG.md")
+    for source in (ROOT / "docs").glob("PATCH_*.md"):
+        shutil.copy2(source, documentation / source.name)
     fixtures = ROOT / "vendor/minerva/samples"
-    categories = {"player-shop": ["gems-and-ores", "live-greater-chaos-and-intermediate-scrolls", "equips-two-sold-out", "equips-under-the-pointer-and-its-tooltip"],
+    categories = {"player-shop": ["gems-and-ores", "live-greater-chaos-and-intermediate-scrolls", "equips-two-sold-out", "equips-under-the-pointer-and-its-tooltip", "ideal-ratio-weapons-and-a-robe"],
                   "item-tooltip": ["screw@60,20"],
                   "exp-bar": ["100300__64.49--ideal-ratio-1366x768-strip"]}
     for category, names in categories.items():

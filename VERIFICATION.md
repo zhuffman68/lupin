@@ -1,5 +1,46 @@
 # Verification — 2026-10-31
 
+## 1.0.2 source and native preflight
+
+The full source suite passes **991 Python tests in 167.053 seconds**, with three
+platform/offscreen skips. Identity checks cover duplicate names, latest-frame
+icon/asking-price changes, lost containers, cursor occlusion, reason-only market
+updates and recent-item IDs. Browsing checks cover bounded priority, late epochs,
+dragging, native selection palettes and tooltip/annotation exclusions. Shared
+cards retain explicit no-sales, missing and unverified-variant states.
+
+GUI tests use a private Xvfb/D-Bus session, software rendering, temporary user
+paths and reduced process priority. Private screenshots are replayed locally and
+are not checked in. The changelog and patch record contain the README's exact
+centered donation footer; the compact update review omits its artwork and HTML.
+Source details are in [the patch record](docs/PATCH_1.0.2.md). The authorized
+follow-up fixes address the read-only audit: rescans retain active deadlines,
+submitted requests carry their captured context, observation/annotation geometry
+have separate owners, exact-ID search stays independent of market coverage, and
+retired provider/drawing paths are removed. An independent integration review
+found no concrete remaining defect.
+
+All **46 release-tool tests** pass. Windows staging rejects absent or wrong-platform
+reader inputs before replacing a stage or invoking the installer compiler. Package
+QA selects the requested release and explicitly reports migration skips. A harmless
+real probe verifies that the shared QA wrapper creates its private Xvfb, D-Bus,
+temporary user paths and offscreen Qt environment. Windows QA rejects known-folder
+links that escape that private desktop before running Wine or an installer.
+A real isolated native-HTML probe also activates its private document portal and
+cleans up successfully without changing the child result or the host portal.
+Final package transactions and publication checks accompany the release in
+`VERIFICATION-1.0.2.md`. No running host app, sharing session or package is replaced.
+
+All **34 Rust reader tests** pass with pinned Rust 1.98.1. Both Linux musl and
+Windows gnullvm readers are rebuilt offline. The Linux release is static PIE
+without dynamic dependencies; Windows retains its existing unmodified unwind DLL.
+Two generated whole-frame regressions pass against the new GNU and musl readers.
+Private replay confirms that the sales ledger is excluded, the real shop's six
+listings and amounts remain readable, and inventory descriptions remain available.
+The original screenshot is not distributed. Native Windows game capture and
+WebView2 acceptance remain separate from Wine package checks. Sub-one native UI
+scaling retains the existing minimum title-marker-size limitation.
+
 ## 1.0.1 regression coverage
 
 - The configured source environment passes **867 Python tests**, with three

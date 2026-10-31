@@ -7,6 +7,7 @@ import zipfile
 
 from package_common import stage_application, stage_notices, assert_public_tree
 from trim_runtime import trim
+from windows_stage import require_windows_reader, validate_windows_stage
 
 ROOT = Path(__file__).resolve().parents[1]
 DOWNLOADS = ROOT / ".build-tools/windows-downloads"
@@ -15,6 +16,8 @@ READER = ROOT / "reader/target/x86_64-pc-windows-gnullvm/release/classic-screen-
 
 
 def main():
+    # Refuse incomplete/cross-platform inputs before replacing an existing stage.
+    require_windows_reader(READER)
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -54,12 +57,9 @@ def main():
         destination = OUT / "licenses" / ("WebView2-" + name)
         destination.parent.mkdir(exist_ok=True)
         shutil.copy2(ROOT / ".build-tools/webview2-sdk" / name, destination)
-    if READER.is_file():
-        shutil.copy2(READER, OUT / "bin/lupin-screen-reader.exe")
-        toolchain = ROOT / ".build-tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64"
-        shutil.copy2(toolchain / "x86_64-w64-mingw32/bin/libunwind.dll", OUT / "bin/libunwind.dll")
-    else:
-        print("Runtime staged; Windows reader build still pending")
+    shutil.copy2(READER, OUT / "bin/lupin-screen-reader.exe")
+    toolchain = ROOT / ".build-tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64"
+    shutil.copy2(toolchain / "x86_64-w64-mingw32/bin/libunwind.dll", OUT / "bin/libunwind.dll")
     stage_notices(OUT)
     licenses = OUT / "licenses"
     toolchain = ROOT / ".build-tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64"
@@ -70,6 +70,7 @@ def main():
         shutil.rmtree(path)
     trim(OUT,'windows')
     assert_public_tree(OUT)
+    validate_windows_stage(OUT)
     print("Windows installer files:", OUT)
     print("Files:", sum(1 for path in OUT.rglob("*") if path.is_file()))
 

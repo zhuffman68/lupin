@@ -149,6 +149,19 @@ class DatabaseUiTests(unittest.TestCase):
             self.assertIs(p.detail,view);self.assertIs(view.item_name,name);self.assertEqual(view.geometry(),geometry);self.assertEqual(view.tabs.geometry(),panel)
             self.assertEqual(view.fields['sales'].text(),f'{count} sales in the last 24hr')
 
+    def test_database_card_uses_shared_lookup_reason_without_replacing_detail(self):
+        p=self.panel;self.app.setProperty('reduceMotion',True)
+        self.market.quote=Quote(1001,None,time.time(),None,0,'MesoWatch','','no data')
+        current={'reason':'variant-mismatch'}
+        self.market.lookup_reason=lambda item:current['reason']
+        p.open(('items',1001));view=p.detail;card=view.summary_card
+        self.assertEqual(card.fields['status'].text(),'Item variant unverified')
+        current['reason']='no-sales';p.update_market()
+        self.assertIs(p.detail,view);self.assertIs(view.summary_card,card)
+        self.assertEqual(card.fields['status'].text(),'No observed sales')
+        current['reason']='unit-mismatch';p.update_market()
+        self.assertEqual(card.fields['status'].text(),'Price units unverified')
+
     def test_currency_drop_renders_the_small_coin_without_an_item_identity(self):
         self.service.store.save_drops([report(item_id=None,item_name=None,item_page='Meso',category='meso',minimum='10',maximum='20')])
         self.search('monsters','green');self.panel.open_first();self.app.processEvents()

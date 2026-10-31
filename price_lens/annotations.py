@@ -13,6 +13,7 @@ from . import gui_currency
 from .fonts import interface_font,interface_family
 from .overlay_layout import TRACKING_HEIGHT
 from .translation_layout import TranslationLayout
+from .annotation_geometry import label_rectangle
 
 
 class CommandPipe(QObject):
@@ -48,6 +49,7 @@ class AnnotationWindow(QWidget):
         self.last_pointer = None
         self.reduce_motion = False
         self.watch_events = {}
+        self.shop_viewport_epoch = None
         self.translation_layout=TranslationLayout()
         from .composer_overlay import WriterHost
         self.writer=WriterHost(self.report_writer,self)
@@ -103,10 +105,24 @@ class AnnotationWindow(QWidget):
                 self.pointer_timer.stop()
             previous = {self.row_key(row): row for row in self.rows + self.retiring}
             previous_boxes = {key: self.label_rect(row, QCursor.pos()) for key, row in previous.items()}
+            viewport=state.get('shop_viewport_epoch')
+            viewport=viewport if type(viewport) is int else None
+            viewport_changed=viewport is not None and viewport!=self.shop_viewport_epoch
+            if viewport is not None:self.shop_viewport_epoch=viewport
+            browsing=bool(state.get('shop_browsing_priority'))
+            viewport_pending=bool(state.get('shop_viewport_pending'))
             geometry = state.get("geometry")
             if geometry:
                 self.setGeometry(*geometry)
-            incoming = self.description_references(state.get("rows", [])[:32])
+            supplied_rows=[]
+            for supplied in state.get('rows',[])[:32]:
+                shop=supplied.get('kind')=='shop'
+                description=supplied.get('source_shop_key') is not None
+                old_viewport=viewport is not None and supplied.get('viewport_epoch',viewport)!=viewport
+                if (shop or description) and (viewport_pending or old_viewport):continue
+                if description and browsing:continue
+                supplied_rows.append(supplied)
+            incoming = self.description_references(supplied_rows)
             self.rows = []
             self.retiring = []
             metrics = QFontMetrics(self.price_font)
@@ -124,6 +140,8 @@ class AnnotationWindow(QWidget):
                 old_alpha_target=old.get('_target_alpha',1.0) if old else None
                 row = old if old is not None else supplied
                 row['occlusion']=supplied.get('occlusion')
+                row['avoid_regions']=supplied.get('avoid_regions',[])
+                row['browsing_priority']=bool(supplied.get('browsing_priority',browsing)) if supplied.get('kind')=='shop' else False
                 row['secondary']=supplied.get('secondary','')
                 if 'follow_pointer' not in supplied:
                     for field in ('follow_pointer','pointer_region','_cursor_offset'):row.pop(field,None)
@@ -183,7 +201,11 @@ class AnnotationWindow(QWidget):
                      and new['shop_page']!=row['shop_page']) or
                     (new.get('shop_slot') is not None and new.get('shop_slot')==row.get('shop_slot')
                      and self.row_key(new)!=key) for new in current_shops)
-                if not self.reduce_motion and (state.get("hover_enabled") or row.get('kind')=='notification') and box is not None and not replaced_hover and not replaced_shop:
+                shop_reference=row.get('kind')=='shop' or row.get('source_shop_key') is not None
+                invalid_viewport=shop_reference and (viewport_changed or viewport_pending or (
+                    viewport is not None and row.get('viewport_epoch',viewport)!=viewport))
+                suppressed_description=row.get('source_shop_key') is not None and browsing
+                if not self.reduce_motion and (state.get("hover_enabled") or row.get('kind')=='notification') and box is not None and not replaced_hover and not replaced_shop and not invalid_viewport and not suppressed_description:
                     row["_retired_rect"] = box
                     self.retiring.append(row)
                     if not row.get("_fading_out"):
@@ -404,6 +426,10 @@ class AnnotationWindow(QWidget):
         """Dim immediately; absorb one brief clear sample before reversing."""
         row['_occlusion_requested']=covered
         timer=row.get('_occlusion_release')
+        if row.get('kind')=='shop' and row.get('browsing_priority'):
+            if timer is not None:
+                timer.stop();timer.deleteLater();row['_occlusion_release']=None
+            return 1.0
         if covered or self.reduce_motion or row.get('kind')!='shop':
             if timer is not None:
                 timer.stop();timer.deleteLater();row['_occlusion_release']=None
@@ -426,7 +452,6 @@ class AnnotationWindow(QWidget):
     def update_numbers(self, row):
         rolls=row.setdefault('_rolls',{});animations=row.setdefault('_roll_animations',{})
         values={'text':row['text'],'deal_delta':row.get('deal_delta','')}
-        if row.get('kind')=='experience':values['name']=row.get('name','')
         values.update({f'extra:{i}':line for i,line in enumerate(row.get('extra','').splitlines())})
         if row.get('kind')=='tracking':
             values={key:value for key,value in self.tracking_values(row).items() if key not in ('unit','basis')}
@@ -622,53 +647,9 @@ class AnnotationWindow(QWidget):
             except BrokenPipeError:
                 QApplication.quit()
 
-    def label_rect(self, row, point):
-        if row.get("_retired_rect") is not None:
-            return row["_retired_rect"]
-        x, y = int(row["x"]), int(row["y"])
-        if row.get("follow_pointer") is not None:
-            origin = row["follow_pointer"]
-            region = row.get("pointer_region")
-            if ((region and not QRect(*region).contains(point)) or
-                    max(abs(point.x() - origin[0]), abs(point.y() - origin[1])) > 64):
-                return None
-            dx, dy = row["_cursor_offset"]
-            x, y = point.x() - self.x() + dx, point.y() - self.y() + dy
-        elif row.get("_draw_pos") is not None:
-            position = row["_draw_pos"]
-            x, y = round(position.x()), round(position.y())
-        width = row["_width"]
-        height = 36+17*len(row.get('extra','').splitlines())
-        if row.get('kind')=='notification':
-            height=row.get('_notice_height',48)
-            notice_box=row.get('notification_box')
-            if notice_box:
-                requested=QRect(*notice_box);bounds=QRect(*row['bounds']).intersected(self.rect()).adjusted(2,2,-2,-2)
-                width=min(width,max(1,bounds.width()));height=min(height,max(1,bounds.height()))
-                return QRect(max(bounds.left(),min(requested.right()-width+1,bounds.right()-width+1)),
-                    max(bounds.top(),min(requested.bottom()-height+1,bounds.bottom()-height+1)),width,height)
-        if row.get('kind')=='tracking':height=row['_height']
-        if row.get("kind")=="translation":
-            height=row["_height"]
-            bounds=QRect(*row.get("bounds",[0,0,self.width(),self.height()])).intersected(self.rect())
-            width=min(width,max(1,bounds.width()-4));height=min(height,max(1,bounds.height()-4))
-            return QRect(max(bounds.x()+2,min(x,bounds.right()-width-2)),
-                         max(bounds.y()+2,min(y,bounds.bottom()-height-2)),width,height)
-        if row.get("anchor") in ('bottom_left','bottom_right') and row.get("bounds"):
-            bounds=QRect(*row["bounds"])
-            width=min(width,max(1,bounds.width()-8))
-            height=min(height,max(1,bounds.height()-8))
-            left=bounds.left()+4+int(row.get('left_offset',0)) if row['anchor']=='bottom_left' else bounds.right()-width-3
-            top=max(bounds.top()+4,bounds.bottom()-height-3-int(row.get('bottom_offset',0)))
-            return QRect(left,top,width,height)
-        if row.get('kind')=='item' and row.get('bounds'):
-            bounds=QRect(*row['bounds']).intersected(self.rect())
-            width=min(width,max(1,bounds.width()-4))
-            return QRect(max(bounds.left()+2,min(x,bounds.right()-width-2)),
-                         max(bounds.top()+2,min(y-5,bounds.bottom()-height-2)),width,height)
-        x = min(max(2, x), max(2, self.width() - width - 2))
-        y = min(max(7, y), max(7, self.height() - 33))
-        return QRect(x, y - 5, width, height)
+
+    def label_rect(self,row,point):
+        return label_rectangle(row,point,self.rect(),self.pos())
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -737,7 +718,6 @@ class AnnotationWindow(QWidget):
                     painter.setPen(color);painter.setFont(self.price_font)
                     self.paint_number(painter,row,'deal_delta',chip,row['deal_delta'],Qt.AlignmentFlag.AlignCenter)
             painter.setFont(self.name_font)
-            if row.get("kind")=="experience":painter.setFont(self.price_font)
             painter.setPen(QColor("#c4cbd6"))
             name_inset = 14 if watched else 0
             if watched:

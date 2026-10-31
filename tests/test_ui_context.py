@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QKeySeque
 
 from price_lens.domain import Catalog, Quote
 from price_lens.ui import LensWindow
+from price_lens.capture import PixelReader as ActualPixelReader
 
 
 class FakeOverlay(QObject):
@@ -41,6 +42,7 @@ class FakeReader(QObject):
     image_ready = Signal(QImage)
     area_changed = Signal()
     experience = Signal(dict)
+    fingerprint = staticmethod(ActualPixelReader.fingerprint)
 
     def __init__(self, root, parent=None):
         super().__init__(parent)
@@ -60,6 +62,10 @@ class FakeReader(QObject):
     def set_auto_area(self, enabled):
         self.auto_active = enabled
 
+    def request_rescan(self):
+        self.shop_fingerprint=None
+        self.image_sequence+=1
+
     def start(self, *args):
         self.starts += 1
 
@@ -74,8 +80,6 @@ class FakeService(QObject):
     catalog_ready = Signal(object)
     quote_ready = Signal(int, object)
     error = Signal(int, str)
-    identity_ready = Signal(object, object)
-    identity_error = Signal(object, str)
     state_changed = Signal()
 
     def __init__(self, path, parent=None):
@@ -83,7 +87,6 @@ class FakeService(QObject):
         self.requests = []
         self.catalog_starts = 0
         self.visible = []
-        self.hovered_id = None
         self.states = {}
 
     def start(self):
@@ -92,15 +95,14 @@ class FakeService(QObject):
     def request(self, item, ttl):
         self.requests.append(item.game_id)
 
-    def observe(self, items, ttl, *, hovered_id=None, identities=(), hovered_identity=None):
+    def observe(self, items):
         self.visible = [item.game_id for item in items]
-        self.hovered_id = hovered_id
         self.requests.extend(self.visible)
 
     def clear_visible(self):
         self.visible = []
 
-    def set_manual(self, item, ttl=900, **kwargs):
+    def set_manual(self, item):
         self.manual_item = item
 
     def set_snapshot_enabled(self, enabled):
@@ -110,8 +112,17 @@ class FakeService(QObject):
 
     def cached(self,item):return getattr(self,'cached_values',{}).get(item.game_id) if item else None
 
-    def state_for(self, item_id):
-        return self.states.get(item_id, "")
+    def lookup_reason(self,item):
+        quote=self.cached(item)
+        return 'missing' if quote is None else 'priced' if quote.price is not None else 'no-sales'
+
+    def deliver_quote(self,identity,quote):
+        if not hasattr(self,'cached_values'):self.cached_values={}
+        self.cached_values[identity]=quote
+        self.quote_ready.emit(identity,quote)
+
+    def state_for(self):
+        return next(iter(self.states.values()),'')
 
     def close(self):
         pass
@@ -211,7 +222,7 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(set(i.game_id for i in w.search_panel.catalog.items),set(w.database_panel.catalog))
         header=card.item_name;watch=card.watch_button
         quote=Quote(1001,6000,now,now,25,'MesoWatch','https://meso.watch/items/1001','24h')
-        w.on_quote(1001,quote);self.assertIs(w.search_panel.price_view,card);self.assertIs(card.item_name,header);self.assertIs(card.watch_button,watch)
+        w.service.deliver_quote(1001,quote);self.assertIs(w.search_panel.price_view,card);self.assertIs(card.item_name,header);self.assertIs(card.watch_button,watch)
         self.assertIn('6,000',card.fields['market'].text());self.assertTrue(card.fields['age'].isHidden())
         self.assertIn('Latest observed sale',card.fields['recent'].text())
         w.database_panel.open(('items',1001));self.assertEqual(card.row,w.database_panel.detail.row)
@@ -290,7 +301,7 @@ class ContextUiTests(unittest.TestCase):
         before=next(iter(self.window.card_views.values()))
         now=time.time()
         for value in (1000,1200):
-            self.window.on_quote(1,Quote(1,value,now,now,20,"Test","","24h"))
+            self.window.service.deliver_quote(1,Quote(1,value,now,now,20,"Test","","24h"))
             self.assertIs(next(iter(self.window.card_views.values())),before)
         self.assertEqual(before.fields["market"].text(),"1,200 mesos")
         with patch("price_lens.ui.time.time",return_value=now+6):self.window.render()
@@ -352,7 +363,7 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(card.property('gameItemId'),2);self.assertIn(1,w.recent_items.rows_by_id)
         self.assertIsNone(w.price_content.outgoing)
         outgoing=w.card_area.outgoing;w.card_area.animation.setCurrentTime(70)
-        now=time.time();w.on_quote(2,Quote(2,1200,now,now,20,'Test','','24h'))
+        now=time.time();w.service.deliver_quote(2,Quote(2,1200,now,now,20,'Test','','24h'))
         self.assertIs(w.card_area.outgoing,outgoing);self.assertEqual(w.card_area.animation.currentTime(),70)
 
     def check_natural_card_retirement(self,*,shop=False,history=False,reduced=False):
@@ -456,7 +467,7 @@ class ContextUiTests(unittest.TestCase):
         row=self.window.overlay.rows[0]
         self.assertTrue(row['watched'])
         event=row['watch_event']
-        self.window.on_quote(1,Quote(1,1000,time.time(),time.time(),20,'Test','','24h'))
+        self.window.service.deliver_quote(1,Quote(1,1000,time.time(),time.time(),20,'Test','','24h'))
         self.assertEqual(self.window.overlay.rows[0]['watch_event'],event)
         self.window.watchlist.remove(1)
         self.assertFalse(self.window.overlay.rows[0]['watched'])
@@ -559,14 +570,14 @@ class ContextUiTests(unittest.TestCase):
                 self.assertEqual(reference[0],250)
                 w.search_panel.watched_items.set_expanded(False)
                 w.mode='paused';w.request_prices()
-                self.assertEqual(service._screen_demand[0],[])
+                self.assertEqual(service._screen_demand,[])
                 update(400,2)
                 self.assertEqual(w.quote_for(item).price,400)
                 card=next(iter(w.card_views.values()))
                 self.assertTrue(any('400' in label.text() for label in card.findChildren(QLabel)))
                 service.snapshot.save(document(now+3),now+3);service._snapshot_updated()
                 self.assertIsNone(w.quote_for(item).price)
-                self.assertEqual(w.quote_for(item).basis,'No price in the market snapshot')
+                self.assertEqual(w.quote_for(item).basis,'Item is absent from the market snapshot')
         finally:
             service.close();service.pool.shutdown(wait=True);w.service=previous
 
@@ -574,14 +585,14 @@ class ContextUiTests(unittest.TestCase):
         w=self.window;now=time.time()
         quote=Quote(1,1000,now-30,now-720,20,'MesoWatch','','24h')
         with patch('price_lens.ui.time.time',return_value=now):
-            w.on_reading(self.reading(shop_hover=True));w.on_quote(1,quote)
+            w.on_reading(self.reading(shop_hover=True));w.service.deliver_quote(1,quote)
             self.assertIn('Last sale 12m ago',w.overlay.rows[0]['text'])
             self.assertNotIn('30s',w.overlay.rows[0]['text'])
             w.rows=[];w.tooltip_result={'name':'Example Hat','area':dict(x=100,y=100,width=120,height=18),'_pointer':[340,240]}
             w.render();self.assertIn('Last sale 12m ago',w.overlay.rows[-1]['text'])
-            w.on_quote(1,replace(quote,fetched_at=now-w.ttl-1))
+            w.service.deliver_quote(1,replace(quote,fetched_at=now-w.ttl-1))
             self.assertIn('refresh needed',w.overlay.rows[-1]['text'])
-            w.on_quote(1,replace(quote,observed_at=None))
+            w.service.deliver_quote(1,replace(quote,observed_at=None))
             self.assertIn('Last sale unknown',w.overlay.rows[-1]['text'])
 
     def test_windows_starting_state_does_not_request_a_system_chooser(self):
@@ -919,7 +930,7 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(w.shop_description['price'],dict(quantity=1,mesos=100))
         focus=next(card for card in w.card_views.values() if not card.isHidden())
         w.card_area.animation.setCurrentTime(70);outgoing=w.card_area.outgoing
-        now=time.time();w.on_quote(1,Quote(1,2400,now,now,20,'Test','','24h'))
+        now=time.time();w.service.deliver_quote(1,Quote(1,2400,now,now,20,'Test','','24h'))
         self.assertIs(next(card for card in w.card_views.values() if not card.isHidden()),focus)
         self.assertIs(w.card_area.outgoing,outgoing);self.assertEqual(w.card_area.animation.currentTime(),70)
         self.assertEqual(focus.fields['market'].text(),'2,400 mesos')
@@ -1172,18 +1183,18 @@ class ContextUiTests(unittest.TestCase):
     def test_recognised_item_without_reports_is_not_called_unreadable(self):
         self.window.on_reading(self.reading(shop_hover=True))
         now = time.time()
-        self.window.on_quote(1, Quote(1, None, now, None, 0, "Test", "", "24h"))
+        self.window.service.deliver_quote(1, Quote(1, None, now, None, 0, "Test", "", "24h"))
         content = "\n".join(widget.text() for widget in self.window.cards.findChildren(QLabel))
-        self.assertIn("Item name recognised", content)
-        self.assertIn("No price in the market snapshot", content)
+        self.assertNotIn("Item unidentified", content)
+        self.assertIn("No observed sales", content)
         self.assertNotIn("unreadable", content.lower())
 
     def test_empty_hover_reference_is_not_left_checking_forever(self):
         self.window.reader.pointer = (100, 100)
         self.window.on_reading(self.reading(shop_hover=False))
-        self.window.on_quote(1, Quote(1, None, time.time(), None, 0, "Test", "", "24h"))
+        self.window.service.deliver_quote(1, Quote(1, None, time.time(), None, 0, "Test", "", "24h"))
         self.assertEqual(len(self.window.overlay.rows), 1)
-        self.assertEqual(self.window.overlay.rows[-1]["text"], "FM • source has no market data")
+        self.assertEqual(self.window.overlay.rows[-1]["text"], "FM • no observed sales")
 
     def test_saved_screenshot_is_labeled_even_without_a_display_selected(self):
         self.window.monitor.setCurrentIndex(-1)
@@ -1198,7 +1209,7 @@ class ContextUiTests(unittest.TestCase):
     def test_price_cards_have_no_details_toggle_and_show_observed_sale_time(self):
         self.window.on_reading(self.reading(shop_hover=True))
         now=time.time()
-        self.window.on_quote(1,Quote(1,1000,now,now-120,20,'MesoWatch','','24h',basis='observed shop sales'))
+        self.window.service.deliver_quote(1,Quote(1,1000,now,now-120,20,'MesoWatch','','24h',basis='observed shop sales'))
         card=next(iter(self.window.card_views.values()))
         self.assertFalse(hasattr(card,'toggle'))
         self.assertIn('Most recent observed sale',card.fields['recent'].text())
@@ -1207,7 +1218,7 @@ class ContextUiTests(unittest.TestCase):
         with patch("price_lens.ui.time.time", return_value=1001):
             self.window.last_screen = 1001
             self.window.on_reading(self.reading(shop_hover=True))
-            self.window.on_quote(1, Quote(1, 1000, 101.2, 1000, 20, "Test", "", "24h"))
+            self.window.service.deliver_quote(1, Quote(1, 1000, 101.2, 1000, 20, "Test", "", "24h"))
             previous = self.window.card_key
             self.assertTrue(any("below reference" in widget.text() for widget in self.window.cards.findChildren(QLabel)))
         with patch("price_lens.ui.time.time", return_value=1001.3):
@@ -1239,7 +1250,7 @@ class ContextUiTests(unittest.TestCase):
                 self.window.reader.pointer = (340,240) if shop else (100,100)
                 self.window.on_reading(self.reading(shop_hover=shop))
                 now=time.time()
-                self.window.on_quote(1,Quote(1,1000,now-1080,now,20,"Test","","24h"))
+                self.window.service.deliver_quote(1,Quote(1,1000,now-1080,now,20,"Test","","24h"))
                 self.window.service.states[1]="refreshing"
                 self.window.service.state_changed.emit();self.app.processEvents()
                 content="\n".join(widget.text() for widget in self.window.cards.findChildren(QLabel))
@@ -1256,7 +1267,7 @@ class ContextUiTests(unittest.TestCase):
     def test_recent_lookup_with_old_reports_explains_the_market_data_age(self):
         self.window.on_reading(self.reading(shop_hover=True))
         now = time.time()
-        self.window.on_quote(1, Quote(1, 1000, now, now - 90000, 20, "Test", "", "24h"))
+        self.window.service.deliver_quote(1, Quote(1, 1000, now, now - 90000, 20, "Test", "", "24h"))
         self.assertIn("old market reports", self.window.overlay.rows[0]["text"])
         self.assertNotIn("EXPIRED", self.window.overlay.rows[0]["text"])
 
@@ -1279,7 +1290,7 @@ class ContextUiTests(unittest.TestCase):
         valid = Quote(1, 987654, now, now, 20, "Test", "", "24h")
         for change in ({"world": "Other World"}, {"game_id": 2}, {"condition": "scrolled"}, {"per_set": True}):
             with self.subTest(change=change):
-                self.window.on_quote(1, replace(valid, **change))
+                self.window.service.deliver_quote(1, replace(valid, **change))
                 self.assertFalse(self.window.first_price_seen)
                 self.assertNotIn("987,654", "\n".join(row["text"] for row in self.window.overlay.rows))
                 self.assertIn("0 market references ready", self.window.summary.text())

@@ -32,6 +32,29 @@ class Helper:
     def terminate(self):self.stopped=True
 
 
+class ReleaseSummaryTests(unittest.TestCase):
+    def summary(self,body):return release_summary({'release':{'body':body}})
+
+    def test_short_notes_stop_before_the_real_readme_donation_footer(self):
+        readme=(Path(__file__).resolve().parents[1]/'README.md').read_text()
+        footer=readme[readme.index('<h3 align="center">Buy monkey a beer</h3>'):]
+        body='# Changes\n- Clearer shop prices\n- [Release guide](https://example.org)\n\n<br>\n\n'+footer
+        self.assertEqual(self.summary(body),'Clearer shop prices\nRelease guide')
+
+    def test_markup_and_images_do_not_use_compact_summary_lines(self):
+        body='<!-- artwork\ncomment -->\n<p>Useful plain text</p>\n<br>\n![Artwork](https://example.org/image.png)\n- Fix <code>tracking</code>\n<img\n src="image.png" alt="Donate">\n- Keep **prices** current'
+        self.assertEqual(self.summary(body),'Useful plain text\nFix tracking\nKeep prices current')
+
+    def test_plain_or_markdown_footer_heading_also_stops_the_summary(self):
+        for heading in ('Buy monkey a beer','### Buy monkey a beer','<H3 align="center">\nBuy monkey a beer\n</H3>'):
+            self.assertEqual(self.summary('- Actual change\n\n'+heading+'\nDonate with PayPal'),'Actual change')
+
+    def test_plain_notes_preserve_four_lines_and_the_360_character_bound(self):
+        self.assertEqual(self.summary('- One\n* Two\nPlain three\nFour\nFive'),'One\nTwo\nPlain three\nFour')
+        self.assertLessEqual(len(self.summary('- '+('long word '*100))),360)
+        self.assertEqual(self.summary(None),'')
+
+
 class UpdateServiceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

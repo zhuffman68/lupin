@@ -14,7 +14,7 @@ Screenshots, chat and drafts remain local. Market downloads contain public marke
 flowchart LR
     OS[OS display capture] --> Stream[Persistent capture helper]
     Stream --> Reader[Frame scheduler and Rust OCR]
-    Reader --> Identity[Classic World item catalog]
+    Reader --> Identity[Visible name, category and exact-ID artwork]
     Identity --> UI[Prices and independent overlays]
     Snapshot[Full-market download] --> Cache[(Local snapshot)]
     Cache --> UI
@@ -40,15 +40,59 @@ Windows captures the selected OS display with `QScreen.grabWindow(0)`, using des
 
 Frame dimensions and local buffers are bounded. The client drains packets promptly and retains one newest completed frame; the display interval applies to delivery, not socket reads. Superseded frames are discarded. Pause, stop and display changes clear pending delivery.
 
+`SubmittedRequest` in `reader_request.py` captures each job's mode, implicitly
+shared source image, pointer, crop/analysis coordinates, generation, relevant
+shop or tracking epoch and timeout deadline. Result handling uses that submitted
+context rather than mutable current-frame flags. EXP-only work does not consume
+an unread shop sequence. `PixelReader.request_rescan()` requests newest-frame
+work without changing the deadline of an already running request.
+
 The visible bottom status bar and static frame evidence locate Classic World. FPS and movable minimap placement are not anchors. Shop/tooltip pixel fingerprints avoid repeated OCR and preserve proven identities through modest movement and occlusion. Equipment names include gender/stat/tier evidence; ambiguous IDs remain unresolved.
 
 Only a missing, uncovered shop price triggers a retry. A cropped shop passes through the unchanged strict upstream reader at two resamplings. Recovery requires agreement on exact name, row position, quantity and the complete meso amount. Existing prices are never overwritten. An eight-patch pixel cache also remembers failures. The pinned Minerva revision and OCR model are unchanged; the worker uses two OCR threads.
+
+`reader/src/shop_panes.rs` keeps the separate sold-items ledger out of listing
+selection. Rejection requires its normalized totals heading and native three-line
+summary/grid geometry, rather than a global item-name blacklist. It masks only
+the proven ledger in a copied shop-selection frame, with at most two retries;
+the original pixels remain available to inventory and generic descriptions.
 
 An empty detected blue table is not sufficient to suppress generic inventory tooltips: NPC buy/sell lists share that palette. Such rectangles remain available for fingerprints but do not establish pointer-in-player-shop context without rows. The next hover read uses the full frame, allowing an NPC sell-list item and its comparison panel through the ordinary item-name/catalog rules. Closing the reader marks it paused before draining its process, so a queued scan cannot access deleted Qt children.
 
 ## One full-market cache
 
 `PriceService` loads the Classic World regular/cash catalog and manages a single `SnapshotStore`/`SnapshotUpdater`. There is no individual-price provider, per-item HTTP queue or provider-ID index.
+
+Item identification precedes market lookup. `item_identity.py` keeps an exact ID
+local to the currently observed row or inventory source; market presence cannot
+choose between distinct same-name items or create a global name preference.
+Catalog entries retain equipment subcategories and gender. A bounded comparison
+of cached exact-ID candidate images may resolve a shop icon only when every
+competitor is available and clearly excluded. Shared, covered, missing or weak
+artwork remains ambiguous. At most eight candidates and eight million sampled
+pixel comparisons are considered; the GUI keeps a bounded image-signature cache.
+Thumbnail demand uses the existing image queue and never adds a price request.
+
+Bounded row-pixel proofs validate the submitted name, asking price and icon
+against the newest captured frame. Cursor and recognized overlay/description
+pixels cannot establish native changes. Lost containers or contradictory source
+pixels retire live offers and request a new reading; they do not by themselves
+establish scrolling. Recovery of a covered asking price also requires the full
+source proof, so an unchanged name band cannot restore a different same-name
+item's offer. Recovery caches remain separate from current offers.
+
+Hypothetical native scroll colors narrow actual scroll candidates only. Narrow
+quote typography/spacing normalization retains item words and variant roles.
+Exact-ID gender suffixes may corroborate known equipment metadata; a combined
+variant label such as “Blue or Red” does not establish either individual variant.
+`SnapshotStore.lookup` distinguishes priced, no-sales, missing, variant-mismatch
+and unit-mismatch states. The shared cards and overlays preserve those reasons
+instead of representing every rejection as absent sales or indefinite work.
+`market_lookup.py` shares the quote/reason result across the service and views.
+An explicit unique search result, including a numeric item ID, is selected from
+the catalog independently of snapshot coverage or age. Shared names remain
+local ambiguity; the former provider-selection signals, cache and resolver are
+removed. The catalog ID index serves direct selection and contextual ID checks.
 
 On every launch, saved data loads immediately and one asynchronous full-market download starts. Later downloads use the earlier of the selected 5/15/30/60-minute interval and the source publication's one-hour expiry. Changing the interval uses that same deadline. Overlapping refreshes coalesce. Overlay, search and watched-item prices are local snapshot reads; typing, selecting, hovering and watching never initiate individual price requests.
 
@@ -63,6 +107,37 @@ Check time, publication time and latest observed-sale time are distinct. Validit
 Overlay annotations show the source's latest observed-sale age rather than repeating the snapshot check age. Stale/refresh warnings remain explicit. The larger item panel shows the source's latest observed-sale time. The full list does not supply a verified individual transaction amount; the market median is never presented as the latest sale price.
 
 ## Prices and watched items
+
+`PriceObservations` in `price_observations.py` owns accepted shop rows, bounded
+recovery caches, identity proofs and shop-description transitions. It has no
+widgets, market requests or capture scheduling. `LensWindow` renders its state
+and asks the reader for work through the rescan API. Tooltip associations are
+constructed once by capture and revalidated in the UI; direct/legacy result
+paths retain their bounded decoder. One row source proof supports exact and
+verified-selection checks, while the separate icon-result cache retains its
+own image signature.
+
+`ShopBrowsing` provides a separate 1.5-second monotonic shop-priority window after
+a verified viewport change. Exposed native scrollbar movement or changed fresh
+canonical row identities with changed native name pixels advances its epoch.
+Annotation/tooltip pixels, raw OCR corrections, quote changes and shop dragging
+cannot extend the deadline. The capture worker tags each shop read with that
+epoch; old results cannot restore prior-page identities or asking prices.
+Independent EXP and pickup replies are not discarded for a shop-only change.
+
+During browsing, current verified shop labels remain opaque over the native
+description and Prices keeps its shop cards. The description itself is never
+changed or hidden. Pending/old-page labels and description clones, including
+retiring clones, are removed immediately. Covered new rows remain unknown.
+Expiry wakes presentation independently of new frames and revalidates the current
+hover before restoring ordinary dimming and description focus. Manual search,
+watched selection and inventory hover outside the shop retain their precedence.
+This policy is independent of GUI history grace and same-page offer retention.
+
+`annotation_geometry.py` calculates description and protected-region placement
+and drawing bounds. The independent annotation process retains replacement,
+opacity, animation and painting. Current tracking annotations use the shared
+`tracking` kind; retired `experience` drawing branches are removed.
 
 Selected shop bands can have a different brightness from normal rows. Inside an independently detected shop, the reader measures the blue and orange palettes, validates a single broad selected band, and adjusts only its background pixels in a copy. It reuses the primary strict OCR engine and merges only complete, noncontradicting reads from that band. An eight-entry cache includes current list pixels and coordinates, so price changes and occluders cannot inherit prior amounts. The original frame still drives tooltips and occlusion.
 
@@ -291,28 +366,33 @@ exact catalog identity remain required. No hooks, process access or game input
 are introduced.
 
 `reader/src/tooltip_association.rs` applies a bounded source proof to adjoining,
-marker-bearing inventory/comparison descriptions fitted against the right edge.
-The native inventory tabs, controls, grid cell and framed pair select the primary
-panel before its single OCR pass. A malformed pair, covered cell or lost proof
-is rejected rather than choosing the comparison by distance or market coverage.
-One remembered source keeps that rejection across repeated lost-header frames
-until the pointer/capture leaves its scope or valid evidence returns. Ordinary
-single/equipped/linked descriptions retain their existing path. Wider inventories,
-centered marker-free comparison pairs and unproven placements are outside this
-small override.
+marker-bearing inventory/comparison descriptions across supported placements.
+The inventory need not touch the capture edge, and the comparison's right edge
+need not align with the inventory. Native tabs, controls, the hovered grid cell,
+top cap and two adjacent horizontal frames establish the primary-left layout
+before its single OCR pass. Unsupported or ambiguous layouts are rejected rather
+than choosing the closest title. Ordinary single/equipped/linked descriptions
+retain their existing path outside the remembered source's scope. Marker-free
+comparison pairs and unsupported inventory layouts remain outside this override.
 
 One proven pair also retains its panel-body geometry independently of its title
-markers. Repeated loss of a primary marker cannot restore the equipped comparison
-through legacy selection while both framed dark bodies remain. Genuine pair
-departure releases the ordinary single-description path. Source searches reject
-out-of-frame pointers before calculating crop bounds.
+markers. Repeated loss of a primary marker or the primary frame cannot restore
+an unchanged surviving comparison through legacy selection. A bounded comparison
+title-ink proof preserves that rejection, independent of the changing translucent
+background. Removing the comparison or establishing fresh independent source
+evidence releases ordinary selection. Source searches reject out-of-frame
+pointers before calculating crop bounds.
 
 `tooltip_association.py` validates this native metadata in the same pixel space
-as the recognized name. A bounded name/header/frame fingerprint plus source-cell
-token ties cached readings to both the submitted and newest frame. Changing a
-cell, guard, capture origin or token clears the retained card and the brief
-description bridge; unrelated background animation does not. These are image
-proofs only, with no game-window identity or icon/name fuzzy matching.
+as the recognized name. Version-two metadata carries separate primary/comparison
+rectangles, source kind, hovered cell, cursor footprint and bounded guards.
+Source-cell validation masks old/new cursor footprints only when sufficient
+visible evidence remains; pointer motion alone does not invalidate a proven
+item. Changing the visible cell, name, guard, origin or token clears both the
+retained card and brief OCR bridge. Python geometry preserves separate native
+panels instead of joining their translucent backgrounds. Annotation placement
+avoids the source and proof pixels; when no safe placement fits, it withholds the
+card. These are screen-image proofs with no game-window identity or fuzzy names.
 
 ## Named item sources
 

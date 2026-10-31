@@ -187,7 +187,10 @@ class Overlay(QObject):
 
     def update(self, geometry, rows, hover_enabled=False):
         self.last_state = dict(geometry=geometry, rows=rows, hover_enabled=hover_enabled,
-                               reduce_motion=getattr(self, 'reduce_motion', False))
+                               reduce_motion=getattr(self, 'reduce_motion', False),
+                               shop_viewport_epoch=getattr(self, 'shop_viewport_epoch', 0),
+                               shop_browsing_priority=getattr(self, 'shop_browsing_priority', False),
+                               shop_viewport_pending=getattr(self, 'shop_viewport_pending', False))
         if self.process.state() == QProcess.ProcessState.Running:
             self.process.write((json.dumps(self.last_state) + '\n').encode())
 

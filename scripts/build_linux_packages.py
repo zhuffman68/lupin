@@ -1,7 +1,6 @@
 """Build native package-manager artifacts from a previously staged Linux runtime."""
 import hashlib
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess

@@ -1,8 +1,6 @@
 """Stage the bundled Linux runtime and standard filesystem layout for DEB/pacman."""
 import hashlib
 import json
-import os
-from pathlib import Path
 import shutil
 import tarfile
 import zipfile

@@ -42,6 +42,59 @@ class AnnotationMotionTests(unittest.TestCase):
         self.assertEqual(self.window.last_command, last_command)
         self.assertEqual(self.window.pointer_timer.interval(), 16)
 
+    def test_inventory_card_avoids_source_cells_and_the_native_title(self):
+        row=dict(x=1000,y=238,key='inventory',kind='item',name='Hat',text='FM 1,000',
+                 follow_pointer=[1100,300],pointer_region=[0,28,1366,766],bounds=[0,28,1366,766],
+                 avoid_regions=[[1030,220,207,300],[900,233,180,20]])
+        with patch('price_lens.annotations.QCursor.pos',return_value=QPoint(1100,300)):
+            self.window.read_command(json.dumps({**self.command,'geometry':[0,0,1366,794],'rows':[row]}))
+        active=self.window.rows[0];box=self.window.label_rect(active,QPoint(1100,300))
+        self.assertIsNotNone(box);self.assertTrue(QRect(*row['bounds']).contains(box))
+        self.assertTrue(all(not box.intersects(QRect(*rect).adjusted(-3,-3,3,3)) for rect in row['avoid_regions']))
+        self.assertLess(abs(box.x()-row['x'])+abs(box.y()-(row['y']-5)),250)
+
+    def test_avoiding_proof_keeps_pointer_following_on_unblocked_axes_without_new_commands(self):
+        row={**self.command['rows'][0],'kind':'item','bounds':[0,0,800,800],
+             'avoid_regions':[[110,80,300,100]]}
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        before=self.window.label_rect(active,QPoint(100,100));stamp=self.window.last_command
+        after=self.window.label_rect(active,QPoint(108,105))
+        self.assertEqual(after.x()-before.x(),8);self.assertEqual(after.y(),before.y())
+        self.assertFalse(after.intersects(QRect(*row['avoid_regions'][0])))
+        self.assertEqual(self.window.last_command,stamp)
+        for point in (QPoint(99,100),QPoint(101,100),QPoint(100,99),QPoint(100,101)):
+            self.assertEqual(self.window.label_rect(active,point).y(),before.y())
+
+    def test_safe_pointer_following_has_the_original_offset_when_proof_is_far_away(self):
+        row={**self.command['rows'][0],'kind':'item','bounds':[0,0,800,800],
+             'avoid_regions':[[500,500,50,50]]}
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        before=self.window.label_rect(active,QPoint(100,100));after=self.window.label_rect(active,QPoint(108,105))
+        self.assertEqual((after.x()-before.x(),after.y()-before.y()),(8,5))
+
+    def test_small_game_bounds_find_a_safe_edge_or_suppress_an_unplaceable_card(self):
+        row=dict(x=200,y=80,key='item',kind='item',name='Hat',text='FM 1,000',bounds=[20,20,300,180],
+                 avoid_regions=[[20,20,220,80],[150,100,150,25]])
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        box=self.window.label_rect(active,QPoint())
+        self.assertIsNotNone(box);self.assertTrue(QRect(*row['bounds']).contains(box))
+        self.assertTrue(all(not box.intersects(QRect(*rect)) for rect in row['avoid_regions']))
+        blocked={**row,'bounds':[20,20,140,80],'avoid_regions':[[20,20,140,80]]}
+        self.window.read_command(json.dumps({**self.command,'rows':[blocked]}))
+        self.assertIsNone(self.window.label_rect(self.window.rows[0],QPoint()))
+        short={**row,'bounds':[20,20,300,30],'avoid_regions':[[20,20,10,10]]}
+        self.window.read_command(json.dumps({**self.command,'rows':[short]}))
+        self.assertIsNone(self.window.label_rect(self.window.rows[0],QPoint()))
+
+    def test_omitted_avoid_regions_clear_old_evidence_on_a_reused_item(self):
+        row=dict(x=120,y=90,key='item',kind='item',name='Hat',text='FM 1,000',bounds=[0,0,800,800])
+        self.window.read_command(json.dumps({**self.command,'rows':[{**row,'avoid_regions':[[110,80,300,100]]}]}))
+        active=self.window.rows[0];avoiding=self.window.label_rect(active,QPoint())
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}))
+        self.assertIs(self.window.rows[0],active);self.assertEqual(active['avoid_regions'],[])
+        self.assertEqual(self.window.label_rect(active,QPoint()),QRect(120,85,active['_width'],36))
+        self.assertNotEqual(self.window.label_rect(active,QPoint()),avoiding)
+
     def test_watched_label_pulses_twice_then_stays_marked_without_restarting(self):
         row={**self.command['rows'][0],'watched':True,'watch_event':10,'color':'#86ceac'}
         self.window.read_command(json.dumps({**self.command,'rows':[row]}))
@@ -85,6 +138,49 @@ class AnnotationMotionTests(unittest.TestCase):
         self.window.read_command(json.dumps({**self.command,'rows':[row]}))
         self.assertIs(self.window.rows[0]['_watch_pulse'],pulse)
         self.assertEqual(self.window.rows[0]['_target_alpha'],.25)
+
+    def test_shop_browse_priority_keeps_labels_opaque_then_restores_native_dimming(self):
+        row={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
+             'viewport_epoch':1,'occlusion':[110,80,300,100]}
+        state={**self.command,'shop_viewport_epoch':1,'rows':[row],'reduce_motion':True}
+        self.window.read_command(json.dumps(state));active=self.window.rows[0]
+        self.assertEqual(active['_alpha'],.25)
+        self.window.read_command(json.dumps({**state,'shop_browsing_priority':True}))
+        self.assertIs(self.window.rows[0],active);self.assertEqual(active['_alpha'],1)
+        self.assertEqual(active['occlusion'],row['occlusion'])
+        self.window.read_command(json.dumps(state))
+        self.assertEqual(active['_alpha'],.25)
+
+    def test_browse_priority_immediately_disposes_active_and_retiring_description_clones(self):
+        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
+              'viewport_epoch':1,'occlusion':[250,80,300,240]}
+        clone={**shop,'key':'description:shop:1:1','kind':'item','source_shop_key':shop['key'],
+               'description_box':[250,80,300,240],'bounds':[0,0,800,800],'occlusion':None}
+        state={**self.command,'shop_viewport_epoch':1,'rows':[shop,clone]}
+        self.window.read_command(json.dumps(state));old=self.window.rows[-1]
+        self.window.read_command(json.dumps({**state,'rows':[shop]}))
+        self.assertIn(old,self.window.retiring)
+        self.window.read_command(json.dumps({**state,'shop_browsing_priority':True}))
+        self.assertEqual(len(self.window.rows),1);self.assertEqual(self.window.rows[0]['kind'],'shop')
+        self.assertNotIn(old,self.window.retiring);self.assertIsNone(old.get('_fade'))
+
+    def test_unknown_new_viewport_retires_old_shop_and_clone_without_new_rows(self):
+        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
+              'viewport_epoch':1,'occlusion':[250,80,300,240]}
+        clone={**shop,'key':'description:shop:1:1','kind':'item','source_shop_key':shop['key'],
+               'description_box':[250,80,300,240],'bounds':[0,0,800,800],'occlusion':None}
+        state={**self.command,'shop_viewport_epoch':1,'rows':[shop,clone]}
+        self.window.read_command(json.dumps(state));old=list(self.window.rows)
+        self.window.read_command(json.dumps({**state,'shop_viewport_epoch':2,'shop_viewport_pending':True,'rows':[]}))
+        self.assertEqual(self.window.rows,[]);self.assertEqual(self.window.retiring,[])
+        self.assertTrue(all(row.get('_fade') is None for row in old))
+
+    def test_old_epoch_annotations_are_rejected_and_inventory_hover_is_independent(self):
+        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000','viewport_epoch':1}
+        inventory={**self.command['rows'][0],'kind':'item'}
+        self.window.read_command(json.dumps({**self.command,'shop_viewport_epoch':2,'shop_browsing_priority':True,
+                                             'rows':[shop,inventory]}))
+        self.assertEqual(len(self.window.rows),1);self.assertEqual(self.window.rows[0]['key'],inventory['key'])
 
     def test_cursor_jump_or_leaving_game_hides_the_old_reference(self):
         row = self.window.rows[0]
@@ -287,8 +383,8 @@ class AnnotationMotionTests(unittest.TestCase):
     def test_scan_status_uses_game_bottom_right_and_stacks_above_tracker(self):
         from price_lens.overlay_layout import corner_offset
         bounds=[100,150,600,500]
-        tracker={'kind':'experience','anchor':'bottom_left','bounds':bounds,'extra':'raw EXP\nMeso +1,200'}
-        offset=corner_offset(bounds,[tracker]);self.assertEqual(offset,76)
+        tracker={'kind':'tracking','anchor':'bottom_left','bounds':bounds,'tracking_height':56}
+        offset=corner_offset(bounds,[tracker]);self.assertEqual(offset,62)
         status={'kind':'translation_status','key':'chat:status','name':'Korean translation','text':'Scanning… 4s',
                 'x':0,'y':0,'anchor':'bottom_right','bounds':bounds,'bottom_offset':offset}
         self.window.read_command(json.dumps({**self.command,'reduce_motion':True,'rows':[status]}))

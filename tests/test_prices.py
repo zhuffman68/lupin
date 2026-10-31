@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from price_lens.domain import Catalog, Item, Quote, compare
+from price_lens.domain import Catalog, Item, Quote, compare, item_name_matches
 
 NOW = 2_000_000_000
 ORE = Item(4010000, "Test Ore")
@@ -91,6 +91,54 @@ class IdentityTests(unittest.TestCase):
             self.assertEqual(catalog.resolve(visible).game_id,1112223)
         collision=Catalog({'items':[{'id':1,'name':'Example File Ring'},{'id':2,'name':'Example Fiie Ring'}]})
         self.assertIsNone(collision.resolve('Example Flle Rinq'))
+
+    def test_hypothetical_icon_tier_does_not_remove_a_clipped_ring(self):
+        catalog=Catalog({'items':[{'id':1112223,'name':'Ink-and-Wash Painting Name Tag Ring',
+                                  'category':'Equipment','sub_category':'Ring'},
+                                 {'id':1112227,'name':'Ink-and-Wash Thought Bubble Ring'}]})
+        # Actual native row from screenissue1: the ring's grey icon is "chaos".
+        for tier in ('chaos','greater','lesser',None):
+            self.assertEqual(catalog.resolve('Ink-and-Wash Painting N...',tier).game_id,1112223)
+        self.assertEqual(catalog.by_id[1112223].sub_category,'Ring')
+
+    def test_icon_tier_narrows_only_a_scroll_family(self):
+        mixed=Catalog({'items':[{'id':1,'name':'Example Scroll Ring'}],
+                       'scrolls':[{'id':2,'name':'Example Scroll: Greater','tier':'Greater'}]})
+        self.assertEqual(len(mixed.candidates('Example Scroll...','greater')),2)
+        self.assertIsNone(mixed.resolve('Example Scroll...','greater'))
+        scrolls=Catalog({'scrolls':[{'id':2,'name':'Example Scroll: Greater','tier':'Greater'},
+                                    {'id':3,'name':'Example Scroll: Chaos','tier':'Chaos'}]})
+        self.assertEqual(scrolls.resolve('Example Scroll...','greater').game_id,2)
+        self.assertIsNone(scrolls.resolve('Example Scroll...','lesser'))
+        self.assertIsNone(scrolls.resolve('Example Scroll...'))
+
+    def test_balanced_quote_typography_and_boundary_spacing_keep_tokens(self):
+        catalog=Catalog({'items':[{'id':1047097,'name':'Black "Hit Me" Shirt'}]})
+        for visible in ('Black "Hit Me"Shirt','Black “Hit Me” Shirt','Black “Hit Me”Shirt'):
+            self.assertEqual(catalog.resolve(visible,'chaos').game_id,1047097)
+            self.assertTrue(item_name_matches(catalog.items[0],visible))
+        for visible in ('Black "Hit Him" Shirt','Black Hit Me Shirt','Black "Hit Me Shirt'):
+            self.assertIsNone(catalog.resolve(visible))
+            self.assertFalse(item_name_matches(catalog.items[0],visible))
+
+    def test_source_gender_suffix_requires_exact_metadata_and_name(self):
+        top=Item(1041078,'Blue Moon',equipment=True,gender='female',sub_category='Top')
+        self.assertTrue(item_name_matches(top,'Blue Moon (F)'))
+        for item,name in ((replace(top,gender='male'),'Blue Moon (F)'),
+                          (replace(top,gender=None),'Blue Moon (F)'),
+                          (replace(top,equipment=False),'Blue Moon (F)'),
+                          (top,'Blue Moon (M)'),(top,'Blue Moon Earrings (F)')):
+            self.assertFalse(item_name_matches(item,name))
+        blue=Item(1057090,'Buddy Overall Jeans (Blue)',equipment=True)
+        self.assertFalse(item_name_matches(blue,'Buddy Overall Jeans (Blue or Red)'))
+
+    def test_explicit_id_access_cannot_bind_a_shared_name(self):
+        top=Item(1041078,'Blue Moon',equipment=True,gender='female',sub_category='Top')
+        earring=Item(1032011,'Blue Moon',equipment=True,sub_category='Earring')
+        catalog=Catalog.from_items([top,earring])
+        self.assertEqual(catalog.by_id[earring.game_id],earring)
+        self.assertIsNone(catalog.resolve('Blue Moon'))
+        self.assertEqual(catalog.resolve('Blue Moon (F)'),top)
 
     def test_small_font_y_v_confusion_needs_one_unique_catalog_name(self):
         catalog = Catalog({"items": [{"id": 1, "name": "Blue Hawkeye"}, {"id": 2, "name": "Horny Mushroom Cap"}]})

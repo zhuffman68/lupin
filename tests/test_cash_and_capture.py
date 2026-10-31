@@ -25,13 +25,12 @@ class CashTests(unittest.TestCase):
         self.assertEqual(len(catalog.items), 3)
         coupon = catalog.resolve("Example Slot Coupon")
         self.assertTrue(coupon.cash)
-        self.assertEqual(coupon.nx_price, 5000)
         self.assertEqual(catalog.resolve("Example Hat").game_id, 1000001)
         self.assertTrue(catalog.resolve("Example Hat").cash)
 
     def test_off_sale_items_remain_identifiable_and_shared_prefix_is_ambiguous(self):
         catalog = Catalog(BASE, CASH)
-        self.assertFalse(catalog.resolve("Example Slot Coupon Plus").on_sale)
+        self.assertEqual(catalog.resolve("Example Slot Coupon Plus").game_id,5680998)
         self.assertIsNone(catalog.resolve("Example Slot Coup..."))
 
     def test_preexisting_regular_catalog_cache_still_loads_cash_catalog(self):
@@ -62,10 +61,10 @@ class CashTests(unittest.TestCase):
             store=SnapshotStore(Cache(Path(directory)/'prices.sqlite'));doc=document(now)
             doc['items'][0].update(id=f'cash:{item.game_id:08d}',name=item.name,price=44000,priceSales=12)
             store.save(doc,now);quote=store.quote(item)
-        self.assertEqual(quote.price,44000);self.assertEqual(item.nx_price,5000)
+        self.assertEqual(quote.price,44000)
         self.assertEqual(compare(item,1,22000,quote,now).delta,-50)
 
-    def test_current_snapshot_narrows_duplicates_only_with_one_exact_id(self):
+    def test_current_snapshot_cannot_choose_between_same_name_items(self):
         from test_snapshot import document
         from price_lens.snapshot import SnapshotStore
         import time
@@ -74,9 +73,11 @@ class CashTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store=SnapshotStore(Cache(Path(directory)/'prices.sqlite'));doc=document(now)
             doc['items'][0].update(id='cash:01007001',name='Example Uniform');store.save(doc,now)
-            self.assertEqual(store.identify(candidates).game_id,1007001)
+            self.assertIsNone(catalog.resolve('Example Uniform'))
+            self.assertEqual(store.quote(catalog.by_id[1007001]).price,100)
+            self.assertIsNone(store.quote(catalog.by_id[1007999]))
             doc['items'].append(dict(doc['items'][0],id='cash:01007999'));store.save(doc,now)
-            self.assertIsNone(store.identify(candidates))
+            self.assertIsNone(catalog.resolve('Example Uniform'))
 
 
 class CaptureGeometryTests(unittest.TestCase):

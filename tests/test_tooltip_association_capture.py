@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import unittest
+import time
 from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication,QEvent
@@ -9,6 +10,7 @@ from PySide6.QtGui import QColor,QImage
 from PySide6.QtWidgets import QApplication
 
 from price_lens.capture import PixelReader
+from price_lens.reader_request import SubmittedRequest
 
 
 class AssociationCaptureTests(unittest.TestCase):
@@ -20,7 +22,7 @@ class AssociationCaptureTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         reader=PixelReader(root);reader.timer.stop();reader.auto_enabled=False
         frame=QImage(800,600,QImage.Format.Format_RGBA8888);frame.fill(QColor('navy'))
-        reader.image=reader.submitted_image=frame
+        reader.image=frame
         reader.pointer=reader.last_pointer=(340,190)
         # A newer frame can retain this proof only if all source guards match.
         reader.image_sequence=1;reader.submitted_sequence=0
@@ -37,12 +39,15 @@ class AssociationCaptureTests(unittest.TestCase):
             # Prevent the usual next-frame scheduler; this test supplies IPC only.
             with patch('price_lens.capture.QTimer.singleShot'):
                 def receive():
+                    reader.active_request=reader.submitted_request=SubmittedRequest('prices',frame,(340,190),0,
+                        reader.generation,time.monotonic(),shop_epoch=reader.shop_browsing.epoch)
                     message=(json.dumps(result)+'\n').encode()
                     with patch.object(reader.process,'readAllStandardOutput',return_value=message):reader.on_output()
                 receive()
                 self.assertEqual(received[-1]['tooltip']['found']['name'],'Example Hat')
                 self.assertIsNotNone(reader.tooltip_fingerprint)
                 self.assertIsNotNone(reader.tooltip_association)
+                self.assertIs(received[-1]['_tooltip_context'],reader.tooltip_association)
                 reader.image=frame.copy();reader.image.setPixelColor(301,151,QColor('red'))
                 receive()
                 self.assertEqual(received[-1]['tooltipAssociation']['state'],'rejected')

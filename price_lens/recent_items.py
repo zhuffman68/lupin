@@ -10,6 +10,7 @@ from .motion import MotionLabel,enabled
 from .domain import age_text,compare
 from .gui_currency import paint_icon
 from .number_motion import NumberRoll
+from .item_identity import observed_item
 
 
 class ActiveCards(QObject):
@@ -240,7 +241,7 @@ class RecentItems(QWidget):
         if not catalog:return
         current=set()
         for row in observations:
-            item=catalog.resolve(row.get('name'),row.get('tier'))
+            item=observed_item(catalog,row)
             if item is None:continue
             identity=item.game_id;current.add(identity);previous=self.entries.get(identity)
             price=row.get('price') or {}

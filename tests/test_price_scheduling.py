@@ -27,7 +27,7 @@ class PriceSchedulingTests(unittest.TestCase):
             self.service.refresh_snapshot=True;self.service.set_refresh_interval(300);self.service.start()
             self.until(lambda:browser.call_count==1)
             self.service.snapshot_updater.accept(document(self.now))
-            for _ in range(500):self.service.observe([self.item,Item(9999999,'Missing item')],300)
+            for _ in range(500):self.service.observe([self.item,Item(9999999,'Missing item')])
             self.assertEqual(browser.call_count,1)
             self.assertEqual(self.service.delivered[self.item.game_id].price,100)
             self.assertIsNone(self.service.delivered[9999999].price)
@@ -39,8 +39,8 @@ class PriceSchedulingTests(unittest.TestCase):
 
     def test_expired_prices_cannot_gain_freshness_from_repeated_views(self):
         quote=self.service.cached(self.item)
-        with patch('price_lens.service.time.time',return_value=self.now+901),patch('price_lens.data.get_json',side_effect=AssertionError('Individual HTTP call')):
-            for _ in range(500):self.service.observe([self.item],900)
+        with patch('price_lens.data.get_json',side_effect=AssertionError('Individual HTTP call')):
+            for _ in range(500):self.service.observe([self.item])
         shown=self.service.delivered[self.item.game_id]
         self.assertEqual(shown.fetched_at,quote.fetched_at)
         self.assertFalse(shown.cache_valid(self.now+901,900))
@@ -48,18 +48,19 @@ class PriceSchedulingTests(unittest.TestCase):
 
     def test_manual_search_and_saved_watch_references_share_the_snapshot(self):
         with patch('price_lens.data.get_json',side_effect=AssertionError('Individual HTTP call')):
-            self.service.set_manual(self.item,900);self.service.clear_visible()
+            self.service.set_manual(self.item);self.service.clear_visible()
             self.assertEqual(self.service.delivered[self.item.game_id],self.service.cached(self.item))
             self.service.set_manual(None)
 
-    def test_snapshot_identity_is_exact_and_missing_identity_does_not_fetch(self):
-        ready=[];errors=[];self.service.identity_ready.connect(lambda identity,item:ready.append(item.game_id))
-        self.service.identity_error.connect(lambda *_:errors.append(True))
-        candidates=(self.item,Item(4010001,'Bronze Ore'))
+    def test_exact_missing_sibling_demand_does_not_substitute_the_priced_name(self):
+        sibling=Item(4010001,'Bronze Ore')
         with patch('price_lens.data.get_json',side_effect=AssertionError('Individual HTTP call')):
-            self.service.resolve_identity(('Bronze Ore',None),candidates)
-            for _ in range(500):self.service.resolve_identity(('Missing',None),(Item(999,'Missing'),))
-        self.assertEqual(ready,[self.item.game_id]);self.assertEqual(len(errors),1)
+            self.service.set_manual(sibling)
+            self.assertIsNone(self.service.delivered[sibling.game_id].price)
+            self.assertNotIn(self.item.game_id,self.service.delivered)
+            self.service.set_manual(self.item)
+        self.assertEqual(self.service.delivered[self.item.game_id].price,100)
+        self.assertIsNone(self.service.delivered[sibling.game_id].price)
 
     def test_catalog_transient_failure_retries_once_then_stops_until_manual_retry(self):
         self.service.catalog_retry_timer.setInterval(1)
@@ -68,7 +69,7 @@ class PriceSchedulingTests(unittest.TestCase):
         with patch('price_lens.service.load_catalog',side_effect=TimeoutError('temporary')) as fetch:
             self.service.start()
             self.until(lambda:len(errors)==2)
-            for _ in range(100):self.app.processEvents();self.service.observe([],900)
+            for _ in range(100):self.app.processEvents();self.service.observe([])
             self.assertEqual(fetch.call_count,2)
             self.assertFalse(self.service.catalog_retry_timer.isActive())
             self.service.start()

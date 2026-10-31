@@ -15,6 +15,7 @@ from .reference_maps import MapPreview
 from .watchlist_ui import WatchButton
 from .domain import key as name_key,Item
 from .price_widgets import PriceCard
+from .market_lookup import market_lookup
 
 ITEM_STATS={'reqLevel':'Level required','reqSTR':'STR required','reqDEX':'DEX required','reqINT':'INT required','reqLUK':'LUK required','reqPOP':'Fame required',
     'incPAD':'Weapon attack','incMAD':'Magic attack','incPDD':'Weapon defense','incMDD':'Magic defense','incACC':'Accuracy',
@@ -371,7 +372,7 @@ class EntryDetails(QFrame):
     def item_identity(self):
         item=self.panel.catalog_item(self.entry)
         return item or Item(self.entry.id,self.entry.name,self.row.get('category')=='Equipment' or 1000000<=self.entry.id<2000000,
-            self.entry.id//10000 in (207,233),cash=bool(self.row.get('cash')),gender=self.row.get('gender'))
+            self.entry.id//10000 in (207,233),cash=bool(self.row.get('cash')),gender=self.row.get('gender'),sub_category=self.row.get('sub_category'))
 
     def update_data(self,**data):
         # PriceSearch owns selection changes; quote updates reuse this summary.
@@ -382,10 +383,10 @@ class EntryDetails(QFrame):
     def update_market(self):
         if self.summary_card is None:return
         item=self.item_identity();market=self.panel.market
-        quote=market.cached(item) if market else None
-        if quote is None and market and hasattr(market,'reference'):quote=market.reference(item)
-        state=market.state_for(item.game_id) if market and hasattr(market,'state_for') else ''
-        self.update_data(item=item,row={'name':item.name},quote=quote,now=time.time(),ttl=self.panel.ttl,hovered=True,lookup_state=state,open_source=self.panel.source_requested.emit)
+        result=market_lookup(market,item)
+        state=market.state_for() if market and hasattr(market,'state_for') else ''
+        self.update_data(item=item,row={'name':item.name},quote=result.quote,now=time.time(),ttl=self.panel.ttl,hovered=True,
+                         lookup_state=state,lookup_reason=result.reason,open_source=self.panel.source_requested.emit)
 
     def change_animation(self):
         self.animation_url=self.animations.currentData() or '';self.sprite.set_source(self.entry.icon,self.animation_url);self.media_changed.emit()

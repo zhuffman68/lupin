@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -164,7 +165,7 @@ class PriceSearchTests(unittest.TestCase):
             service.snapshot.save(doc,now)
             try:
                 with patch('price_lens.data.get_json',side_effect=AssertionError('No individual lookups')):
-                    service.set_manual(self.catalog.items[0],900)
+                    service.set_manual(self.catalog.items[0])
                     for _ in range(500):service.clear_visible()
                     quote=service.delivered[1]
                     self.assertEqual(quote.price,100)
@@ -172,52 +173,104 @@ class PriceSearchTests(unittest.TestCase):
                     service.set_manual(None)
             finally:service.close();service.pool.shutdown(wait=True)
 
-    def test_duplicate_names_resolve_current_item_before_requesting_price(self):
+    def test_duplicate_names_stay_local_until_an_exact_result_is_selected(self):
         self.panel.set_catalog(Catalog({"items":[{"id":10,"name":"Blue Hawkeye","category":"Equipment"},
                                                  {"id":20,"name":"Blue Hawkeye","category":"Equipment"}],"scrolls":[]}))
-        identities=[]
-        self.panel.identity_selected.connect(lambda identity,candidates:identities.append((identity,candidates)))
         self.search("Blue Hawkeye")
         self.assertEqual(self.panel.results.count(),1)
         self.panel.results.setCurrentRow(0)
-        self.assertEqual(self.requests,[])
-        self.assertEqual(len(identities),1)
-        identity,candidates=identities[0]
-        self.panel.accept_identity(identity,candidates[1])
+        self.assertFalse(any(self.requests))
+        self.assertIsNone(self.panel.selected)
+        self.assertEqual([item.game_id for item in self.panel.pending_candidates],[10,20])
+        self.search('20');self.panel.results.setCurrentRow(0)
         self.assertEqual(self.requests[-1].game_id,20)
+        self.assertIsNone(self.panel.pending_identity)
+        self.assertIsNone(self.panel.catalog.resolve('Blue Hawkeye'))
 
-    def test_reselecting_failed_name_keeps_error_during_cooldown(self):
+    def test_reselecting_an_ambiguous_name_never_emits_an_item_demand(self):
         self.panel.set_catalog(Catalog({"items":[{"id":10,"name":"Blue Hawkeye"},{"id":20,"name":"Blue Hawkeye"}],"scrolls":[]}))
         self.search("Blue Hawkeye");self.panel.results.setCurrentRow(0)
-        identity=self.panel.pending_identity
-        self.panel.identity_error(identity,"No unique current match")
-        self.panel.select_result(self.panel.results.item(0))
-        self.assertEqual(self.panel.error,"No unique current match")
+        for _ in range(10):self.panel.select_result(self.panel.results.item(0))
+        self.assertFalse(any(self.requests))
+        self.assertIsNone(self.panel.selected)
+        self.assertIn('ambiguous',self.panel.pending_message.text())
 
-    def test_manual_name_resolution_and_quote_share_the_existing_snapshot(self):
+    def test_priced_market_sibling_does_not_select_shared_name_or_explicit_other_id(self):
         from test_snapshot import document
         with tempfile.TemporaryDirectory() as directory:
             service=PriceService(Path(directory)/'prices.sqlite');now=time.time()
             doc=document(now);doc['items'][0].update(id='basil:00000020',name='Blue Hawkeye')
             service.snapshot.save(doc,now)
-            service.identity_ready.connect(lambda identity,item:service.set_manual(item))
+            self.panel.set_catalog(Catalog({'items':[{'id':10,'name':'Blue Hawkeye'},{'id':20,'name':'Blue Hawkeye'}]}))
+            self.panel.market=service;self.panel.item_selected.connect(service.set_manual)
             try:
                 with patch('price_lens.data.get_json',side_effect=AssertionError('No individual lookups')):
-                    service.set_manual(None,identity=('Blue Hawkeye',None),candidates=(Item(10,'Blue Hawkeye'),Item(20,'Blue Hawkeye')))
-                    self.assertEqual(service.manual_item.game_id,20)
+                    self.search('Blue Hawkeye');self.panel.results.setCurrentRow(0)
+                    self.assertIsNone(service.manual_item)
+                    self.assertEqual(service.delivered,{})
+                    self.search('10');self.panel.results.setCurrentRow(0)
+                    self.assertEqual(service.manual_item.game_id,10)
+                    self.assertIsNone(service.delivered[10].price)
+                    self.assertNotIn(20,service.delivered)
+                    self.search('20');self.panel.results.setCurrentRow(0)
                     self.assertEqual(service.delivered[20].price,100)
-            finally:service.close();service.pool.shutdown(wait=True)
+            finally:
+                self.panel.item_selected.disconnect(service.set_manual)
+                service.close();service.pool.shutdown(wait=True)
 
-    def test_manual_identity_failure_is_reported_once_per_generation(self):
+    def test_reason_only_market_change_updates_the_existing_search_card(self):
+        current={'reason':'variant-mismatch'}
+        self.panel.market=SimpleNamespace(lookup_reason=lambda item:current['reason'])
+        self.search('Work Gloves');self.panel.results.setCurrentRow(0)
+        card=self.panel.price_view
+        self.assertEqual(card.fields['status'].text(),'Item variant unverified')
+        current['reason']='no-sales';self.panel.render()
+        self.assertIs(self.panel.price_view,card)
+        self.assertEqual(card.fields['status'].text(),'No observed sales')
+        self.panel.market=object();self.panel.render()
+        self.assertEqual(card.fields['status'].text(),'No market reference')
+
+    def test_ambiguous_search_has_no_idle_checking_claim(self):
+        self.panel.set_catalog(Catalog({'items':[{'id':10,'name':'Blue Moon'},{'id':20,'name':'Blue Moon'}]}))
+        self.search('Blue Moon');self.panel.results.setCurrentRow(0)
+        self.assertIn('ambiguous',self.panel.pending_message.text())
+        self.assertNotIn('Checking',self.panel.pending_message.text())
+
+    def test_exact_id_selection_is_independent_of_missing_or_old_market_publication(self):
+        from test_snapshot import document
         with tempfile.TemporaryDirectory() as directory:
-            service=PriceService(Path(directory)/'prices.sqlite');errors=[]
-            service.identity_error.connect(lambda identity,message:errors.append(message))
+            service=PriceService(Path(directory)/'prices.sqlite');now=time.time()
+            self.panel.set_catalog(Catalog({'items':[{'id':1041078,'name':'Blue Moon','category':'Equipment','gender':'female'},
+                                                     {'id':1032011,'name':'Blue Moon','category':'Equipment'}]}))
+            self.panel.market=service;self.panel.item_selected.connect(service.set_manual)
+            service.quote_ready.connect(self.panel.accept_quote)
             try:
                 with patch('price_lens.data.get_json',side_effect=AssertionError('No individual lookups')):
-                    service.set_manual(None,identity=('Blue Hawkeye',None),candidates=(Item(10,'Blue Hawkeye'),))
-                    for _ in range(500):service.clear_visible()
-                self.assertEqual(len(errors),1)
-            finally:service.close();service.pool.shutdown(wait=True)
+                    self.search('1041078');self.panel.results.setCurrentRow(0)
+                    self.assertEqual(self.panel.selected.game_id,1041078)
+                    self.assertEqual(service.manual_item.game_id,1041078)
+                    self.assertEqual(self.panel.price_view.fields['status'].text(),'No market reference')
+                    old=now-4000;doc=document(old)
+                    doc['items'][0].update(id='basil:01041078',name='Blue Moon (F)',price=19000)
+                    service.snapshot.save(doc,now);service._snapshot_updated()
+                    self.assertEqual(self.panel.selected.game_id,1041078)
+                    self.assertEqual(self.panel.quote.price,19000)
+                    self.assertFalse(self.panel.quote.fresh(now))
+                    self.search('1032011');self.panel.results.setCurrentRow(0)
+                    self.assertEqual(self.panel.selected.game_id,1032011)
+                    self.assertIsNone(self.panel.quote.price)
+            finally:
+                self.panel.item_selected.disconnect(service.set_manual)
+                service.close();service.pool.shutdown(wait=True)
+
+    def test_exact_id_query_excludes_other_items_containing_the_number_in_their_name(self):
+        self.panel.set_catalog(Catalog({'items':[{'id':1041078,'name':'Blue Moon'},
+                                                 {'id':1032011,'name':'Blue Moon'},
+                                                 {'id':999,'name':'1041078 Voucher'}]}))
+        self.search('1041078')
+        self.assertEqual(self.panel.results.count(),1)
+        self.panel.results.setCurrentRow(0)
+        self.assertEqual(self.panel.selected.game_id,1041078)
 
 
 if __name__ == "__main__":unittest.main()

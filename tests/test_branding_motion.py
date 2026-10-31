@@ -108,13 +108,13 @@ class BrandingMotionTests(unittest.TestCase):
             self.assertEqual(page.pos(),tabs.stack.contentsRect().topLeft())
         finally:tabs.close();tabs.deleteLater();self.app.processEvents()
 
-    def test_exp_anchor_uses_game_bottom_left_for_two_and_three_lines(self):
+    def test_tracking_anchor_uses_game_bottom_left_independently_of_details(self):
         import json
         window=AnnotationWindow(start_listener=False)
         try:
             for extra in ("","600 EXP/min · 36,000 EXP/hour"):
                 window.read_command(json.dumps({"geometry":[0,0,1600,1000],"reduce_motion":True,
-                    "rows":[{"key":"experience","kind":"experience","x":0,"y":0,"anchor":"bottom_left",
+                    "rows":[{"key":"experience","kind":"tracking","x":0,"y":0,"anchor":"bottom_left",
                              "bounds":[320,200,800,600],"name":"Lv. 30 in ≈ 18m 40s","text":"+0.4%/min · +24%/hour","extra":extra}]}).encode())
                 rect=window.label_rect(window.rows[0],QPoint(0,0))
                 self.assertEqual(rect.left(),324)

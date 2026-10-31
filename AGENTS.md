@@ -21,7 +21,7 @@ On a Linux desktop, run GUI/native-helper QA and Wine UI tests inside an isolate
 
 Lupin keeps legacy internal application/settings/socket IDs for upgrade compatibility. Price Search works without capture and reads the same full-market snapshot as overlays and watched items. Typing, selecting, hovering or watching items must not issue individual price requests.
 
-EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Provider identity proof may be extended only by a fresh, matching public index; hints never establish an unverified identity.
+EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 
 Linux packages are named `lupin` and replace `classic-price-lens`. Preserve existing per-user data and the desktop/portal identity during migration. Prices includes manual search; Translation has its own tab. Shortcuts default on both platforms to Super/Win+F9 prices, +F10 EXP, +F11 reading Korean and +F8 writing Korean; retain explicitly customized assignments. Shop labels stay in place and fade to 25 percent opacity only where they overlap a recognized native item-description tooltip.
 
@@ -44,6 +44,13 @@ EXP warmup requires 30 seconds of clear accepted readings, not wall-clock time. 
 Distinguish held readings from numerical validation or reacquisition. Relearn an inconsistent numerical baseline only from bounded, fresh, changing and mutually consistent observations for the same captured identity/level; retain confirmed gains and exclude the untrusted interval. Captured name proofs come from the same submitted frame as the EXP result. Keep visual identity stable through OCR spelling changes, with bounded template variants and conservative confirmation for genuinely changed pixels; never globally alias characters such as Z and 2. Tracking gains use a large rolling font, bold headings, a larger percent unit and aligned units in 56-pixel cards. Narrow down to 200 logical pixels before using the above-HUD fallback. The tracking page explains both rate windows once with “Rates based on the last 5 minutes”; normal overlay headers omit a rolling-window label. Keep warmup/paused/held states, and indent EXP/MESO headings past the plus-sign gutter. Use Level X · ETA on both displays.
 
 Shop dimming requires an anchored, dark native description body, not just similar frame strokes. Exclude our annotation pixels from name/body evidence and validate retained occlusions against the newest frame. A missing occlusion field clears old state; bright shop panes must never make their own labels dim in a feedback loop.
+
+Verified shop scrolling gives current listings 1.5 seconds of priority over the
+hovered shop description. It never reveals unknown covered rows. Source changes
+alone do not prove scrolling. Keep submitted reader context immutable and request
+fresh work through `PixelReader.request_rescan`; UI code must not reset an active
+request's timeout. Price observations belong to the widget-free controller;
+capture scheduling, market lookup and annotation painting remain separate.
 
 On-screen item cards have a GUI-only 2 second grace period before retirement to session history. Current observations alone supply overlays and offer verification. Animate the active-card canvas independently of history, including the first history header/gap; quote and age updates must not restart structural motion. Keep at most 100 unique session entries and animate/repaint only visible rows. Stable shop annotation keys use the verified page, canonical item and list-local slot. Held shop presentation stays separate from current offers and is bounded to the same fresh quote generation and verified context. Nearest-name/fuzzy pricing remains deferred; native retries may omit a decorative marker only on a proven marker-bearing title path.
 

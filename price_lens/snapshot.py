@@ -5,9 +5,8 @@ import re
 import time
 
 from .data import timestamp
-from .domain import Quote, WORLD, key, number
-
-SNAPSHOT_TTL = 3600
+from .domain import Quote, WORLD, item_name_matches, number
+from .market_lookup import LookupResult
 
 
 def parse_snapshot(document, checked_at=None):
@@ -97,17 +96,17 @@ class SnapshotStore:
         self.meta, self.rows = meta, rows
         return meta
 
-    def quote(self, item):
+    def lookup(self, item):
+        """Return priced/no-sales/missing/variant-mismatch/unit-mismatch."""
+        if item is None:return LookupResult(None, 'unidentified')
         row = self.rows.get(item.game_id)
-        if (not row or key(row["name"]) != key(item.name) or row["unit"] not in ("item", "set")
-                or (row["unit"] == "set") != item.per_set):
-            return None
+        if not row:return LookupResult(None, 'missing')
+        if not item_name_matches(item, row['name']):return LookupResult(None, 'variant-mismatch')
+        if row['unit'] not in ('item','set') or (row['unit'] == 'set') != item.per_set:
+            return LookupResult(None, 'unit-mismatch')
         quote = Quote(**row["quote"])
-        return quote if quote.price is not None else None
+        return LookupResult(quote if quote.price is not None else None,
+                            'priced' if quote.price is not None else 'no-sales')
 
-    def identify(self, candidates):
-        if not self.meta or not 0 <= time.time() - self.meta["published_at"] < SNAPSHOT_TTL:
-            return None
-        matches = [item for item in candidates if (row := self.rows.get(item.game_id))
-                   and key(row["name"]) == key(item.name)]
-        return matches[0] if len(matches) == 1 else None
+    def quote(self, item):
+        return self.lookup(item).quote

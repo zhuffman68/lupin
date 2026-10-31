@@ -6,12 +6,13 @@ import argparse
 import hashlib
 import io
 import json
-import os
 from pathlib import Path
 import posixpath
 import subprocess
 import tarfile
 import urllib.request
+
+from qa_common import add_release_arguments, artifact_path, guest_desktop_command, migration_packages
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,7 +61,9 @@ def prepare(image, tag):
     return folder
 
 
-def run(folder, command, log):
+def run(folder, command, log, *, gui=False):
+    if gui:
+        command = guest_desktop_command(command)
     args = ["bwrap", "--unshare-user", "--uid", "0", "--gid", "0", "--unshare-pid", "--die-with-parent",
             "--bind", str(folder), "/", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp",
             "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf", "--ro-bind", str(ROOT / "dist"), "/mnt/packages",
@@ -75,7 +78,14 @@ def main():
     parser.add_argument("image", choices=["debian", "ubuntu"])
     parser.add_argument("tag")
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--upgrade-from", type=Path, action="append", default=[],
+                        help="Additional older DEB package in dist/; may be repeated")
+    add_release_arguments(parser)
     args = parser.parse_args()
+    package = None if args.prepare_only else artifact_path(ROOT / "dist", "debian", args.version)
+    previous_packages = [] if args.prepare_only else migration_packages(
+        ROOT / "dist", "debian", args.version, required=args.require_migrations,
+        upgrade_from=args.upgrade_from)
     folder = prepare(args.image, args.tag)
     # The user namespace maps only root; apt's _apt UID cannot be represented.
     (folder / "etc/apt/apt.conf.d/99-classic-lens-test").write_text(
@@ -92,7 +102,6 @@ def main():
     print("Verified official test root:", folder, flush=True)
     if args.prepare_only:
         return
-    package = max((ROOT / "dist").glob("lupin_*_amd64.deb"), key=lambda path: path.stat().st_mtime)
     evidence = ROOT / "evidence"
     evidence.mkdir(exist_ok=True)
     log_path = evidence / f"package-{args.image}-{args.tag}.log"
@@ -101,23 +110,24 @@ def main():
         # Bootstrap the distribution's own fakeroot to emulate ownership of
         # dependency files whose non-root UIDs are outside this user namespace.
         run(folder, ["sh", "-c", "cd /root && apt-get download fakeroot libfakeroot && for archive in ./*.deb; do dpkg-deb -x \"$archive\" /; done"], log)
-        for version in ('0.8.0','0.9.0','0.10.0'):
-            previous=ROOT/f'dist/lupin_{version}-1_amd64.deb'
-            if previous.exists() and previous!=package:
-                run(folder,['apt-get','install','-y','--no-install-recommends','/mnt/packages/'+previous.name],log)
+        for previous in previous_packages:
+            run(folder,['apt-get','install','-y','--no-install-recommends','/mnt/packages/'+previous.name],log)
         marker=folder/'root/.cache/LocalTools/Classic Price Lens/package-upgrade-check.txt'
         marker.parent.mkdir(parents=True,exist_ok=True)
         marker.write_text('Preserve user data during package migration.\n')
         run(folder, ["apt-get", "install", "-y", "--no-install-recommends", "/mnt/packages/" + package.name,
-                     "xvfb", "xauth", "fonts-dejavu-core", "libxtst6"], log)
+                     "xvfb", "xauth", "dbus-daemon", "fonts-dejavu-core", "libxtst6"], log)
         run(folder, ["lupin", "--version"], log)
+        run(folder, ["/opt/lupin/runtime/bin/python3", "-B", "-c",
+                     "import sys; sys.path.insert(0, '/opt/lupin'); from price_lens import __version__; "
+                     f"assert __version__ == {args.version!r}, __version__"], log)
         run(folder, ["test", "-f", "/usr/bin/lupin"], log)
         run(folder, ["test", "-f", "/usr/share/pipewire/client.conf"], log)
-        run(folder, ["lupin", "--self-test"], log)
-        run(folder, ["env", "QT_QPA_PLATFORM=xcb", "xvfb-run", "-a", "lupin", "--self-test"], log)
-        run(folder, ["xvfb-run", "-a", "/opt/lupin/bin/lupin-market-fetch", "--self-test"], log)
-        run(folder, ["sh", "-c", "cd /opt/lupin && QT_QPA_PLATFORM=xcb CLASSIC_LENS_TEST_X11=1 xvfb-run -a runtime/bin/python3 -B -m unittest discover -s tests -p test_hotkeys.py -v"], log)
-        run(folder, ["sh", "-c", "cd /opt/lupin && QT_QPA_PLATFORM=offscreen runtime/bin/python3 -m unittest discover -s tests -q"], log)
+        run(folder, ["lupin", "--self-test"], log, gui=True)
+        run(folder, ["env", "QT_QPA_PLATFORM=xcb", "lupin", "--self-test"], log, gui=True)
+        run(folder, ["/opt/lupin/bin/lupin-market-fetch", "--self-test"], log, gui=True)
+        run(folder, ["sh", "-c", "cd /opt/lupin && QT_QPA_PLATFORM=xcb CLASSIC_LENS_TEST_X11=1 runtime/bin/python3 -B -m unittest discover -s tests -p test_hotkeys.py -v"], log, gui=True)
+        run(folder, ["sh", "-c", "cd /opt/lupin && runtime/bin/python3 -B -m unittest discover -s tests -q"], log, gui=True)
         run(folder, ["dpkg", "--verify", "lupin"], log)
         run(folder, ["md5sum", "--check", "--quiet", "/var/lib/dpkg/info/lupin.md5sums"], log)
         run(folder, ["apt-get", "remove", "-y", "lupin"], log)

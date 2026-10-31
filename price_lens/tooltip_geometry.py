@@ -41,13 +41,20 @@ def _rim_pixels(image):
     rgba=image.convertToFormat(QImage.Format.Format_RGBA8888)
     pixels=rgba.constBits();stride=rgba.bytesPerLine();width=rgba.width();height=rgba.height()
     def rim(x,y,horizontal=False,_keep=rgba):
-        if not (0<=x<width-(0 if horizontal else 2) and 0<=y<height-(2 if horizontal else 0)):return False
+        if not (0<=x<width and 0<=y<height):return False
         at=y*stride+x*4
         step=stride if horizontal else 4
-        a=pixels[at:at+3];b=pixels[at+step:at+step+3];c=pixels[at+step*2:at+step*2+3]
-        if max(a)>=180 or max(c)>=180 or any(abs(a[i]-c[i])>=65 for i in range(3)):return False
-        light=lambda p:p[0]*.30+p[1]*.59+p[2]*.11
-        return light(b)>max(light(a),light(c))*1.45+15
+        # Antialiased/native UI scaling widens the same dark/light/dark rim.
+        # Both contrast directions matter: scenery behind a translucent frame
+        # can make its middle stroke darker, rather than lighter, than its sides.
+        a=pixels[at:at+3]
+        for gap in (1,2,3):
+            if (y+gap*2>=height if horizontal else x+gap*2>=width):break
+            b=pixels[at+step*gap:at+step*gap+3];c=pixels[at+step*gap*2:at+step*gap*2+3]
+            if max(a)>=180 or max(c)>=180 or any(abs(a[i]-c[i])>=65 for i in range(3)):continue
+            if any((b[i]-a[i]>=18 and b[i]-c[i]>=18) or
+                   (a[i]-b[i]>=18 and c[i]-b[i]>=18) for i in range(3)):return True
+        return False
     return rim
 
 
@@ -61,8 +68,11 @@ def _framed_bounds(image,name):
     left=max(((score(x),x) for x in range(max(0,name.left()-28),max(0,name.left()-3))),default=(0,0))
     if left[0]<.55:return None
     left=left[1]
-    right=next((x for x in range(left+70,min(image.width()-2,left+740)) if score(x)>=.45),None)
-    if right is None or name.right()>right+2:return None
+    # Ignore repeated strokes inside the name/body instead of abandoning the
+    # framed path at the first one. The boundary must enclose the entire name
+    # and repeat down the panel independently of those glyphs.
+    right=next((x for x in range(max(left+70,name.right()-2),min(image.width()-2,left+740)) if score(x)>=.65),None)
+    if right is None:return None
     seed=name.center().y();edges=[]
     for direction,limit in ((-1,max(-1,name.top()-96)),(1,min(image.height(),name.top()+900))):
         last=seed;gap=0
@@ -112,6 +122,14 @@ def description_bounds(image,area,exclude=(),*,source_verified=False):
             if last-left>=60 and (best is None or last-left>best[1]-best[0]):best=(left,last,y)
     if best is None:return None
     left,right,seed_y=best
+    # The colour fallback can cross a thin native border and join two adjacent
+    # comparison descriptions. A repeated structural divider takes precedence
+    # over a wider purple span, even if the other side of this panel is covered.
+    rim=_rim_pixels(image)
+    ys=range(max(0,name.top()-1),min(image.height(),name.top()+max(123,name.height()*8)),6)
+    divider=next((x for x in range(max(left+60,name.right()+1),min(right,image.width()-6))
+                  if len(ys)>=5 and sum(rim(x,y) for y in ys)>=max(3,len(ys)*.65)),None)
+    if divider is not None:right=divider+2
     spans=[]
     # The cyan name bullet or item art can interrupt one gutter column.
     # Try both inner edges rather than treating that interruption as the end.
@@ -141,6 +159,7 @@ def description_bounds(image,area,exclude=(),*,source_verified=False):
                 if gap>12:break
                 end+=1
             right=max(right,last)
+    if divider is not None:right=min(right,divider+2)
     rect=QRect(left-3,top-3,right-left+7,bottom-top+7).intersected(image.rect())
     return rect if _description_body(image,rect,exclude) else None
 
@@ -162,7 +181,7 @@ class TooltipReference:
     def __init__(self):self.clear()
 
     def clear(self):
-        self.found=None;self.name=None;self.panel=None;self.pixels=b'';self.pointer=None;self.at=0
+        self.found=None;self.name=None;self.panel=None;self.pixels=b'';self.pointer=None;self.at=0;self.context=None
 
     @staticmethod
     def signature(image,rect):
@@ -170,13 +189,15 @@ class TooltipReference:
         patch=image.copy(rect).convertToFormat(QImage.Format.Format_Grayscale8)
         return bytes(patch.constBits())
 
-    def observe(self,found,image,pointer,allow=True,now=None):
+    def observe(self,found,image,pointer,allow=True,now=None,*,context=None):
         now=time.monotonic() if now is None else now
         if not allow:self.clear();return None
+        if self.context is not None and (context is None or context.token!=self.context.token):self.clear()
+        if context is not None and not context.matches(image,pointer):self.clear();return None
         if found:
             area=found['area'];self.name=QRect(*(area[k] for k in ('x','y','width','height'))).intersected(image.rect())
-            self.panel=description_bounds(image,area);self.pixels=self.signature(image,self.name)
-            self.found=found;self.pointer=pointer;self.at=now
+            self.panel=context.panel if context is not None else description_bounds(image,area);self.pixels=self.signature(image,self.name)
+            self.found=found;self.pointer=pointer;self.at=now;self.context=context
             return found
         if self.found and pointer and self.pointer and now-self.at<=.4 and max(abs(a-b) for a,b in zip(pointer,self.pointer))<=8 and still_present(image,self.panel):
             current=self.signature(image,self.name)

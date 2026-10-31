@@ -129,6 +129,13 @@ manifest. Add `--capture-compatible-from X.Y.Z` only after verifying compatible
 capture/runtime/protocol files. Upload metadata, useful patches and full artifacts
 to their matching `vX.Y.Z` GitHub release when publication is authorized.
 
+Release-note bodies also include the centered donation footer used by the
+README and [change notes](CHANGELOG.md): heading, PayPal Donate button and
+drinking monkey beneath it. Keep the same absolute artwork URLs and spacing
+elements. The compact in-app summary omits the footer and HTML. The current
+[1.0.2 patch record](PATCH_1.0.2.md) contains the ready-to-copy footer; it does not
+authorize building or publication.
+
 ## Acceptance boundaries
 
 Tests cover real OpenSSL known-answer signatures, tampering, fake GitHub ETags,

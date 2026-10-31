@@ -17,7 +17,12 @@ def number(value):
 
 
 def key(name):
-    name = " ".join(str(name).casefold().replace("’", "'").split())
+    name = str(name).casefold().replace("’", "'").translate(str.maketrans({'“':'"','”':'"'}))
+    # Balanced quotation marks are formatting boundaries. The small shop font
+    # can lose the space after a closing quote (Black "Hit Me"Shirt). Keep the
+    # marks and their contents; removing punctuation would conflate other names.
+    name = re.sub(r'"([^"\n]+)"', lambda match:' "'+match[1].strip()+'" ', name)
+    name = " ".join(name.split())
     return re.sub(r"\s*:\s*", ":", name)
 
 
@@ -57,10 +62,18 @@ class Item:
     per_set: bool = False
     tier: str | None = None
     cash: bool = False
-    nx_price: int | None = None
-    nx_count: int = 1
-    on_sale: bool | None = None
     gender: str | None = None
+    sub_category: str | None = None
+
+
+def item_name_matches(item, name):
+    """Exact-ID source spelling, allowing only typography and proven gender."""
+    canonical, observed = key(item.name), key(name)
+    if canonical == observed:return True
+    suffix = re.fullmatch(r'(.+?)\s+\(([mf])\)', observed)
+    if not suffix or not item.equipment:return False
+    return (suffix[1] == canonical
+            and item.gender == ('male' if suffix[2] == 'm' else 'female'))
 
 
 class Catalog:
@@ -72,17 +85,15 @@ class Catalog:
                 continue
             item_id = row["id"]
             by_id[item_id] = Item(item_id, row["name"], row.get("category") == "Equipment",
-                                  item_id // 10000 in (207, 233), row.get("tier"), gender=row.get('gender'))
+                                  item_id // 10000 in (207, 233), row.get("tier"), gender=row.get('gender'),
+                                  sub_category=row.get('sub_category'))
         for category in (cash_document or {}).get("categories", []):
             for row in category.get("items", []):
                 if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not row.get("name"):
                     continue
-                nx = row.get("price")
-                count = row.get("count", 1)
                 by_id[row["id"]] = Item(row["id"], row["name"], row.get("category") == "Equipment",
-                                        cash=True, nx_price=int(nx) if number(nx) else None,
-                                        nx_count=count if isinstance(count, int) and count > 0 else 1,
-                                        on_sale=row.get("on_sale"),gender=row.get('gender'))
+                                        cash=True,gender=row.get('gender'),
+                                        sub_category=row.get('sub_category'))
         self._index_items(list(by_id.values()))
 
     @classmethod
@@ -91,6 +102,7 @@ class Catalog:
 
     def _index_items(self,items):
         self.items = list(items)
+        self.by_id = {item.game_id:item for item in self.items}
         self.names = {}
         self.read_names = {}
         self.glyph_names = {}
@@ -99,7 +111,6 @@ class Catalog:
             self.read_names.setdefault(item_words(item.name), []).append(item)
             self.glyph_names.setdefault(glyph_key(item_words(item.name)), []).append(item)
         self.resolved = {}
-        self.preferred = {}
 
     def candidates(self, visible_name, tier=None):
         name = key(visible_name or "")
@@ -121,20 +132,17 @@ class Catalog:
         candidates = [i for name_key, items in self.read_names.items() if name_key.startswith(prefix) for i in items]
         if not candidates:
             candidates=[i for name_key,items in self.read_names.items() if glyph_key(name_key).startswith(glyph_key(prefix)) for i in items]
-        return [i for i in candidates if i.tier and key(i.tier) == key(tier)] if tier else candidates
-
-    def bind_current(self, visible_name, tier, item):
-        if item not in self.candidates(visible_name, tier):
-            raise ValueError("Provider item does not match visible catalog candidates")
-        self.preferred[(key(visible_name), tier)] = item
+        # Native icon colour is a hypothetical scroll tier, even on equipment.
+        # It can narrow a proven scroll family, never a mixed prefix or a ring.
+        if tier and candidates and all(item.tier for item in candidates):
+            return [item for item in candidates if key(item.tier) == key(tier)]
+        return candidates
 
     def resolve(self, visible_name, tier=None):
         """Unique canonical/formatted name or UI ellipsis prefix; no fuzzy guesses."""
         if not visible_name:
             return None
         name = key(visible_name)
-        if (name, tier) in self.preferred:
-            return self.preferred[(name, tier)]
         identity = (name, tier)
         if identity in self.resolved:
             return self.resolved[identity]

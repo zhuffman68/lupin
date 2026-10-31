@@ -9,6 +9,10 @@ from .thumbnails import ItemImage
 from .watchlist_ui import WatchButton
 
 
+LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant unverified',
+                 'unit-mismatch':'Price units unverified','identity-mismatch':'Market reference unverified'}
+
+
 class SelectedCardBody(QWidget):
     """A stable price column; the detail panel begins beneath the item title."""
     def __init__(self,card,panel):
@@ -117,12 +121,13 @@ class PriceCard(QFrame):
         if callback and quote:callback(quote.url)
 
     def update_data(self,*,item,row,quote,now,ttl,paused=False,old_capture=False,lookup_error=False,
-                    lookup_state="",open_source=None,
+                    lookup_state="",lookup_reason="",open_source=None,
                     hovered=False,example=False,context_name=None,selected=False):
-        self.data={"open_source":open_source,"quote":quote}
+        self.data={"open_source":open_source,"quote":quote,"lookup_reason":lookup_reason}
         price=row.get('price') or {}
         signature=(item,row.get('name') if item is None else None,price.get('quantity'),price.get('mesos'),
-                   quote,ttl,paused,old_capture,lookup_error,lookup_state,hovered,example,context_name,selected,display_age(quote,now,ttl))
+                   quote,ttl,paused,old_capture,lookup_error,lookup_state,lookup_reason,row.get('_identity_reason'),
+                   hovered,example,context_name,selected,display_age(quote,now,ttl))
         if signature==getattr(self,'display_signature',None):return
         self.display_signature=signature
         identity=item.game_id if item else None
@@ -130,19 +135,27 @@ class PriceCard(QFrame):
         self.selected_identity=identity
         if changing:
             for label in self.fields.values():label.setProperty('quietUpdates',True)
-        self.data={"open_source":open_source,"quote":quote}
         self.watch_button.set_item(item)
         price=row.get("price") or {}
         verdict=compare(item,price.get("quantity"),price.get("mesos"),quote,now,ttl)
+        reason=lookup_reason
+        if item and quote:
+            if quote.game_id!=item.game_id or quote.world!=WORLD or quote.condition!='clean':reason='identity-mismatch'
+            elif quote.per_set!=item.per_set:reason='unit-mismatch'
+        incompatible_reason=reason in ('variant-mismatch','unit-mismatch','identity-mismatch')
         compatible=bool(item and quote and quote.game_id==item.game_id and quote.world==WORLD
-                        and quote.condition=="clean" and quote.per_set==item.per_set)
-        fresh=bool(compatible and quote.fresh(now,ttl))
+                        and quote.condition=="clean" and quote.per_set==item.per_set and not incompatible_reason)
+        has_price=bool(compatible and quote.price is not None and reason not in ('no-sales','missing'))
+        fresh=bool(has_price and quote.fresh(now,ttl))
         stale=paused or old_capture
-        if not item:message,tone="Item name needs checking","muted"
+        if not item:
+            message,tone=('Item name ambiguous' if row.get('_identity_reason')=='ambiguous' or reason=='ambiguous'
+                          else 'Item unidentified'),'muted'
         elif stale:message,tone=("Paused · last read item" if paused else "Waiting for a fresh screen"),"muted"
-        elif not compatible or quote.price is None:
-            message=('Updating market prices…' if lookup_state=='refreshing' else
-                     'Market update unavailable' if lookup_error else 'No price in the market snapshot' if quote else 'Waiting for market prices…')
+        elif not has_price:
+            message=({'refreshing':'Updating market prices…','queued':'Market refresh queued…'}.get(lookup_state) or
+                     ('Market update unavailable' if lookup_error or lookup_state=='retry' else
+                      LOOKUP_MESSAGES.get(reason,'No market reference')))
             tone="muted"
         elif not fresh:
             message={"refreshing":"Refreshing market reference…","queued":"Market refresh queued…",
@@ -164,7 +177,7 @@ class PriceCard(QFrame):
         self.put("status",message,f"color: {COLORS[tone]}; font-size: 11px")
         self.store.setVisible(not hovered)
         self.put("store",mesos(verdict.unit_price)+(" mesos" if verdict.unit_price is not None else ""))
-        value=quote.price if compatible else None
+        value=quote.price if has_price else None
         self.put("market",mesos(value)+(" mesos" if value is not None else ""),
                  f"font-size: 17px; font-weight: 650; color: {'#e8d2ac' if fresh and not stale else '#98a3b1'}")
         self.put("units",('Per set' if item and item.per_set else '') if selected else (("Prices are per set" if item.per_set else "Prices are per item")+
@@ -177,17 +190,23 @@ class PriceCard(QFrame):
         # Refresh progress belongs to the shared market status. Per-card progress
         # changed card height on every refresh and shifted surrounding content.
         self.put('progress','')
-        self.put("explanation","Item name recognised. The price source has no market reference for this item." if compatible and value is None else
-                 "Item name recognised. Saved prices remain available; the full market will be checked again later." if lookup_error and not compatible else
-                 "Keep the full item name visible. A shared name or unclear text can prevent a match." if not item else "")
+        explanation=({'variant-mismatch':'The market row names a different or combined item variant. Its price is withheld.',
+                      'unit-mismatch':'The market price units do not match this item. Its price is withheld.',
+                      'identity-mismatch':'The market reference does not identify this exact item. Its price is withheld.',
+                      'no-sales':'The source lists this exact item but has no observed sales for it.'}.get(reason,
+                     'The market snapshot has no verified reference for this item.') if item and value is None else
+                     'Several item IDs share this name. An exact item selection or clear item icon is needed.'
+                     if not item and (row.get('_identity_reason')=='ambiguous' or reason=='ambiguous') else
+                     'Keep the full item name visible. The current text does not identify a catalog item.' if not item else '')
+        self.put('explanation',explanation)
         if selected:self.put('explanation','')
-        if compatible and quote.source=='MesoWatch' and quote.observed_at is not None:
+        if has_price and quote.source=='MesoWatch' and quote.observed_at is not None:
             from datetime import datetime,timezone
             stamp=datetime.fromtimestamp(quote.observed_at,timezone.utc).strftime('%b %d, %H:%M UTC')
             self.put('recent',('Latest observed sale · ' if selected else 'Most recent observed sale · ')+age_text(max(0,now-quote.observed_at))+' ago'+('' if selected else ' · '+stamp))
             self.fields['recent'].setToolTip(stamp)
         else:self.put('recent','')
-        sales=(f'{quote.sample_count:,} sales in the last 24hr' if quote.period=='24h' else f'Reference from {quote.sample_count:,} recent sales') if compatible and quote.sample_count else ''
+        sales=(f'{quote.sample_count:,} sales in the last 24hr' if quote.period=='24h' else f'Reference from {quote.sample_count:,} recent sales') if has_price and quote.sample_count else ''
         self.put('sales',sales if selected else '')
         self.link.setVisible(bool(not selected and hovered and compatible and quote.url and open_source))
         if changing:

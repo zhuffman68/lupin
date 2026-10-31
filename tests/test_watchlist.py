@@ -40,7 +40,7 @@ class WatchlistTests(unittest.TestCase):
 
     def test_highlight_does_not_need_a_price_and_never_matches_another_variant(self):
         encounter = WatchEncounters()
-        rows = [self.row(), self.row(13,'slot:1'), {'kind':'experience','item_id':12,'key':'exp'}]
+        rows = [self.row(), self.row(13,'slot:1'), {'kind':'tracking','item_id':12,'key':'exp'}]
         encounter.apply(rows, {12}, now=0)
         self.assertTrue(rows[0]['watched'])
         self.assertGreater(rows[0]['watch_event'],0)

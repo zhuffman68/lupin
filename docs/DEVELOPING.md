@@ -80,6 +80,7 @@ in [VERIFICATION.md](../VERIFICATION.md).
 | `package_common.py`, `package_linux.py`, `package_windows.py`, `trim_runtime.py` | Stage the application, notices and verified models; trim unused runtime files. |
 | `build_linux_packages.py`, `build_windows_installer.py` | Produce Arch, DEB and Windows Setup packages. |
 | `test_arch_package.py`, `test_linux_packages.py`, `test_windows_installer.py` | Check install, upgrade, uninstall and installed offline behavior in isolated environments. |
+| `qa_common.py`, `windows_stage.py` | Select exact QA artifacts, isolate test desktops, report migration coverage and reject incomplete Windows release stages. |
 | `release_checksums.py`, `release_updates.py` | Validate the three release artifacts and prepare signed GitHub update metadata. |
 | `publish_itch.py` | Validate and upload the existing itch.io channels through Butler. |
 | `export_icons.py` | Export platform icons from the approved native Lupin master. |
@@ -90,6 +91,21 @@ for pinned toolchains and complete platform commands, and
 [update documentation](UPDATES.md) for signing and installation behavior.
 Windows portable archives are retired; normal releases contain only Windows
 Setup, Arch/Manjaro and Debian/Ubuntu packages.
+
+Package QA defaults to the exact current source version; `--version X.Y.Z`
+selects another exact release. It never chooses a file by modification time.
+Missing historical migration packages print `SKIP`; use `--require-migrations`
+for release acceptance. Windows additionally needs `--upgrade-from PATH` in that
+mode. These are package transactions, separate from the source-only tests above.
+Arch/DEB accept repeated `--upgrade-from dist/PACKAGE` arguments for an available
+recent baseline, such as 1.0.1. Each explicit package must match the platform and
+be older than the selected release; a missing explicit baseline always fails.
+The old 0.8/0.9/0.10 baseline results remain separately visible as passed/skipped.
+Linux-host Arch and Wine QA create a private Xvfb display, D-Bus session, home and
+XDG directories automatically, with Wayland unset and software rendering. They
+require `xvfb-run` and `dbus-run-session` but never install host tools. DEB QA
+creates the same isolation inside its disposable distribution root. Wine's Python
+entry points also set Qt offscreen inside Windows Python before importing UI code.
 
 Keep signing keys, credentials, user databases, caches, drafts, recordings and
 private test evidence out of Git and release stages. Stable internal

@@ -18,16 +18,51 @@ class ShopRows:
         self.quote_proofs={}
         self._page_proven=False
 
+    def invalidate_viewport(self):
+        """Retire prior-page offers immediately, retaining only shop geometry."""
+        self.page_revision+=1
+        self.rows={};self.row_pixels={};self.quote_proofs={};self.guards=[]
+        self._page_proven=False
+        self.last_verified=0
+
+    def retire_context(self):
+        """Keep bounded recovery data without authorizing a visible offer."""
+        self.active=False;self._page_proven=False
+
     @staticmethod
     def slot(row):
         a=row.get('area') or {}
         return tuple(a.get(k) for k in ('x','y','width','height'))
 
+    @staticmethod
+    def visible_identity(row):
+        return (glyph_key(item_words(unclipped_name(row.get('name') or ''))).rstrip(': '),row.get('tier'))
+
     def identity(self,row):
         if self.resolve_identity:
             resolved=self.resolve_identity(row)
             if resolved is not None:return resolved
-        return (glyph_key(item_words(unclipped_name(row.get('name') or ''))).rstrip(': '),row.get('tier'))
+        return self.visible_identity(row)
+
+    def identities_compatible(self,previous,current):
+        """Uncertainty is not a new identity; two proven different IDs are."""
+        if self.resolve_identity:
+            before=self.resolve_identity(previous);after=self.resolve_identity(current)
+            if before is not None and after is not None:return before==after
+        return self.visible_identity(previous)==self.visible_identity(current)
+
+    def reference_copy(self,saved,current):
+        """Never lend an old icon identity to a currently visible weak row."""
+        row=deepcopy(saved)
+        if current.get('name') and self.resolve_identity and self.resolve_identity(current) is None:
+            for key in tuple(row):
+                if key=='_item_id' or key.startswith('_identity_'):row.pop(key,None)
+            row['name']=current['name']
+            if 'tier' in current:row['tier']=current['tier']
+            else:row.pop('tier',None)
+            for key,value in current.items():
+                if key.startswith('_identity_') and key!='_identity_evidence':row[key]=deepcopy(value)
+        return row
 
     def relative_slot(self,row):
         """A list-local slot survives shop dragging and OCR order changes."""
@@ -39,13 +74,16 @@ class ShopRows:
         """Last confirmed display amount; never promotes it to a current offer."""
         if row.get('shop_page',self.page_revision)!=self.page_revision:return None
         slot=self.slot(row)
+        if quote_key is not None and self.resolve_identity and self.resolve_identity(row) is None:
+            self.quote_proofs.pop(slot,None)
+            return None
         if row.get('price'):
             if quote_key is not None:
                 self.quote_proofs[slot]=(self.page_revision,self.identity(row),quote_key)
             return deepcopy(row['price'])
         if not self._page_proven or row.get('shop_slot')!=self.relative_slot(row):return None
         saved=self.rows.get(slot)
-        if saved is None or self.identity(saved[0])!=self.identity(row):return None
+        if saved is None or not self.identities_compatible(saved[0],row):return None
         if quote_key is not None and self.quote_proofs.get(slot)!=(self.page_revision,self.identity(row),quote_key):return None
         now=time.monotonic() if now is None else now
         age=now-saved[1]
@@ -54,8 +92,8 @@ class ShopRows:
 
     def decorate(self,row,now):
         row['shop_page']=self.page_revision;row['shop_slot']=self.relative_slot(row)
-        row['presentation_price']=self.presentation_for(row,now)
-        row['presentation_held']=bool(row['presentation_price'] and not row.get('price'))
+        presentation=self.presentation_for(row,now)
+        row['presentation_held']=bool(presentation and not row.get('price'))
         return row
 
     @staticmethod
@@ -125,11 +163,14 @@ class ShopRows:
             self.stable_slots(raw)
             area=dict(self.area)
         clean=[r for r in raw if not r.get('covered') and r.get('name') and r.get('price')]
+        for row in raw:
+            if row.get('name') and self.resolve_identity and self.resolve_identity(row) is None:
+                self.quote_proofs.pop(self.slot(row),None)
         contradiction=False
         if close:
             for row in clean:
                 previous=self.rows.get(self.slot(row))
-                if previous and (previous[0].get('price')!=row.get('price') or self.identity(previous[0])!=self.identity(row)):
+                if previous and (previous[0].get('price')!=row.get('price') or not self.identities_compatible(previous[0],row)):
                     contradiction=True;break
         same=close and guard_ok and not contradiction
         # A tooltip may hide a guard. Retain recovery data without inheriting an
@@ -138,15 +179,19 @@ class ShopRows:
         if not close or contradiction:
             # Compare proven listing identities/prices, never tooltip pixels or
             # absolute coordinates: moving the same shop is not a new page.
-            previous=[(self.identity(row),row.get('price')) for row,_ in sorted(self.rows.values(),key=lambda saved:self.slot(saved[0])[1])]
-            current=[(self.identity(row),row.get('price')) for row in sorted(clean,key=lambda row:self.slot(row)[1])]
-            if contradiction or (previous and (not clean or len(clean)!=len(raw) or previous!=current)):
+            previous=[row for row,_ in sorted(self.rows.values(),key=lambda saved:self.slot(saved[0])[1])]
+            current=sorted(clean,key=lambda row:self.slot(row)[1])
+            same_listings=len(previous)==len(current) and all(self.identities_compatible(before,after)
+                and before.get('price')==after.get('price') for before,after in zip(previous,current))
+            if contradiction or (previous and (not clean or len(clean)!=len(raw) or not same_listings)):
                 self.page_revision+=1
             self.rows={};self.row_pixels={};self.quote_proofs={};self.area=dict(area);self.set_guards(area,image,exclude)
         elif all_verified:
             self.set_guards(area,image,exclude);same=True
         for row in clean:
-            slot=self.slot(row);self.rows[slot]=(deepcopy(row),now)
+            slot=self.slot(row);saved=self.rows.get(slot)
+            if saved and self.identity(saved[0])!=self.identity(row):self.quote_proofs.pop(slot,None)
+            self.rows[slot]=(deepcopy(row),now)
             rect=QRect(*slot)
             if image is not None and image.rect().contains(rect):
                 self.row_pixels[slot]=image.copy(rect).convertToFormat(QImage.Format.Format_RGBA8888)
@@ -167,7 +212,7 @@ class ShopRows:
             saved=self.rows.get(self.slot(row))
             if references and (row.get('covered') or not row.get('name')) and saved:
                 covered=bool(row.get('covered'))
-                row=deepcopy(saved[0]);row.update(retained=True,covered=covered,reference_only=True,listing_old=True,price=None)
+                row=self.reference_copy(saved[0],row);row.update(retained=True,covered=covered,reference_only=True,listing_old=True,price=None)
             elif row.get('covered'):
                 # Identity remains unknown when the page cannot be verified.
                 row['price']=None
@@ -184,7 +229,7 @@ class ShopRows:
             if (saved and pixels is not None and (row.get('covered') or row.get('listing_old'))
                     and image.rect().contains(QRect(*slot))
                     and image.copy(QRect(*slot)).convertToFormat(QImage.Format.Format_RGBA8888)==pixels):
-                row=deepcopy(saved[0]);self.rows[slot]=(deepcopy(row),now)
+                row=self.reference_copy(saved[0],row);self.rows[slot]=(deepcopy(row),now)
                 row=self.decorate(row,now)
             result.append(row)
         return result

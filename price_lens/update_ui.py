@@ -13,8 +13,16 @@ from .updates import RELEASES
 def release_summary(offer):
     text=(offer or {}).get('release',{}).get('body','')
     if not isinstance(text,str):return ''
+    # The full release page carries the README donation artwork.  Keep that
+    # footer out of the compact, plain-text review, including short releases
+    # whose four-line allowance would otherwise reach the HTML/image blocks.
+    footer=re.search(r'^\s*(?:<h[1-6]\b[^>]*>\s*|#{1,6}\s*)?Buy monkey a beer\b',text,re.I|re.M)
+    if footer:text=text[:footer.start()]
+    text=re.sub(r'<!--.*?(?:-->|$)','',text,flags=re.S)
+    text=re.sub(r'</?[a-z][^>]*>','',text,flags=re.I)
     lines=[]
     for line in text.splitlines():
+        line=re.sub(r'!\[[^\]]*\]\([^)]+\)','',line)
         if not line.strip() or line.lstrip().startswith('#'):continue
         line=re.sub(r'^\s*[-*]\s+','',line.strip())
         line=re.sub(r'\[([^\]]+)\]\([^)]+\)',r'\1',line).replace('**','').replace('`','')

@@ -37,6 +37,24 @@ python scripts/test_linux_packages.py debian bookworm-slim
 python scripts/test_linux_packages.py ubuntu 22.04
 ```
 
+Every package QA command selects the exact current source version. Pass
+`--version X.Y.Z` to choose another release; modification time never selects an
+artifact. Missing historical migration baselines are printed as `SKIP`. Add
+`--require-migrations` for release acceptance so missing baselines fail before any
+package transaction. GUI/native-helper checks run in a private Xvfb display and
+D-Bus session with temporary user/XDG directories, no inherited Wayland endpoint
+and software rendering. DEB checks create this inside the distribution root;
+Arch and Linux-host Wine checks do so automatically and require host
+`xvfb-run`/`dbus-run-session` without installing them.
+
+To verify an available recent Linux upgrade baseline, pass
+`--upgrade-from dist/lupin-1.0.1-1-x86_64.pkg.tar.zst` to Arch QA or
+`--upgrade-from dist/lupin_1.0.1-1_amd64.deb` to DEB QA. This option may be repeated;
+inputs must stay in `dist/`, match the expected platform and predate the selected
+release. Explicitly requested missing baselines fail. Missing discontinued
+0.8/0.9/0.10 packages remain explicit skips unless `--require-migrations` is used;
+do not recreate them merely to fill the optional historical matrix.
+
 These install dependencies/package, run offline and isolated X11 checks, verify installed checksums, then remove the package. They do not start screen sharing. Logs and test roots stay ignored under `evidence/` and `.build-tools/`.
 
 `scripts/test_arch_package.py` uses a disposable pacman database under fakeroot. The X11 hotkey test sends input only to the Xvfb server created by the test harness, guarded by its temporary Xauthority path. Wayland shortcut contract tests marshal real D-Bus messages without changing desktop bindings. The source/development app uses a separate hidden desktop identity so it cannot shadow the installed menu entry.
@@ -50,6 +68,13 @@ python scripts/download_runtime.py windows
 python scripts/build_market_helpers.py windows
 python scripts/package_windows.py
 ```
+
+Windows staging first requires the compiled reader to be a Windows x64 PE32+
+executable; a missing or wrong-platform reader cannot replace an existing stage.
+Both staging and the installer builder require the shipped
+`bin/lupin-screen-reader.exe`, its unwind DLL, runtime/helper files, model
+manifests, update resources and launcher/icon assets. An incomplete stage fails
+before Inno Setup runs; the scripts do not compile missing inputs automatically.
 
 Install Inno Setup 6.7.3 or newer. `build-tools.json` pins the compiler installer used for this release. Compile natively:
 
@@ -68,6 +93,12 @@ The installed entry point is `runtime/pythonw.exe -B -m price_lens`. It waits fo
 The Windows program folder is `%LOCALAPPDATA%\Programs\Lupin`. Upgrades move the former program directory while preserving additional files, per-user settings and caches. A canceled setup rolls the move back before commit. The shipped reader is named `lupin-screen-reader.exe` (`lupin-screen-reader` on Linux); its unchanged Rust build output retains its component name. Internal settings, IPC and desktop/portal identities stay stable for compatibility.
 
 On Linux, `scripts/test_windows_installer.py --wine-prefix /path/to/isolated-prefix` validates install/upgrade/removal and the installed suite. Never point it at a game or default Wine prefix. Native Windows capture/physical hotkey testing remains separate from Wine verification.
+
+For historical Windows migration acceptance, add `--upgrade-from /path/to/older-Setup.exe
+--require-migrations`. Without a baseline the harness explicitly reports that
+historical migration was skipped; ordinary same-version upgrade/removal checks
+still run. Wine test Python processes set Qt offscreen internally, independently
+of Wine forwarding environment variables.
 
 ## Updating itch.io
 

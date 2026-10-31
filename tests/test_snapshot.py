@@ -12,10 +12,11 @@ from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 from price_lens.data import Cache
-from price_lens.domain import Item, Quote, compare
+from price_lens.domain import Catalog, Item, Quote, compare
 from price_lens.service import PriceService
 from price_lens.snapshot import SnapshotStore
 from price_lens.snapshot_updater import SnapshotUpdater
+from price_lens.market_lookup import market_lookup,market_lookup_reason
 
 
 def iso(value):
@@ -95,8 +96,88 @@ class SnapshotTests(unittest.TestCase):
         for item in (replace(self.item, name="Other Ore"), replace(self.item, game_id=4010001),
                      replace(self.item, per_set=True)):
             self.assertIsNone(self.store.quote(item))
-        self.assertEqual(self.store.identify([self.item, replace(self.item, game_id=4010001)]), self.item)
-        self.assertIsNone(self.store.identify([self.item, self.item]))
+
+    def test_blue_moon_top_never_inherits_the_same_name_earring_price(self):
+        top=Item(1041078,'Blue Moon',equipment=True,gender='female',sub_category='Top')
+        earring=Item(1032011,'Blue Moon',equipment=True,sub_category='Earring')
+        catalog=Catalog.from_items([top,earring])
+        doc=document(self.now)
+        source=doc['items'][0]
+        doc['items']=[dict(source,id='basil:01032011',name='Blue Moon',price=28888),
+                      dict(source,id='basil:01041078',name='Blue Moon (F)',price=None)]
+        self.store.save(doc,self.now)
+        self.assertIsNone(catalog.resolve('Blue Moon'))
+        self.assertEqual(self.store.lookup(top).reason,'no-sales')
+        self.assertIsNone(self.store.quote(top))
+        self.assertEqual(self.store.quote(earring).price,28888)
+        doc['items']=doc['items'][:1]
+        self.store.save(doc,self.now)
+        self.assertIsNone(catalog.resolve('Blue Moon'))
+        self.assertEqual(self.store.lookup(top).reason,'missing')
+
+    def test_source_typography_is_safe_but_combined_variant_names_stay_rejected(self):
+        doc=document(self.now);source=doc['items'][0]
+        doc['items']=[dict(source,id='cash:01047097',name='Black “Hit Me” Shirt',price=22111),
+                      dict(source,id='cash:01057090',name='Buddy Overall Jeans (Blue or Red)',price=19999.5)]
+        self.store.save(doc,self.now)
+        shirt=Item(1047097,'Black "Hit Me" Shirt',equipment=True,cash=True)
+        blue=Item(1057090,'Buddy Overall Jeans (Blue)',equipment=True,cash=True)
+        self.assertEqual(self.store.lookup(shirt).reason,'priced')
+        self.assertEqual(self.store.quote(shirt).price,22111)
+        # The same row has both the native missing-space spelling and the
+        # provider's curly quotes. Neither may block the other layer's repair.
+        catalog=Catalog.from_items([shirt,blue])
+        native=catalog.resolve('Black "Hit Me"Shirt','chaos')
+        self.assertEqual(native,shirt)
+        self.assertEqual(self.store.quote(native).price,22111)
+        self.assertEqual(self.store.lookup(blue).reason,'variant-mismatch')
+        self.assertIsNone(self.store.quote(blue))
+
+    def test_clipped_ring_with_native_colour_tier_reaches_its_exact_quote(self):
+        catalog=Catalog({'items':[{'id':1112223,'name':'Ink-and-Wash Painting Name Tag Ring',
+                                  'category':'Equipment','sub_category':'Ring'},
+                                 {'id':1112227,'name':'Ink-and-Wash Thought Bubble Ring'}]})
+        doc=document(self.now)
+        doc['items'][0].update(id='cash:01112223',name='Ink-and-Wash Painting Name Tag Ring',price=1900000)
+        self.store.save(doc,self.now)
+        item=catalog.resolve('Ink-and-Wash Painting N...','chaos')
+        self.assertEqual(item.game_id,1112223)
+        self.assertEqual(self.store.quote(item).price,1900000)
+
+    def test_lookup_reasons_distinguish_missing_sales_name_and_units(self):
+        self.store.save(document(self.now),self.now)
+        self.assertEqual(self.store.lookup(None).reason,'unidentified')
+        self.assertEqual(self.store.lookup(replace(self.item,game_id=8)).reason,'missing')
+        self.assertEqual(self.store.lookup(replace(self.item,name='Other Ore')).reason,'variant-mismatch')
+        self.assertEqual(self.store.lookup(replace(self.item,per_set=True)).reason,'unit-mismatch')
+        doc=document(self.now);doc['items'][0]['price']=None
+        self.store.save(doc,self.now)
+        self.assertEqual(self.store.lookup(self.item).reason,'no-sales')
+        service=PriceService(self.cache.path)
+        try:
+            with patch('price_lens.data.get_json',side_effect=AssertionError('No item request')):
+                self.assertEqual(market_lookup_reason(service,self.item),'no-sales')
+                self.assertIn('No observed sales',service.reference(self.item).basis)
+                self.assertEqual(market_lookup_reason(service,replace(self.item,name='Other Ore')),'variant-mismatch')
+                self.assertIn('variant',service.reference(replace(self.item,name='Other Ore')).basis)
+        finally:service.close();service.pool.shutdown(wait=True)
+
+    def test_combined_reference_adapter_reads_each_negative_snapshot_result_once(self):
+        doc=document(self.now);doc['items'][0]['price']=None
+        self.store.save(doc,self.now)
+        service=PriceService(self.cache.path)
+        try:
+            for item,reason in ((self.item,'no-sales'),
+                                (replace(self.item,name='Other Ore'),'variant-mismatch'),
+                                (replace(self.item,per_set=True),'unit-mismatch'),
+                                (replace(self.item,game_id=8),'missing')):
+                with self.subTest(reason=reason),patch.object(service.snapshot,'lookup',wraps=service.snapshot.lookup) as lookup:
+                    result=market_lookup(service,item)
+                    lookup.assert_called_once_with(item)
+                    self.assertEqual(result.reason,reason)
+                    self.assertEqual(result.quote.game_id,item.game_id)
+                    self.assertIsNone(result.quote.price)
+        finally:service.close();service.pool.shutdown(wait=True)
 
     def test_cash_items_use_meso_prices_and_missing_prices_remain_unpriced(self):
         doc = document(self.now)
@@ -141,7 +222,7 @@ class SnapshotTests(unittest.TestCase):
         service = PriceService(self.cache.path)
         try:
             with patch("price_lens.data.get_json", side_effect=AssertionError("No item API calls")) as fetch:
-                for _ in range(20):service.observe([self.item], 300, hovered_id=self.item.game_id)
+                for _ in range(20):service.observe([self.item])
                 self.assertEqual(fetch.call_count, 0)
                 self.assertEqual(service.delivered[self.item.game_id].source, "MesoWatch")
         finally:service.close()

@@ -13,13 +13,13 @@ from .tls import catalog_error_text
 from .watchlist_ui import WatchedItems,WatchButton
 from .search_field import SearchField
 from .reference_details import EntryDetails
+from .market_lookup import market_lookup_reason
 
 
 class PriceSearch(QWidget):
     active_changed=Signal()
     detail_changing=Signal()
     item_selected = Signal(object)
-    identity_selected = Signal(object, object)
     source_requested = Signal(str)
     catalog_retry = Signal()
     reference_requested=Signal(object)
@@ -42,7 +42,6 @@ class PriceSearch(QWidget):
         self.watch_focus = False
         self.pending_identity = None
         self.pending_candidates = ()
-        self.identity_errors = {}
         self.quote = None
         self.error = ""
         self.lookup_state = ""
@@ -187,8 +186,8 @@ class PriceSearch(QWidget):
         self.retry_button.hide()
         self.find_items()
         if selected:
-            current=next((item for item in catalog.items if item.game_id==selected.game_id and key(item.name)==key(selected.name)),None)
-            if current:
+            current=catalog.by_id.get(selected.game_id)
+            if current and key(current.name)==key(selected.name):
                 self.selected=current;self.quote=quote;self.set_results_state(False);self.card_key=None;self.render()
             else:self.clear_selection()
 
@@ -198,7 +197,8 @@ class PriceSearch(QWidget):
         service.sources.updated.connect(self.on_reference_reports)
 
     def catalog_item(self,entry):
-        return next((item for item in self.catalog.items if item.game_id==entry.id and key(item.name)==key(entry.name)),None) if self.catalog else None
+        item=self.catalog.by_id.get(entry.id) if self.catalog else None
+        return item if item and key(item.name)==key(entry.name) else None
 
     def open(self,key):self.reference_requested.emit(tuple(key))
 
@@ -229,7 +229,7 @@ class PriceSearch(QWidget):
                 self.clear_selection();self.set_results_state(False,hint='',matches=False);self.active_changed.emit()
             return
         if not self.watched_items.expanded:return
-        item=next((item for item in self.catalog.items if item.game_id==identity),None) if self.catalog else None
+        item=self.catalog.by_id.get(identity) if self.catalog else None
         if item is None:return
         self.query.blockSignals(True);self.query.clear();self.query.blockSignals(False);self.timer.stop()
         self.selection_source='watch'
@@ -302,8 +302,9 @@ class PriceSearch(QWidget):
         query = item_words(unclipped_name(self.query.text()))
         found = []
         if self.catalog and len(query) >= 2:
+            exact=self.catalog.by_id.get(int(query)) if query.isdecimal() else None
             terms = query.split()
-            found = [item for item in self.catalog.items if all(term in item_words(item.name) for term in terms) or str(item.game_id)==query]
+            found = [exact] if exact else [item for item in self.catalog.items if all(term in item_words(item.name) for term in terms)]
             found.sort(key=lambda item:(item_words(item.name)!=query,not item_words(item.name).startswith(query),item.name.casefold(),item.game_id))
             groups = {}
             for item in found:groups.setdefault(key(item.name),[]).append(item)
@@ -331,7 +332,9 @@ class PriceSearch(QWidget):
                     row.setIcon(self.placeholder_icon);row.setSizeHint(QSize(0,50))
                 elif row.text()!=item.name+suffix:row.setText(item.name+suffix)
                 current[token]=row
-                resolved = self.catalog.resolve(item.name)
+                # A search result containing one exact catalog ID is already
+                # an explicit selection, even if other IDs share its name.
+                resolved = candidates[0] if len(candidates)==1 else None
                 row.setData(Qt.ItemDataRole.UserRole,resolved or (item.name,tuple(candidates)))
                 if self.results.row(row)!=index:
                     if self.results.row(row)>=0:self.results.takeItem(self.results.row(row))
@@ -364,9 +367,11 @@ class PriceSearch(QWidget):
             self.pending_identity = (name,None)
             self.pending_candidates = candidates
             self.selected = self.quote = None
-            self.error = self.identity_errors.get(self.pending_identity, "")
+            self.error = self.lookup_state = ""
             self.set_results_state(False,matches=True)
-            self.identity_selected.emit(self.pending_identity,candidates)
+            # Shared names remain local ambiguity. Market coverage never gets
+            # to choose an item, and a previous manual demand must stop now.
+            self.item_selected.emit(None)
             self.render()
             return
         if item == self.selected:
@@ -379,23 +384,6 @@ class PriceSearch(QWidget):
             self.set_results_state(False,matches=True)
         self.item_selected.emit(item)
         self.render()
-
-    def accept_identity(self, identity, item):
-        if self.pending_identity != identity:return
-        self.pending_identity = None
-        self.pending_candidates = ()
-        self.identity_errors.pop(identity,None)
-        self.selected = item
-        self.error = self.lookup_state = ""
-        self.item_selected.emit(item)
-        self.render()
-
-    def identity_error(self, identity, message):
-        if len(self.identity_errors)>=256:self.identity_errors.clear()
-        self.identity_errors[identity] = message
-        if self.pending_identity == identity:
-            self.error = message
-            self.render()
 
     def accept_quote(self, item_id, quote):
         if self.selected and self.selected.game_id == item_id:
@@ -421,7 +409,8 @@ class PriceSearch(QWidget):
             self.detail_scroll.setVisible(bool(self.selected or self.pending_identity))
             self.layout().setStretch(self.bottom_spacer,0 if self.selected or self.pending_identity else 1)
         from .price_widgets import display_age
-        state = (self.selected,self.pending_identity,self.quote,self.error,self.lookup_state,self.ttl,display_age(self.quote,time.time(),self.ttl))
+        lookup_reason=market_lookup_reason(self.market,self.selected)
+        state = (self.selected,self.pending_identity,self.quote,self.error,self.lookup_state,lookup_reason,self.ttl,display_age(self.quote,time.time(),self.ttl))
         if state == self.card_key:return
         self.card_key = state
         card = getattr(self,"price_view",None)
@@ -429,7 +418,7 @@ class PriceSearch(QWidget):
             self.pending_view.hide()
             data = dict(item=self.selected,row={"name":self.selected.name},quote=self.quote,
                         now=time.time(),ttl=self.ttl,hovered=True,lookup_error=bool(self.error),
-                        lookup_state=self.lookup_state,
+                        lookup_state=self.lookup_state,lookup_reason=lookup_reason,
                         open_source=self.source_requested.emit,context_name="Classic World · market price")
             changed = getattr(self,"card_item",None) != self.selected.game_id
             record=self.store.entry('items',self.selected.game_id) if self.store else None
@@ -461,6 +450,7 @@ class PriceSearch(QWidget):
             self.pending_view.setVisible(bool(self.pending_identity))
             if self.pending_identity:
                 self.pending_name.setText(self.pending_identity[0])
-                self.pending_message.setText("The price source couldn't identify this item. Try again later." if self.error else "Checking market price…")
+                self.pending_message.setText('Item name ambiguous · search by exact item ID' if len(self.pending_candidates)>1
+                                             else 'Item unidentified · check the item name')
             self.reference_changed.emit()
         if changed_identity:self.active_changed.emit()

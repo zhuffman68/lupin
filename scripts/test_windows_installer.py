@@ -7,6 +7,9 @@ import subprocess
 import shutil
 import time
 
+from qa_common import (add_release_arguments, artifact_path, migration_installer,
+                       qa_entrypoint, windows_python, wine_test_prefix)
+
 ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "{1E77CC5D-AE19-4808-AD70-E009B578BA74}_is1"
 
@@ -15,14 +18,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wine-prefix", type=Path, required=True)
     parser.add_argument("--upgrade-from", type=Path, help="Exercise migration from an earlier installer")
+    add_release_arguments(parser)
     args = parser.parse_args()
-    prefix = args.wine_prefix.resolve()
-    if prefix == Path.home() / ".wine":
-        parser.error("Use an isolated test prefix, never the default/game prefix")
+    installer = artifact_path(ROOT / "dist", "windows", args.version)
+    args.upgrade_from = migration_installer(args.upgrade_from, required=args.require_migrations)
+    try:
+        prefix = wine_test_prefix(args.wine_prefix)
+    except ValueError as error:
+        parser.error(str(error))
     # Windows tests must not export test shortcuts/icons onto the Linux desktop.
     env = {**os.environ, "WINEPREFIX": str(prefix), "WINEDEBUG": "-all", "WINEDLLOVERRIDES": "mscoree,mshtml=;winemenubuilder.exe=d",
            "QT_QPA_PLATFORM": "offscreen"}
-    installer = max((ROOT / "dist").glob("Lupin-*-Windows-x64-Setup.exe"), key=lambda p: p.stat().st_mtime)
     evidence = ROOT / "evidence"
     evidence.mkdir(exist_ok=True)
     log_path = evidence / "windows-installer-wine.log"
@@ -57,14 +63,14 @@ def main():
 
         def cache_marker(base=None):
             base = base or app
-            cache = subprocess.check_output(["wine", str(base/"runtime/python.exe"), "-B", "-c", cache_code], cwd=base, env=env, text=True).strip()
+            cache = subprocess.check_output(["wine", *windows_python(base/"runtime/python.exe", code=cache_code)], cwd=base, env=env, text=True).strip()
             return unix_path(cache) / "installer-preservation-check.txt"
 
         def start_ui(base=None):
             base=base or app
             own_runtime=base/"runtime/python.exe"
             own_gui=base/"runtime/pythonw.exe"
-            process = subprocess.Popen(["wine", str(own_gui), "-B", "-m", "price_lens"],
+            process = subprocess.Popen(["wine", *windows_python(own_gui, module="price_lens")],
                                        cwd=base, env=env, stdout=log, stderr=subprocess.STDOUT)
             script = ("from PySide6.QtCore import QCoreApplication; "
                       "from price_lens.control import request; app=QCoreApplication([]); "
@@ -73,7 +79,7 @@ def main():
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 assert process.poll() is None, "App exited before becoming ready"
-                probe = subprocess.run(["wine", str(own_runtime), "-B", "-c", script], cwd=base, env=env,
+                probe = subprocess.run(["wine", *windows_python(own_runtime, code=script)], cwd=base, env=env,
                                        stdout=log, stderr=subprocess.STDOUT, timeout=5)
                 if probe.returncode == 0:
                     return process
@@ -117,11 +123,12 @@ def main():
         programs = unix_path(roaming) / "Microsoft/Windows/Start Menu/Programs"
         assert (programs / "Lupin/Lupin.lnk").exists(), "Lupin Start menu shortcut missing"
         assert not (programs / "Classic Price Lens/Classic Price Lens.lnk").exists(), "Legacy shortcut left behind"
-        run([runtime, "-B", "-m", "price_lens", "--version"], app)
-        run([runtime, "-B", "-m", "price_lens", "--self-test"], app)
+        run(windows_python(runtime, code=f"from price_lens import __version__; assert __version__ == {args.version!r}, __version__"), app)
+        run(windows_python(runtime, module="price_lens", arguments=["--version"]), app)
+        run(windows_python(runtime, module="price_lens", arguments=["--self-test"]), app)
         # Give the full suite its own deadline, separate from one transaction.
         # Keep per-test bounds and verbose names so a stall remains diagnosable.
-        run([runtime, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"], app, timeout=300)
+        run(windows_python(runtime, module="unittest", arguments=["discover", "-s", "tests", "-v"]), app, timeout=300)
         marker = cache_marker()
         if legacy_marker:
             assert marker == legacy_marker and marker.is_file(), "Rename changed or removed the user cache"
@@ -132,16 +139,16 @@ def main():
         # Recreate the old app-owned wrapper to verify cleanup on an ordinary
         # in-place upgrade too, even when --upgrade-from was not supplied.
         (app/"windows-selftest.py").write_text("# Retired portable self-test wrapper.\n")
-        run([gui_runtime, "-B", "-m", "price_lens", "--minimize"], app, timeout=10)
+        run(windows_python(gui_runtime, module="price_lens", arguments=["--minimize"]), app, timeout=10)
         assert first.poll() is None, "Minimizing closed the app"
-        run([gui_runtime, "-B", "-m", "price_lens"], app, timeout=10)
+        run(windows_python(gui_runtime, module="price_lens"), app, timeout=10)
         assert first.poll() is None, "Second launch replaced the existing app"
         run([installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"])
         assert first.wait(timeout=30) == 0, "Upgrade did not close the existing app cleanly"
         assert marker.is_file(), "Upgrade removed user cache"
         assert not (app/"windows-selftest.py").exists(), "Upgrade retained the retired portable self-test wrapper"
         second = start_ui()
-        run([gui_runtime, "-B", "-m", "price_lens", "--minimize"], app, timeout=10)
+        run(windows_python(gui_runtime, module="price_lens", arguments=["--minimize"]), app, timeout=10)
         run([app / "unins000.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
         assert second.wait(timeout=30) == 0, "Uninstall did not close the app cleanly"
         deadline = time.monotonic() + 10
@@ -157,4 +164,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    qa_entrypoint(main, __file__)

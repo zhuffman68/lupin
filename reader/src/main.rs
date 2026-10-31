@@ -16,6 +16,7 @@ mod tooltip_association;
 mod centered_tooltip;
 mod shop_prices;
 mod shop_selection;
+mod shop_panes;
 use game_area::{Locator, Rect};
 
 #[derive(Deserialize)]
@@ -156,8 +157,7 @@ fn main() {
                 pointer: request.pointer,
             };
             let shop_reader=reader.get_or_insert_with(PlayerShopReader::bundled);
-            let mut shop_reading=shop_reader.read(&capture);
-            price_recovery.apply(&capture,&mut shop_reading,shop_reader);
+            let shop_reading=shop_panes::read(&capture,shop_reader,&mut price_recovery);
             let mut value = serde_json::to_value(shop_reading)?;
             if request.tooltip {
                 if let Some(pointer) = request.pointer {

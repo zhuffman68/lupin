@@ -1,7 +1,7 @@
 """Native description bounds from public OCR samples, including clipped panels."""
 from pathlib import Path
 import unittest
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect,Qt
 from PySide6.QtGui import QImage,QColor
 from price_lens.tooltip_geometry import description_bounds,still_present,TooltipReference
 
@@ -108,3 +108,47 @@ class TooltipGeometryTests(unittest.TestCase):
         box=description_bounds(image,dict(x=208,y=492,width=219,height=28))
         self.assertIsNotNone(box);self.assertTrue(box.contains(QRect(208,492,219,28)))
         self.assertTrue(still_present(image,box));self.assertGreater(box.height(),300)
+
+    def comparison_pair(self):
+        from PySide6.QtGui import QPainter
+        image=QImage(800,600,QImage.Format.Format_RGBA8888);image.fill(QColor('#eeeeee'))
+        painter=QPainter(image)
+        for left,height in ((200,210),(441,240)):
+            painter.fillRect(left,350,236,height,QColor(70,65,105))
+            # A real frame can have a darker middle stroke. Requiring only a
+            # bright stripe loses the frame and joins the two purple bodies.
+            for x in (left,left+233):
+                painter.fillRect(x,350,3,height,QColor(60,60,90))
+                painter.fillRect(x+1,350,1,height,QColor(30,26,40))
+            painter.fillRect(left,350,236,3,QColor(60,60,90))
+            painter.fillRect(left,351,236,1,QColor(30,26,40))
+        painter.end();return image
+
+    def test_comparison_panels_do_not_merge_when_the_rim_middle_is_darker(self):
+        image=self.comparison_pair()
+        primary=description_bounds(image,dict(x=210,y=363,width=120,height=12))
+        comparison=description_bounds(image,dict(x=451,y=363,width=120,height=12))
+        self.assertIsNotNone(primary);self.assertIsNotNone(comparison)
+        self.assertLess(primary.right(),comparison.left())
+        self.assertLess(primary.width(),260);self.assertLess(comparison.width(),260)
+        self.assertLess(primary.height(),comparison.height())
+
+    def test_colour_fallback_stops_at_a_proven_comparison_divider(self):
+        from PySide6.QtGui import QPainter
+        image=self.comparison_pair();painter=QPainter(image)
+        painter.fillRect(200,350,4,210,QColor(70,65,105));painter.end()
+        bounds=description_bounds(image,dict(x=210,y=363,width=120,height=12))
+        self.assertIsNotNone(bounds);self.assertLess(bounds.right(),441)
+
+    def test_scaled_pairs_keep_unequal_panels_separate_in_small_windows(self):
+        original=self.comparison_pair()
+        for scale in (.8,1.,1.25,1.5,2.):
+            with self.subTest(scale=scale):
+                image=original.scaled(round(original.width()*scale),round(original.height()*scale),
+                                      Qt.AspectRatioMode.IgnoreAspectRatio,Qt.TransformationMode.SmoothTransformation)
+                area=dict(x=round(210*scale),y=round(363*scale),width=round(120*scale),height=round(12*scale))
+                bounds=description_bounds(image,area)
+                self.assertIsNotNone(bounds)
+                self.assertLess(bounds.width(),270*scale)
+                self.assertLess(bounds.right(),441*scale)
+                self.assertTrue(still_present(image,bounds))
