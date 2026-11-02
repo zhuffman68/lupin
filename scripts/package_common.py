@@ -37,7 +37,7 @@ def stage_application(out):
     for source in (ROOT / "docs").glob("PATCH_*.md"):
         shutil.copy2(source, documentation / source.name)
     fixtures = ROOT / "vendor/minerva/samples"
-    categories = {"player-shop": ["gems-and-ores", "live-greater-chaos-and-intermediate-scrolls", "equips-two-sold-out", "equips-under-the-pointer-and-its-tooltip", "ideal-ratio-weapons-and-a-robe"],
+    categories = {"player-shop": ["gems-and-ores", "live-greater-chaos-and-intermediate-scrolls", "equips-two-sold-out", "equips-under-the-pointer-and-its-tooltip", "ideal-ratio-weapons-and-a-robe", "a-scroll-cut-short", "potions-and-a-selected-listing", "ores-and-bundles-of-800"],
                   "item-tooltip": ["screw@60,20"],
                   "exp-bar": ["100300__64.49--ideal-ratio-1366x768-strip"]}
     for category, names in categories.items():
