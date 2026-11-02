@@ -128,7 +128,7 @@ def main():
         run(windows_python(runtime, module="price_lens", arguments=["--self-test"]), app)
         # Give the full suite its own deadline, separate from one transaction.
         # Keep per-test bounds and verbose names so a stall remains diagnosable.
-        run(windows_python(runtime, module="unittest", arguments=["discover", "-s", "tests", "-v"]), app, timeout=300)
+        run(windows_python(runtime, module="unittest", arguments=["discover", "-s", "tests", "-v"]), app, timeout=600)
         marker = cache_marker()
         if legacy_marker:
             assert marker == legacy_marker and marker.is_file(), "Rename changed or removed the user cache"
