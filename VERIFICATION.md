@@ -1,14 +1,56 @@
 # Verification — 2026-11-01
 
-## 1.0.3 release preparation
+## 1.0.3 — published and verified
 
-The user authorized building, committing, pushing and publishing after accepting
-the preview. Source/native checks are recorded below. Package transactions and
-public-download checks are recorded separately in the versioned verification
-report attached to the GitHub release. The host installation and active capture
-session remain unchanged during release preparation.
+[Lupin 1.0.3](https://github.com/zhuffman68/lupin/releases/tag/v1.0.3) is the
+published latest stable GitHub release. Its annotated tag resolves to
+`bb42bfb098ae2f9f1eb049a11131f024c27cc2e2`. Both staged application/test trees
+match that clean source, with **255 files each**. The later QA-only commit
+`331b206` increases the Windows suite deadline; it changes no bundled file.
 
-## Local source preview — unreleased
+- **Source:** 1,218 tests, three skips; 63 native reader tests; 39 release-tool
+  tests. Both release readers were cross-compiled offline with pinned Rust
+  1.98.1. Runtime and model manifests remain unchanged from 1.0.2, and both
+  local translation model bundles are included.
+- **Final installed suites:** 1,212 tests on each target: Windows/Wine
+  (**31 skips, 266.952 s**), Arch/Manjaro (**six skips, 187.666 s**),
+  Debian 12 (**six skips, 187.168 s**) and Ubuntu 22.04 (**six skips,
+  183.335 s**). Each required **1.0.2 → 1.0.3** upgrade, file checks, removal
+  and cache preservation passed. Separate clean-install/removal probes also
+  passed on all four targets. Discontinued 0.8/0.9/0.10 baselines remain explicit
+  skips; they are not substitutes for the exercised 1.0.2 upgrade.
+- Installed checks caught three omitted public shop fixture pairs in the first
+  packages. Those builds were rejected, the fixtures included and all packages
+  rebuilt. The final suites pass all 27 shop-component tests. The expanded
+  Wine suite uses a bounded 600-second deadline after the old 300-second
+  deadline was reached; individual test bounds remain in place.
+- **Public release:** all **nine assets** match the local release files.
+  Anonymous HTTPS downloads of all three complete packages returned **200**
+  and matched the signed byte counts and SHA-256 checksums. The pinned
+  Ed25519 signature (key `2e52b218af495ba8`), latest-release redirect, exact
+  tag and changelog body passed verification. The centered donation button,
+  drinking monkey and spacer artwork are publicly available and match their
+  committed originals.
+- The exact **1.0.2 updater offers 1.0.3** for Windows, Arch and DEB. The
+  1.0.3 client correctly offers no update. Both clients use anonymous public
+  endpoints and validate the signed manifest. No delta met the 80% threshold;
+  these updates use the full native packages. Capture compatibility is declared
+  for 1.0.2, whose sharing protocol/runtime files are unchanged.
+- Linux native market local-page/Unicode checks and both actual local
+  translation workers pass. **Wine does not prove native Windows game capture,
+  physical hotkeys, mixed DPI or production WebView2.** The Wine runtime check
+  returns 10, so installer transaction QA explicitly skips WebView2 preparation.
+- Package QA used private Xvfb/D-Bus/user/XDG environments and disposable package
+  roots. The host installation and approved live preview/sharing session were
+  retained. Private screenshots, caches, databases and release credentials are
+  excluded from every package. No game hooks or game-process access were added.
+
+[Download the verification report](https://github.com/zhuffman68/lupin/releases/download/v1.0.3/VERIFICATION-1.0.3.md)
+and [build information](https://github.com/zhuffman68/lupin/releases/download/v1.0.3/BUILDINFO-1.0.3.json).
+Private receipts remain under `evidence/lupin-1.0.3/`, including the complete
+anonymous-download/update-client verification and platform package logs.
+
+## Pre-release source preview — 2026-11-01
 
 - The new-item case was reproduced live on **Dark Starlight (M)** beside its
   **Grey T-Shirt (M)** comparison. The visible icon interior, title and both
@@ -40,7 +82,8 @@ session remain unchanged during release preparation.
   reader SHA-256:
   `914dd878a612f175f3308007c6bdbb320aa5645e57db881e30c7c0e3d9c06df1`.
   Private records are in `evidence/inventory-animation-20261101/`; they are not
-  shipped. Installer builds, installation, commits and publishing remain on hold.
+  shipped. These were pre-release checks; the completed package and publication
+  checks are recorded above.
 - The inventory follow-up reproduced two additional rejection causes: blended
   antialiased title edges over scenery, and a cursor envelope leaving a narrow
   exact strip below the old cell-coverage cutoff. The source-bound title now
