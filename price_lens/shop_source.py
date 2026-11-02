@@ -13,6 +13,63 @@ MIN_VISIBLE_PIXELS=32
 MIN_VISIBLE_FRACTION=.10
 
 
+def native_occlusion(rect,scale=1.0):
+    """Include the native frame/shadow beyond rounded OCR body coordinates."""
+    if rect is None:return None
+    padding=max(2,min(12,round(4*scale)))
+    return rect.adjusted(-padding,-padding,padding,padding)
+
+
+def selected_component_pixels(rgb,scale):
+    """Normalize a proven orange band and its broad native edge rules.
+
+    Selection has different text antialiasing and a coloured separator/bevel.
+    Only the bounded outer scanlines may use a separately measured edge; text
+    strokes and foreign popup pixels remain independently checked.
+    """
+    orange=np.array((251,167,46),dtype=np.float32)
+    along=(rgb*orange).sum(axis=2)/float(orange@orange)
+    strict=(along>=.45)&(along<=1.16)&(np.max(np.abs(rgb-along[:,:,None]*orange),axis=2)<=8)
+    if not np.any(strict):return None
+    colours,counts=np.unique(rgb[strict],axis=0,return_counts=True)
+    base=colours[int(np.flatnonzero(counts==counts.max())[-1])]
+    gain=(rgb*base).sum(axis=2)/float(base@base)
+    native=(gain>=0)&(gain<=1.16)&(np.max(np.abs(rgb-gain[:,:,None]*base),axis=2)<=28)
+    brightness=float(base@orange)/float(orange@orange)
+    blue=np.array((202,213,223),dtype=np.float32)*brightness
+    rule=np.array((255,195,96),dtype=np.float32)*brightness
+    rule_gain=(rgb*rule).sum(axis=2)/float(rule@rule)
+    edge=max(1,math.ceil(4*scale))
+    rows=np.arange(rgb.shape[0])[:,None]
+    edge_rows=(rows<edge)|(rows+edge>=rgb.shape[0])
+    rule_native=(rule_gain>=0)&(rule_gain<=1.16)&(np.max(np.abs(rgb-rule_gain[:,:,None]*rule),axis=2)<=16)&edge_rows
+    use_rule=rule_native&~native
+    gain=np.where(use_rule,rule_gain,gain);native|=rule_native
+    blue_gain=(rgb*blue).sum(axis=2)/float(blue@blue)
+    blue_blank=(blue_gain>=.7)&(blue_gain<=1.16)&(np.max(np.abs(rgb-blue_gain[:,:,None]*blue),axis=2)<=8)
+    base_gain=(rgb*base).sum(axis=2)/float(base@base)
+    base_blank=(base_gain>=.7)&(base_gain<=1.16)&(np.max(np.abs(rgb-base_gain[:,:,None]*base),axis=2)<=8)
+    rule_blank=(rule_gain>=.7)&rule_native
+    neutral=(rgb.max(axis=2)-rgb.min(axis=2)<=12)&(rgb.min(axis=2)>=180*brightness)
+    blend=(rgb[:,:,2]-base[2])/(blue[2]-base[2])
+    mixed=base*(1-blend[:,:,None])+blue*blend[:,:,None]
+    bevel=(blend>=0)&(blend<=1)&(np.max(np.abs(rgb-mixed),axis=2)<=8)
+    blank=base_blank|blue_blank|rule_blank|neutral|bevel
+    minimum=math.ceil(12*scale)
+    for y in np.flatnonzero(edge_rows[:,0]):
+        if not np.any(blank[y]):continue
+        colours,counts=np.unique(rgb[y,blank[y]],axis=0,return_counts=True)
+        index=int(np.flatnonzero(counts==counts.max())[-1])
+        if counts[index]<minimum:continue
+        matches=np.max(np.abs(rgb[y]-colours[index]),axis=1)<=2
+        foreign=np.flatnonzero(~native[y]&~matches)
+        prefix=int(foreign[0]) if len(foreign) else rgb.shape[1]
+        if prefix<minimum or int(matches[:prefix].sum())*100<prefix*85:continue
+        accepted=matches.copy();accepted[prefix:]=False
+        native[y,accepted]=True;gain[y,accepted]=1
+    return gain,native
+
+
 @dataclass(frozen=True)
 class RowProof:
     rect: tuple[int,int,int,int]
@@ -56,15 +113,27 @@ def _exclusions(values,rect):
     return tuple(result)
 
 
-def _cursor(pointer,scale):
+def cursor_rectangle(pointer,scale=1.0):
+    """Native hand/cursor envelope, matching the inventory source proof.
+
+    An oversized rectangle hid readable title/digit strokes well below the
+    captured cursor, causing delayed or missing cards beside native popups.
+    Pixel/palette checks independently reject foreign content beyond it.
+    """
     if pointer is None:return None
-    return QRect(pointer[0]-round(8*scale),pointer[1]-round(8*scale),
-                 max(1,round(32*scale)),max(1,round(36*scale)))
+    try:pointer=_point(pointer);scale=_scale(scale)
+    except (TypeError,ValueError,OverflowError):return None
+    # The animated hand's black top outline reaches seven pixels above its
+    # hotspot, one beyond the old envelope. Round outward at fractional scales
+    # to match the native inventory proof, without masking more of the item.
+    inset=math.ceil(6*scale);top=math.ceil(7*scale)
+    return QRect(pointer[0]-inset,pointer[1]-top,
+                 max(1,math.ceil(32*scale)),max(1,math.ceil(36*scale)+top-inset))
 
 
 def _masks(rect,old_pointer,pointer,scale,old_exclude,exclude):
     hidden=[QRect(*area) for area in (*old_exclude,*exclude)]
-    hidden.extend(area for point in (old_pointer,pointer) if (area:=_cursor(point,scale)) is not None)
+    hidden.extend(area for point in (old_pointer,pointer) if (area:=cursor_rectangle(point,scale)) is not None)
     return [part for area in hidden if not (part:=area.intersected(rect)).isEmpty()]
 
 
@@ -104,6 +173,40 @@ def _band_tint(rgb,visible):
         if int((palette&(np.max(np.abs(rgb-tint),axis=2)<=1)).sum())<count*.40:continue
         matches.append((family,tint))
     return matches[0] if len(matches)==1 else None
+
+
+def native_name_state(before,after,visible):
+    """Compare exposed native name ink, separately from blocking pane pixels.
+
+    This supplies no identity. Normalizing ink against each native background
+    avoids treating orange selection or brightness changes as different text;
+    purple descriptions and insufficient exposed pixels remain unknown.
+    """
+    count=int(visible.sum())
+    if count<max(64,visible.size*.35):return 'unknown'
+    before=before.astype(np.float32);after=after.astype(np.float32)
+    old=_band_tint(before,visible);new=_band_tint(after,visible)
+    if old is None or new is None:return 'unknown'
+    def coverage(rgb,tint):
+        gain=(rgb*tint).sum(axis=2)/float(tint@tint)
+        return gain,np.max(np.abs(rgb-gain[:,:,None]*tint),axis=2)<=8
+    a,valid_a=coverage(before,old[1]);b,valid_b=coverage(after,new[1])
+    # A partly overlapping purple description is unknown at those pixels,
+    # rather than missing/changed black item-name glyphs.
+    visible=visible&valid_a&valid_b
+    if int(visible.sum())<max(64,visible.size*.35):return 'unknown'
+    a=visible&(a<.65);b=visible&(b<.65)
+    union=int((a|b).sum());changed=int((a^b).sum())
+    if union<8:return 'unknown'
+    if changed<=1:return 'same'
+    return 'changed' if changed>=max(8,union*.25) else 'unknown'
+
+
+def native_name_ink_changed(before,after,visible):
+    # Unchanged bands are the common capture path. Identity/page anchors use
+    # native_name_state directly so empty background cannot prove a page.
+    if np.array_equal(before[visible],after[visible]):return False
+    return native_name_state(before,after,visible)=='changed'
 
 
 def _selection_equivalent(before,after,visible,scale):

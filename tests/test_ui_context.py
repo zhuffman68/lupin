@@ -62,8 +62,8 @@ class FakeReader(QObject):
     def set_auto_area(self, enabled):
         self.auto_active = enabled
 
-    def request_rescan(self):
-        self.shop_fingerprint=None
+    def request_rescan(self,*,preserve_shop_cache=False):
+        if not preserve_shop_cache:self.shop_fingerprint=None
         self.image_sequence+=1
 
     def start(self, *args):
@@ -163,6 +163,56 @@ class FakeThumbnails(QObject):
 
 
 class ContextUiTests(unittest.TestCase):
+    def test_a_full_page_of_cached_prices_updates_the_control_panel_once(self):
+        w=self.window;w.mode='live';now=time.time()
+        w.on_catalog(Catalog({'items':[dict(id=i,name=f'Example Item {i}') for i in range(1,7)]}))
+        w.rows=[dict(name=f'Example Item {i}',area=dict(x=100,y=100+i*40,width=162,height=35),
+            price=dict(quantity=1,mesos=100*i)) for i in range(1,7)]
+        def deliver(items):
+            for item in items:
+                w.service.quote_ready.emit(item.game_id,Quote(item.game_id,item.game_id*100,now,now,20,
+                    'MesoWatch','https://meso.watch/','24h'))
+        with patch.object(w.service,'observe',side_effect=deliver),patch.object(w,'render') as render,\
+                patch.object(w.database_panel,'update_market') as database:
+            self.assertTrue(w.request_prices())
+            self.assertEqual(set(w.quotes),set(range(1,7)))
+            render.assert_called_once();database.assert_called_once()
+
+    def test_single_inventory_card_keeps_its_native_frame_and_title_uncovered(self):
+        from types import SimpleNamespace
+        from price_lens.annotation_geometry import label_rectangle
+        w=self.window;w.mode='live';w.last_screen=time.time();w.rows=[]
+        screen=w.screens[w.screen_index].geometry()
+        w.reader.image=QImage(screen.width(),screen.height(),QImage.Format.Format_RGBA8888)
+        panel=QRect(400,250,236,300);point=QPoint(500,225)
+        w.reader.tooltip_title_proof=SimpleNamespace(panel=panel.getRect())
+        w.tooltip_result=dict(name='Example Hat',area=dict(x=409,y=262,width=100,height=12),_pointer=[500,225])
+        w.draw_labels(time.time(),False)
+        row=next(r for r in w.overlay.rows if r.get('kind')=='item')
+        self.assertIn(list(panel.getRect()),row['avoid_regions'])
+        row={**row,'_width':230,'_cursor_offset':(-91,-3)}
+        placed=label_rectangle(row,point+screen.topLeft(),screen.translated(-screen.topLeft()),screen.topLeft())
+        self.assertIsNotNone(placed);self.assertFalse(placed.intersects(panel))
+        # The OCR bridge may keep a verified popup briefly without a new title
+        # proof. A tick must not move our card back over its native frame.
+        w.reader.tooltip_title_proof=None;w.tooltip_reference.panel=panel
+        with patch('price_lens.ui.still_present',return_value=True):w.draw_labels(time.time(),False)
+        row=next(r for r in w.overlay.rows if r.get('kind')=='item')
+        self.assertIn(list(panel.getRect()),row['avoid_regions'])
+        with patch('price_lens.ui.still_present',return_value=False):w.draw_labels(time.time(),False)
+        row=next(r for r in w.overlay.rows if r.get('kind')=='item')
+        self.assertNotIn(list(panel.getRect()),row['avoid_regions'])
+
+    def test_verified_full_shop_context_takes_precedence_over_a_truncated_native_crop(self):
+        w=self.window;area=dict(x=300,y=200,width=240,height=300)
+        w.shop_rows.area=area;w.shop_rows._page_proven=True;w.shop_open=True
+        w.reader.shop_context=QRect(300,200,240,35)
+        self.assertEqual(w.effective_shop_context(),QRect(300,200,240,300))
+        w.shop_rows._page_proven=False
+        self.assertEqual(w.effective_shop_context(),QRect(300,200,240,300))
+        w.shop_open=False
+        self.assertEqual(w.effective_shop_context(),w.reader.shop_context)
+
     def test_database_is_the_fourth_tab_and_browsing_needs_no_capture_or_price_request(self):
         from test_reference import generation,allow_fixture
         w=self.window;w.reference.store.replace(*generation())
@@ -691,6 +741,28 @@ class ContextUiTests(unittest.TestCase):
             'guards':[dict(x=300,y=200,width=240,height=16),dict(x=95,y=95,width=220,height=2)]}
         return reading
 
+    def test_inventory_antialias_blending_survives_capture_and_ui_title_checks(self):
+        from PySide6.QtGui import QPainter
+        w=self.window;screen=w.screens[w.screen_index].geometry()
+        w.reader.image=QImage(screen.width(),screen.height(),QImage.Format.Format_RGBA8888)
+        reading=self.primary_inventory_reading();reading['pointerAtRead']=[340,240]
+        before=w.reader.image.copy();p=QPainter(before)
+        p.fillRect(110,107,30,5,QColor('white'));p.fillRect(110,112,30,1,QColor('#adb2cb'));p.end()
+        latest=before.copy();p=QPainter(latest);p.fillRect(110,112,30,1,QColor('#bbc0d4'));p.end()
+        w.reader.submitted_image=before;w.reader.image=latest
+        w.on_reading(reading)
+        self.assertIsNotNone(w.tooltip_context)
+        self.assertEqual(w.item_for(w.tooltip_result).game_id,1)
+        self.assertEqual(len([r for r in w.overlay.rows if r.get('kind')=='item']),1)
+        context=w.tooltip_context
+        next_frame=latest.copy();p=QPainter(next_frame);p.fillRect(110,112,30,1,QColor('#c5c9d9'));p.end()
+        w.reader.image=next_frame;w.on_image(next_frame)
+        self.assertIs(w.tooltip_context,context)
+        self.assertIsNotNone(w.tooltip_result)
+        # A real changed opaque letter still retires the reference immediately.
+        next_frame.setPixelColor(111,108,QColor('red'));w.reader.image=next_frame;w.on_image(next_frame)
+        self.assertIsNone(w.tooltip_context);self.assertIsNone(w.tooltip_result)
+
     def test_primary_inventory_proof_expires_when_pointer_changes_cells(self):
         w=self.window;w.on_reading(self.primary_inventory_reading())
         self.assertEqual(w.tooltip_context.token,'inventory:tab:slot')
@@ -708,18 +780,85 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(w.overlay.rows,[])
         self.assertIsNone(w.tooltip_reference.observe(None,w.reader.image,w.reader.pointer))
 
+    def test_old_shop_epoch_cannot_discard_an_independently_current_inventory_proof(self):
+        w=self.window;reading=self.primary_inventory_reading()
+        reading.update(shopViewportEpoch=w.shop_browsing.epoch-1,_shop_stale=True)
+        reading['shop']={'area':dict(x=600,y=500,width=100,height=100),'rows':[]}
+        with patch.object(w.observations,'observe_shop',side_effect=AssertionError('Old shop data reached the current page')):
+            w.on_reading(reading)
+        self.assertEqual(w.tooltip_result['name'],'Example Hat')
+        self.assertIsNotNone(w.tooltip_context)
+        self.assertEqual(w.rows,[])
+
+    def test_an_old_shop_popup_cannot_be_relabelled_as_inventory_after_scrolling(self):
+        w=self.window;reading=self.reading(True)
+        reading['shopViewportEpoch']=w.shop_browsing.epoch-1
+        w.reader.shop_context=None;w.shop_rows.reset()
+        w.on_reading(reading)
+        self.assertIsNone(w.tooltip_result)
+
+    def test_retrying_shop_rows_cannot_discard_an_independently_current_inventory_proof(self):
+        from price_lens.price_observations import ShopRead
+        w=self.window;reading=self.primary_inventory_reading()
+        with patch.object(w.observations,'observe_shop',return_value=ShopRead(None,retry=True)):
+            w.on_reading(reading)
+        self.assertEqual(w.tooltip_result['name'],'Example Hat')
+        self.assertIsNotNone(w.tooltip_context)
+
+    def test_lost_shop_clears_cached_routing_before_inventory_reacquisition(self):
+        w=self.window;self.prepare_shop_description()
+        old=QRect(w.effective_shop_context());w.reader.shop_context=old;w.reader.shop_rect=old
+        w.reader.image.fill(QColor('white'));w.on_image(w.reader.image)
+        self.assertFalse(w.shop_open)
+        self.assertIsNone(w.reader.shop_context);self.assertIsNone(w.reader.shop_rect)
+        self.assertIsNone(w.effective_shop_context())
+
     def test_late_inventory_result_requires_the_same_latest_header_pixels(self):
         w=self.window;reading=self.primary_inventory_reading()
         w.reader.submitted_image=w.reader.image.copy()
-        w.reader.image.setPixelColor(301,201,QColor('red'));w.on_reading(reading)
+        w.reader.image.setPixelColor(310,205,QColor('red'));w.on_reading(reading)
         self.assertIsNone(w.tooltip_result);self.assertIsNone(w.tooltip_context)
         self.assertEqual(w.overlay.rows,[])
+
+    def native_single_tooltip(self,pointer=(340,240)):
+        from PySide6.QtGui import QPainter
+        w=self.window;reading=self.reading(False)
+        w.reader.image.fill(QColor('#eeeeee'))
+        painter=QPainter(w.reader.image)
+        painter.fillRect(QRect(95,95,220,330),QColor('#464b78'))
+        for x in (112,124,139,151,166,183):painter.fillRect(x,105,5,9,QColor('white'))
+        painter.end();w.reader.pointer=pointer
+        reading['pointerAtRead']=list(pointer)
+        return reading
+
+    def test_translucent_inventory_title_background_does_not_delay_a_current_item(self):
+        from PySide6.QtGui import QPainter
+        w=self.window;reading=self.native_single_tooltip()
+        w.reader.submitted_image=w.reader.image.copy()
+        painter=QPainter(w.reader.image);painter.fillRect(270,102,8,16,QColor('#354b73'));painter.end()
+        w.on_reading(reading)
+        self.assertEqual(w.tooltip_result['name'],'Example Hat')
+
+    def test_new_title_ink_cannot_hide_in_a_translucent_background_change(self):
+        from PySide6.QtGui import QPainter
+        w=self.window;reading=self.native_single_tooltip()
+        w.reader.submitted_image=w.reader.image.copy()
+        painter=QPainter(w.reader.image);painter.fillRect(270,102,8,16,QColor('white'));painter.end()
+        w.on_reading(reading)
+        self.assertIsNone(w.tooltip_result)
+
+    def test_a_far_old_popup_is_not_attached_to_a_new_equipment_pointer(self):
+        w=self.window;reading=self.native_single_tooltip((600,500))
+        # The old 640px title search would accept this stale popup even though
+        # its native panel has no proximity to the new source item.
+        w.on_reading(reading)
+        self.assertIsNone(w.tooltip_result)
 
     def test_new_frame_checks_only_the_bound_source_and_name_guards(self):
         w=self.window;w.on_reading(self.primary_inventory_reading())
         w.reader.image.setPixelColor(740,700,QColor('red'));w.on_image(w.reader.image)
         self.assertIsNotNone(w.tooltip_result)
-        w.reader.image.setPixelColor(301,201,QColor('red'));w.on_image(w.reader.image)
+        w.reader.image.setPixelColor(310,205,QColor('red'));w.on_image(w.reader.image)
         self.assertIsNone(w.tooltip_result);self.assertIsNone(w.tooltip_context)
         self.assertEqual(w.overlay.rows,[])
 
@@ -794,7 +933,7 @@ class ContextUiTests(unittest.TestCase):
         count=len(self.window.service.requests)
         self.window.on_image(self.window.reader.image)
         self.assertNotIn('obscured',self.window.overlay.rows[0])
-        self.assertIsNone(self.window.overlay.rows[0]['occlusion'])
+        self.assertNotIn('occlusion',self.window.overlay.rows[0])
         self.assertEqual(len(self.window.service.requests),count)
 
     def test_inventory_hover_outside_store_list_can_show_its_price(self):
@@ -884,6 +1023,86 @@ class ContextUiTests(unittest.TestCase):
         self.assertTrue(self.window.shop_open)
         self.assertEqual(len(self.window.overlay.rows), 1)
 
+    def test_price_entry_keeps_shop_labels_and_only_exports_current_form_geometry(self):
+        from price_lens.reader_request import SubmittedRequest
+        w=self.window;reading=self.reading(shop_hover=True);w.on_reading(reading)
+        cards=dict(w.card_views);saved=list(w.rows)
+        with patch('price_lens.shop_dialog.price_entry_dialog',return_value=QRect(450,260,232,139)):
+            w.reader.image=w.reader.image.copy()
+            w.on_image(w.reader.image)
+            self.assertTrue(w.shop_price_entry.blocking)
+            labels=[row for row in w.overlay.rows if row['kind']=='shop']
+            self.assertTrue(labels);self.assertTrue(all(row['shop_entry']==[450,260,232,139] for row in labels))
+            self.assertEqual(w.rows,saved);self.assertEqual(w.recent_items.rows.count(),0)
+            self.assertTrue(all(w.card_views[key] is card for key,card in cards.items()))
+            with patch.object(w.observations,'observe_shop',side_effect=AssertionError('The form is not a shop page')):
+                w.on_reading(reading)
+            self.assertEqual(w.rows,saved)
+        with patch('price_lens.shop_dialog.price_entry_dialog',return_value=None):
+            w.reader.image=w.reader.image.copy()
+            w.on_image(w.reader.image);closed_at=w.shop_price_entry.closed_at
+            self.assertIsNotNone(closed_at)
+            for started,blocking in ((closed_at-1,True),(closed_at+.01,False)):
+                request=SubmittedRequest('prices',w.reader.image,w.reader.pointer,1,0,started,
+                    shop_epoch=w.shop_browsing.epoch)
+                w.on_reading({**reading,'_submitted_request':request})
+                self.assertEqual(w.shop_price_entry.blocking,blocking)
+                labels=[row for row in w.overlay.rows if row['kind']=='shop']
+                self.assertTrue(labels);self.assertTrue(all(row['shop_entry'] is None for row in labels))
+                if blocking:self.assertEqual(w.rows,saved)
+                self.assertEqual([(row['name'],row.get('price')) for row in w.rows],
+                                 [(row['name'],row.get('price')) for row in saved])
+
+    def test_price_entry_cannot_keep_labels_when_the_shop_container_disappears(self):
+        w=self.window;w.on_reading(self.reading(shop_hover=True))
+        with patch('price_lens.shop_dialog.price_entry_dialog',return_value=QRect(450,260,232,139)):
+            w.reader.image=w.reader.image.copy();w.on_image(w.reader.image)
+            self.assertTrue(w.shop_price_entry.blocking);self.assertTrue(w.rows)
+        missing=w.reader.image.copy();missing.fill(QColor('#374963'));w.reader.image=missing
+        with patch('price_lens.shop_dialog.price_entry_dialog',return_value=None):w.on_image(missing)
+        self.assertFalse(w.shop_open);self.assertFalse(w.shop_price_entry.blocking)
+        self.assertFalse(any(row['kind']=='shop' for row in w.overlay.rows))
+
+    def test_a_form_first_seen_in_a_reader_reply_cannot_mutate_shop_observations(self):
+        w=self.window;reading=self.reading(shop_hover=True);w.on_reading(reading)
+        saved=list(w.rows)
+        with patch('price_lens.shop_dialog.price_entry_dialog',return_value=QRect(450,260,232,139)),patch.object(
+                w.observations,'observe_shop',side_effect=AssertionError('The form is not a shop read')):
+            w.reader.image=w.reader.image.copy();w.on_reading(reading)
+        self.assertTrue(w.shop_price_entry.blocking);self.assertEqual(w.rows,saved)
+
+    def test_add_item_fade_geometry_uses_capture_scale_and_crop_and_needs_an_open_shop(self):
+        from types import SimpleNamespace
+        w=self.window;w.on_reading(self.reading(shop_hover=True))
+        screen=w.screens[w.screen_index].geometry()
+        w.reader.image=QImage(screen.width()*2,screen.height()*2,QImage.Format.Format_RGBA8888)
+        w.reader.crop=QRect(100,200,900,900)
+        w.shop_price_entry.rectangle=QRect(450,260,232,139)
+        screens=list(w.screens)
+        screens[w.screen_index]=SimpleNamespace(geometry=lambda:screen,devicePixelRatio=lambda:2)
+        with patch.object(w,'screens',screens):w.draw_labels(time.time(),False)
+        labels=[row for row in w.overlay.rows if row['kind']=='shop']
+        self.assertTrue(labels);self.assertTrue(all(row['shop_entry']==[275,230,116,70] for row in labels))
+        w.shop_open=False
+        with patch.object(w,'screens',screens):w.draw_labels(time.time(),False)
+        self.assertTrue(all(row.get('shop_entry') is None for row in w.overlay.rows))
+
+    def test_paired_inventory_card_avoids_both_complete_description_panels(self):
+        w=self.window;w.reader.pointer=(340,190);w.reader.image.fill(QColor('#24384b'))
+        reading={'atMs':123,'shop':None,'hover':None,
+            'tooltip':{'found':{'name':'Example Hat','area':dict(x=58,y=231,width=180,height=12)}},
+            'tooltipAssociation':dict(state='inventory-primary',version=2,token='source:slot',
+                sourceKind='inventory',layout='primary-left',source=dict(x=300,y=150,width=230,height=300),
+                slot=dict(x=324,y=174,width=36,height=36),panel=dict(x=50,y=220,width=240,height=330),
+                comparison=dict(x=292,y=220,width=240,height=300),pointer=dict(x=340,y=190),
+                cursor=dict(x=334,y=184,width=32,height=36),guards=[dict(x=300,y=150,width=230,height=20)])}
+        w.on_reading(reading)
+        item=next(row for row in w.overlay.rows if row['kind']=='item')
+        protected=[QRect(*rect) for rect in item['avoid_regions']]
+        self.assertIn(QRect(50,220,240,330),protected)
+        self.assertIn(QRect(292,220,240,300),protected)
+        self.assertIn(QRect(300,150,230,300),protected)
+
     def prepare_shop_description(self,*,covered=True):
         from PySide6.QtGui import QPainter
         w=self.window;w.on_catalog(Catalog({'items':[dict(id=1,name='Example Hat'),dict(id=2,name='Example Cape')]}))
@@ -899,46 +1118,179 @@ class ContextUiTests(unittest.TestCase):
         hovered=reading();hovered['hover']['tooltip']={'found':dict(name='Example Hat',area=title)}
         if covered:
             for row in hovered['shop']['rows']:row.update(name=None,price=None,covered=True)
+        self.initial_shop_transition=w.card_area.outgoing
         w.on_reading(hovered)
         return original,cards,hovered
 
-    def test_shop_description_focus_is_gui_only_and_returns_to_the_same_shop_widgets(self):
+    def test_shop_hover_keeps_the_same_cards_and_only_shop_overlays(self):
         w=self.window;original,cards,_=self.prepare_shop_description()
         self.assertIsNotNone(w.shop_description);self.assertIsNone(w.tooltip_result)
-        shown=[card for card in w.card_views.values() if not card.isHidden()]
-        self.assertEqual(len(shown),1);self.assertEqual(shown[0].fields['context'].text(),'Shop item description')
-        self.assertTrue(shown[0].store.isHidden());self.assertIsNone(w.shop_description['price'])
+        self.assertEqual([card.property('gameItemId') for card in w.card_views.values() if not card.isHidden()],[1,2])
         self.assertEqual(w.service.visible,[1,2]);self.assertEqual(w.recent_items.rows.count(),0)
-        self.assertEqual(len(w.overlay.rows),3);self.assertEqual(sum(row['kind']=='shop' for row in w.overlay.rows),2)
-        self.assertEqual(w.overlay.rows[-1]['source_shop_key'],w.overlay.rows[0]['key'])
-        self.assertTrue(all(w.card_views[key] is card and card.isHidden() for key,card in cards.items()))
-        self.assertIsNotNone(w.card_area.outgoing)
-        self.assertGreater(w.card_area.start_height,w.card_area.full_height)
-        w.card_area.animation.setCurrentTime(90)
-        self.assertTrue(w.card_area.full_height<w.card_area.height()<w.card_area.start_height)
+        self.assertEqual(len(w.overlay.rows),2);self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+        self.assertIs(w.card_area.outgoing,self.initial_shop_transition)
         w.reader.image=original;w.on_image(original)
         self.assertIsNone(w.shop_description);self.assertEqual(w.recent_items.rows.count(),0)
         self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+        self.assertEqual(len(w.overlay.rows),2);self.assertIs(w.card_area.outgoing,self.initial_shop_transition)
+
+    def test_brief_native_shop_ocr_miss_cannot_turn_its_description_into_an_inventory_card(self):
+        w=self.window;_,cards,reading=self.prepare_shop_description()
+        w.reader.shop_context=None
+        reading['tooltip']=reading['hover']['tooltip']
+        reading['hover']=None;reading['shop']=None
+        w.on_reading(reading)
+        self.assertTrue(w.shop_open);self.assertIsNone(w.tooltip_result)
         self.assertEqual(len(w.overlay.rows),2)
-        self.assertIsNotNone(w.card_area.outgoing)
-        self.assertLess(w.card_area.start_height,w.card_area.full_height)
-        w.card_area.animation.setCurrentTime(90)
-        self.assertTrue(w.card_area.start_height<w.card_area.height()<w.card_area.full_height)
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
 
-    def test_focus_offer_is_only_from_the_current_exact_listing_and_quote_refresh_keeps_motion(self):
+    def test_an_unchanged_proven_description_reuses_geometry_without_searching_the_frame_again(self):
+        w=self.window;_,cards,reading=self.prepare_shop_description()
+        bounds=QRect(w.shop_tooltip_rect)
+        with patch('price_lens.ui.description_bounds',side_effect=AssertionError('Unchanged geometry was searched again')):
+            w.on_reading(reading)
+        self.assertEqual(w.shop_tooltip_rect,bounds)
+        self.assertEqual(len(w.overlay.rows),2)
+        self.assertTrue(all(w.card_views[key] is card for key,card in cards.items()))
+
+    def test_known_shop_rows_skip_name_recovery_but_an_unknown_scrolled_row_requests_it(self):
         w=self.window;self.prepare_shop_description(covered=False)
-        self.assertEqual(w.shop_description['price'],dict(quantity=1,mesos=100))
-        focus=next(card for card in w.card_views.values() if not card.isHidden())
-        w.card_area.animation.setCurrentTime(70);outgoing=w.card_area.outgoing
-        now=time.time();w.service.deliver_quote(1,Quote(1,2400,now,now,20,'Test','','24h'))
-        self.assertIs(next(card for card in w.card_views.values() if not card.isHidden()),focus)
-        self.assertIs(w.card_area.outgoing,outgoing);self.assertEqual(w.card_area.animation.currentTime(),70)
-        self.assertEqual(focus.fields['market'].text(),'2,400 mesos')
+        self.assertFalse(w.needs_shop_name_read((340,240)))
+        self.assertFalse(w.needs_shop_name_read((700,550)))
+        w.shop_browsing._advance();w.on_shop_viewport_changed()
+        self.assertTrue(w.needs_shop_name_read((340,240)))
 
-    def test_still_focused_item_receives_a_new_snapshot_price_without_an_initial_quote(self):
+    def test_recovery_includes_unknown_neighbours_when_the_hovered_row_is_known(self):
+        w=self.window;self.prepare_shop_description(covered=False)
+        self.assertIsNotNone(w.item_for(w.rows[0]))
+        w.rows[1]={'area':dict(w.rows[1]['area']),'name':None,'price':None,'covered':True}
+        self.assertTrue(w.needs_shop_name_read((340,240)))
+        self.assertTrue(w.needs_shop_name_read((700,550)))
+
+    def test_known_name_without_an_asking_line_can_request_component_recovery(self):
+        w=self.window;self.prepare_shop_description(covered=False)
+        row=w.rows[1];price=dict(quantity=1,mesos=200)
+        row.update(nameOnly=True,price=None)
+        self.assertTrue(w.needs_shop_name_read((340,240)))
+        row['price']=price
+        self.assertFalse(w.needs_shop_name_read((340,240)))
+
+    def test_a_known_subset_cannot_disable_recovery_for_slots_omitted_beneath_a_pane(self):
+        w=self.window;self.prepare_shop_description()
+        w.rows=[w.rows[0]]
+        self.assertIsNotNone(w.item_for(w.rows[0]))
+        self.assertFalse(w.shop_browsing.pending)
+        self.assertTrue(w.needs_shop_name_read((340,240)))
+        self.assertTrue(w.needs_shop_name_read((700,550)))
+        w.shop_tooltip_rect=None;w.observations.occlusion_trail.clear()
+        self.assertFalse(w.needs_shop_name_read((340,240)))
+
+    def test_unread_shop_page_keeps_shop_description_out_of_inventory_pricing(self):
+        w=self.window;_,_,reading=self.prepare_shop_description()
+        area=QRect(w.effective_shop_context())
+        w.observations.viewport_changed();w.reader.shop_context=None
+        w.observations.shop_tooltip_from_shop=False
+        self.assertFalse(w.shop_rows._page_proven);self.assertEqual(w.rows,[])
+        reading['tooltip']=reading['hover']['tooltip'];reading['hover']=None;reading['shop']=None
+        w.on_reading(reading)
+        self.assertTrue(w.shop_open);self.assertEqual(w.effective_shop_context(),area)
+        self.assertIsNone(w.tooltip_result)
+        self.assertFalse(any(row.get('kind')=='item' for row in w.overlay.rows))
+
+    def test_loaded_shop_labels_and_cards_survive_an_unlocated_description_with_unchanged_neighbours(self):
+        from PySide6.QtGui import QPainter
+        w=self.window;w.on_catalog(Catalog({'items':[dict(id=1,name='Example Hat'),dict(id=2,name='Example Cape')]}))
+        w.reader.image.fill(QColor('#223344'));value=self.reading(shop_hover=True)
+        value['shop']['rows'].append(dict(name='Example Cape',price=dict(quantity=1,mesos=200),
+            area=dict(x=340,y=280,width=180,height=40)))
+        painter=QPainter(w.reader.image)
+        painter.fillRect(300,200,240,300,QColor('#cad5df'))
+        for y in (220,280):
+            painter.fillRect(345,y+5,80,6,QColor('black'))
+            painter.fillRect(345,y+24,50,6,QColor('black'))
+        painter.end();w.on_reading(value);QTest.qWait(220)
+        keys=[row['key'] for row in w.overlay.rows];cards=dict(w.card_views)
+        self.assertEqual(len(keys),2)
+        image=w.reader.image.copy();painter=QPainter(image)
+        painter.fillRect(335,278,200,110,QColor('#464b78'));painter.end()
+        w.reader.pointer=(600,400);w.reader.image=image
+        for _ in range(6):w.on_image(image)
+        self.assertEqual([row['key'] for row in w.overlay.rows],keys)
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+        self.assertEqual(len(w.rows),2);self.assertIsNone(w.rows[1]['price'])
+        self.assertTrue(w.rows[1]['reference_only'])
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+        self.assertEqual(w.recent_items.rows.count(),0)
+
+    def test_lingering_shop_description_does_not_become_a_card_when_pointer_leaves_the_list(self):
+        w=self.window;_,cards,reading=self.prepare_shop_description(covered=False)
+        self.assertTrue(w.observations.shop_tooltip_from_shop)
+        w.reader.pointer=(650,300)
+        reading['pointerAtRead']=[650,300];reading['tooltip']=reading['hover']['tooltip'];reading['hover']=None
+        w.on_reading(reading)
+        self.assertIsNone(w.tooltip_result)
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+
+    def test_a_late_unpinned_title_cannot_return_after_its_native_pixels_disappear(self):
+        w=self.window;original,_,reading=self.prepare_shop_description(covered=False)
+        w.reader.submitted_image=w.reader.image.copy();w.reader.image=original
+        w.reader.pointer=(650,300);w.on_image(original)
+        reading['pointerAtRead']=[650,300];reading['tooltip']=reading['hover']['tooltip'];reading['hover']=None
+        w.on_reading(reading)
+        self.assertIsNone(w.tooltip_result)
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+
+    def test_visible_clipped_listing_can_use_its_full_native_description_without_an_extra_card(self):
+        from PySide6.QtGui import QPainter
+        w=self.window
+        w.on_catalog(Catalog({'items':[dict(id=1,name='Example Hat of Attack'),dict(id=3,name='Example Hat of Defense')]}))
+        w.reader.image.fill(QColor('#223344'))
+        reading=self.reading(shop_hover=True)
+        reading['shop']['rows'][0]['name']='Example Hat...'
+        w.on_reading(reading)
+        self.assertNotIn('_item_id',w.rows[0])
+        original=w.reader.image.copy()
+        painter=QPainter(w.reader.image);painter.fillRect(480,190,260,260,QColor('#464b78'))
+        painter.setPen(QColor('white'));painter.drawText(500,224,'Example Hat of Defense');painter.end()
+        reading['hover']['tooltip']={'found':dict(name='Example Hat of Defense',area=dict(x=500,y=210,width=190,height=20))}
+        w.on_reading(reading)
+        self.assertEqual(w.rows[0]['_item_id'],3)
+        self.assertEqual(w.item_for(w.rows[0]).name,'Example Hat of Defense')
+        self.assertEqual(len(w.overlay.rows),1);self.assertEqual(w.overlay.rows[0]['kind'],'shop')
+        self.assertEqual(w.service.visible,[3])
+        key=w.overlay.rows[0]['key'];page=w.shop_rows.page_revision
+        w.reader.image=original.copy();reading['hover']['tooltip']={}
+        w.on_reading(reading)
+        self.assertEqual(w.rows[0]['_item_id'],3)
+        self.assertEqual(w.overlay.rows[0]['key'],key);self.assertEqual(w.shop_rows.page_revision,page)
+        painter=QPainter(w.reader.image);painter.fillRect(480,190,260,260,QColor('#464b78'))
+        painter.setPen(QColor('white'));painter.drawText(500,224,'Example Hat of Attack');painter.end()
+        reading['hover']['tooltip']={'found':dict(name='Example Hat of Attack',area=dict(x=500,y=210,width=190,height=20))}
+        w.on_reading(reading)
+        self.assertEqual(w.rows[0]['_item_id'],1)
+        self.assertEqual(w.service.visible,[1]);self.assertEqual(len(w.overlay.rows),1)
+
+
+    def test_shop_quote_refresh_updates_existing_cards_without_a_hover_transition(self):
+        w=self.window;self.prepare_shop_description(covered=False)
+        card=next(card for card in w.card_views.values() if card.property('gameItemId')==1)
+        self.assertIn('100',card.fields['store'].text())
+        outgoing=w.card_area.outgoing;structure=w.screen_card_structure
+        now=time.time();w.service.deliver_quote(1,Quote(1,2400,now,now,20,'Test','','24h'))
+        self.assertIs(next(card for card in w.card_views.values() if card.property('gameItemId')==1),card)
+        self.assertIs(w.card_area.outgoing,outgoing);self.assertEqual(w.screen_card_structure,structure)
+        self.assertEqual(card.fields['market'].text(),'2,400 mesos')
+
+
+    def test_covered_shop_item_receives_a_new_snapshot_price_without_an_initial_quote(self):
         w=self.window;self.prepare_shop_description();w.quotes.clear()
-        card=next(card for card in w.card_views.values() if not card.isHidden())
-        w.card_area.animation.setCurrentTime(70);outgoing=w.card_area.outgoing;requests=list(w.service.requests)
+        card=next(card for card in w.card_views.values() if card.property('gameItemId')==1)
+        outgoing=w.card_area.outgoing;motion_time=w.card_area.animation.currentTime()
+        moving=w.card_area.animation.state()==w.card_area.animation.State.Running
+        requests=list(w.service.requests)
         snapshot=type('Snapshot',(),{'meta':{'checked_at':1},'rows':{}})()
         w.service.snapshot=snapshot;lookups=[]
         def reference(item):lookups.append(item.game_id);return w.service.cached(item)
@@ -946,29 +1298,30 @@ class ContextUiTests(unittest.TestCase):
         now=time.time();w.service.cached_values={1:Quote(1,1400,now,now,20,'Test','','24h')}
         w.on_price_state()
         self.assertIn(1,lookups);self.assertEqual(card.fields['market'].text(),'1,400 mesos')
-        self.assertIs(w.card_area.outgoing,outgoing);self.assertEqual(w.card_area.animation.currentTime(),70)
+        self.assertIs(w.card_area.outgoing,outgoing)
+        # A first quote can change height; an existing transition must keep its progress.
+        if moving:self.assertEqual(w.card_area.animation.currentTime(),motion_time)
         snapshot.meta['checked_at']=2;w.service.cached_values[1]=Quote(1,2500,now,now,20,'Test','','24h')
         w.on_price_state()
-        self.assertIs(next(card for card in w.card_views.values() if not card.isHidden()),card)
+        self.assertIs(next(card for card in w.card_views.values() if card.property('gameItemId')==1),card)
         self.assertEqual(card.fields['market'].text(),'2,500 mesos');self.assertEqual(w.service.requests,requests)
         self.assertEqual(w.recent_items.rows.count(),0)
 
-    def test_interrupted_shop_focus_then_another_item_and_close_does_not_make_history(self):
+
+    def test_hovering_different_shop_rows_keeps_the_list_and_does_not_make_history(self):
         from PySide6.QtGui import QPainter
         w=self.window;original,cards,reading=self.prepare_shop_description()
-        first=next(card for card in w.card_views.values() if not card.isHidden())
-        w.card_area.animation.setCurrentTime(70)
         w.reader.pointer=(340,300);reading['pointerAtRead']=[340,300]
         reading['hover']['pointer']={'x':340,'y':300};reading['hover']['tooltip']['found']['name']='Example Cape'
         painter=QPainter(w.reader.image);painter.fillRect(500,210,180,20,QColor('#464b78'));painter.setPen(QColor('white'))
         painter.drawText(QRect(500,210,180,20),Qt.AlignmentFlag.AlignVCenter,'Example Cape');painter.end()
         w.on_reading(reading)
         self.assertEqual(w.shop_description['name'],'Example Cape')
-        self.assertEqual([card.property('gameItemId') for card in w.card_views.values() if not card.isHidden()],[2])
-        self.assertIs(next(card for card in w.card_views.values() if not card.isHidden()),first)
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
         w.reader.image=original;w.on_image(original)
         self.assertIsNone(w.shop_description);self.assertEqual(w.recent_items.rows.count(),0)
-        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+
 
     def test_shop_focus_requires_a_native_panel_unique_identity_and_current_title_pixels(self):
         w=self.window;original,_,reading=self.prepare_shop_description()
@@ -1001,9 +1354,9 @@ class ContextUiTests(unittest.TestCase):
         w.rows[0]['name']='Example Cape'
         self.assertFalse(w.shop_description_matches(w.reader.image,w.reader.pointer))
         w.overlay.layout_boxes=[]
-        self.assertTrue(w.shop_description_title_matches(w.reader.image,proof,[]))
+        self.assertTrue(w.observations.description_title_matches(w.reader.image,proof,[]))
 
-    def test_inventory_hover_outside_shop_takes_over_from_shop_description_focus(self):
+    def test_inventory_hover_outside_shop_has_its_own_overlay_while_shop_labels_stay(self):
         w=self.window;self.prepare_shop_description();w.reader.pointer=(100,100)
         w.on_reading(self.reading(shop_hover=False,store=True))
         self.assertIsNone(w.shop_description);self.assertIsNotNone(w.tooltip_result)
@@ -1016,10 +1369,10 @@ class ContextUiTests(unittest.TestCase):
         reading['hover']['tooltip']['found']['name']=None
         w.on_reading(reading)
         self.assertIsNotNone(w.shop_description);self.assertEqual(w.shop_description['name'],'Example Hat')
-        self.assertIsNone(w.shop_description['price'])
+        self.assertIsNone(w.rows[0]['price'])
         self.assertEqual(w.service.visible,[1,2]);self.assertEqual(w.recent_items.rows.count(),0)
 
-    def test_shop_focus_preserves_search_watch_precedence_and_reduced_motion(self):
+    def test_shop_hover_preserves_search_watch_precedence_and_reduced_motion(self):
         w=self.window;self.app.setProperty('reduceMotion',True);original,_,_=self.prepare_shop_description()
         self.assertIsNone(w.card_area.outgoing)
         w.search_panel.query.setText('Example');self.assertTrue(w.scroll.isHidden())

@@ -1,7 +1,53 @@
 //! A bounded second look at an already located name line, never a scene text search.
 use image::{GrayImage,Luma,imageops::FilterType};
-use minerva_core::{Frame,ScreenPoint,ItemCapture,ItemTooltip,ItemTooltipReader};
+use minerva_core::{Frame,ScreenPoint,ScreenRect,ItemCapture,ItemTooltip,ItemTooltipReader};
 use serde_json::Value;
+use std::collections::VecDeque;
+
+/// Only the association selector's independently framed primary header enters
+/// this path. It never searches for another panel or reuses an old item name.
+#[derive(Default)]
+pub struct PrimaryTitles {
+    cache: VecDeque<(Vec<u8>,Option<String>)>,
+}
+
+impl PrimaryTitles {
+    pub fn read(&mut self,capture:&ItemCapture,area:ScreenRect)->Option<ItemTooltip> {
+        let x=i64::from(area.x)-i64::from(capture.origin.x);
+        let y=i64::from(area.y)-i64::from(capture.origin.y);
+        if x<0 || y<0 || !(40..=1440).contains(&area.width) || !(8..=64).contains(&area.height)
+            || u64::from(area.width)*u64::from(area.height)>65_536
+            || x+ i64::from(area.width)>i64::from(capture.frame.width)
+            || y+ i64::from(area.height)>i64::from(capture.frame.height) {return None}
+        let x=x as u32;let y=y as u32;
+        let ink=GrayImage::from_fn(area.width,area.height,|col,row| {
+            let light=crate::tooltip_surface::title_light(crate::tooltip_surface::rgb(&capture.frame,x+col,y+row));
+            Luma([light.map_or(255,|v|255-((i32::from(v)-130)*255/90).clamp(0,255)) as u8])
+        });
+        let points:Vec<_>=ink.enumerate_pixels().filter(|(_,_,p)|p.0[0]<150).map(|(x,y,_)|(x,y)).collect();
+        if points.len()<16 {return None}
+        let left=points.iter().map(|p|p.0).min()?;let right=points.iter().map(|p|p.0).max()?+1;
+        let top=points.iter().map(|p|p.1).min()?;let bottom=points.iter().map(|p|p.1).max()?+1;
+        let scale=area.height as f32/17.0;
+        // A cut prefix/suffix or a stat/icon lane is not a complete title.
+        if left>(12.0*scale).ceil() as u32 || right-left<20 || bottom-top<8
+            || area.width-right<(4.0*scale).ceil().max(3.0) as u32 {return None}
+        let ink=image::imageops::crop_imm(&ink,left,top,right-left,bottom-top).to_image();
+        let mut key=Vec::with_capacity(ink.as_raw().len()+8);
+        key.extend_from_slice(&ink.width().to_le_bytes());key.extend_from_slice(&ink.height().to_le_bytes());
+        key.extend_from_slice(ink.as_raw());
+        let name=if let Some((_,name))=self.cache.iter().find(|(old,_)|*old==key) {name.clone()} else {
+            let first=crate::text::read_scaled(&ink,2,FilterType::Triangle);
+            let second=crate::text::read_scaled(&ink,3,FilterType::Triangle);
+            let normalized=|text:&str|text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+            let name=first.filter(|a|second.as_ref().is_some_and(|b|normalized(a)==normalized(b)));
+            if self.cache.len()>=16 {self.cache.pop_front();}
+            self.cache.push_back((key,name.clone()));name
+        }?;
+        Some(ItemTooltip::Found{area:ScreenRect{x:area.x+left as i32,y:area.y+top as i32,
+            width:right-left,height:bottom-top},name:Some(name)})
+    }
+}
 
 /// A clicked item link can open its description far from the pointer. Probe
 /// captured pixels only; the UI also validates its name and description panel.

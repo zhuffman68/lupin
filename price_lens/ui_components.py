@@ -18,6 +18,8 @@ def text_label(text="", style="", wrap=False):
 def mesos(value):
     if value is None:
         return "—"
+    if 0 < value < 1:
+        return "<1"
     return f"{value:,.0f}"
 
 

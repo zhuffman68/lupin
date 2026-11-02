@@ -10,6 +10,7 @@ from .reference_details import EntryDetails
 from .domain import key as name_key
 from .search_field import SearchField
 from .reference_navigation import Breadcrumb
+from .widget_lifetime import retire_widget
 
 FAMILIES={0:'Beginner',1:'Warrior',2:'Magician',3:'Bowman',4:'Thief'}
 JOBS={0:'Beginner',100:'Warrior',110:'Fighter',120:'Page',130:'Spearman',200:'Magician',210:'Fire / Poison',220:'Ice / Lightning',230:'Cleric',
@@ -259,7 +260,7 @@ class DatabasePanel(QWidget):
 
     def dispose_entry(self):
         if self._entry:
-            old=self._entry;self._entry=None;old.pause();self.pages.removeWidget(old);old.hide();old.deleteLater()
+            old=self._entry;self._entry=None;old.pause();self.pages.removeWidget(old);retire_widget(self,old)
 
     def go_back(self):
         if not self.history and self.external_return:

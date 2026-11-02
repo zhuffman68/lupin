@@ -1,4 +1,370 @@
-# Verification — 2026-10-31
+# Verification — 2026-11-01
+
+## 1.0.3 release preparation
+
+The user authorized building, committing, pushing and publishing after accepting
+the preview. Source/native checks are recorded below. Package transactions and
+public-download checks are recorded separately in the versioned verification
+report attached to the GitHub release. The host installation and active capture
+session remain unchanged during release preparation.
+
+## Local source preview — unreleased
+
+- The new-item case was reproduced live on **Dark Starlight (M)** beside its
+  **Grey T-Shirt (M)** comparison. The visible icon interior, title and both
+  description frames remained stable; the outer gold pixel and selected Equip
+  tab's white pulse changed. Eight references against 70 steady saved frames
+  passed only **50/560** composite comparisons before this repair. Replaying
+  those same captures through the rebuilt reader and Python now passes
+  **560/560**, with explicit native `sourceTab` evidence. Changed icon-interior
+  and caption pixels still reject. Header-pulse tests cover 75%, 100%, 125%,
+  150% and 200% raster scaling, selection/letter/control changes, whitening,
+  foreign paint and rounded-corner antialiasing. Border-only visibility cannot
+  supply the required exposed icon-interior evidence.
+- Inventory placement now prefers above the verified primary description,
+  independently of its comparison and inventory. Generated geometry checks
+  cover the recorded right-edge layout, a top-edge side fallback, negative
+  monitor origins, smooth pointer projection and safe source exclusion.
+  Reused cards clear omitted anchors and recalculate offsets after a flip.
+- The current **To Sell** capture reproduced a missed form whose inputs and
+  buttons were all obscured by our own labels. The revised detector finds its
+  **232 × 139** form using the exposed caption, left/bottom frame, paper and
+  magenta labels. Isolated tests retain that detection across subsequent
+  captures and reject absent caption/frame evidence or owned paint offered as
+  native controls. Existing selective-opacity tests cover overlap, restoration
+  and interrupted fades. The preview was reloaded with the original sharing
+  helper retained, and the user accepted its appearance; desktop interaction
+  tests stopped after that acceptance.
+- Final source checks: **1,218 tests passed**, **three skips**, **264.526 seconds**;
+  **63 native reader tests passed**. Only the local reader was rebuilt. Current
+  reader SHA-256:
+  `914dd878a612f175f3308007c6bdbb320aa5645e57db881e30c7c0e3d9c06df1`.
+  Private records are in `evidence/inventory-animation-20261101/`; they are not
+  shipped. Installer builds, installation, commits and publishing remain on hold.
+- The inventory follow-up reproduced two additional rejection causes: blended
+  antialiased title edges over scenery, and a cursor envelope leaving a narrow
+  exact strip below the old cell-coverage cutoff. The source-bound title now
+  keeps opaque glyphs exact while permitting only their bounded blended fringe;
+  generic/shop title policies stay strict. Cell evidence needs at least 16
+  scaled, exactly matching pixels, checked before the identical-frame shortcut.
+  Fully covered cells remain unknown consistently. Saved captures improve
+  composite proof acceptance from **7/441** to **441/441** comparisons for the
+  title case; added tests reject changed cells, letters, headers and foreign ink.
+- Live QA used **12 shop/inventory layouts with four points per item cell**,
+  including both edges, high/low placement and overlapping windows. The wider
+  pass exposed cap-pixel and short-divider failures, plus Lupin labels covering
+  native rims. Both reader and Python now require bounded corner lanes, complete
+  rails and only known exposed native samples. Owned annotation geometry is
+  immutable per submission and excluded from OCR. Tests ensure our own readable
+  item name cannot supply the inventory title. The final targeted live retest
+  covers **16 points** in center, right-edge, lower-left and over-shop layouts;
+  all **79** sampled settled UI/frame states retain the price annotation, with **zero**
+  recorded annotation removals during those settled spans. Actual saved images
+  also show the card. These are sampled live checks on Axe Pole Arm, not a claim
+  that every item or equipped comparison has been exercised live. Test drags
+  used an external controller under the user's explicit permission. The shop,
+  inventory, minimap and pointer were restored, and the sharing helper retained.
+  A subsequent **26-second** four-position hover adds **73/73** settled sampled
+  states with the annotation present and no recorded removal, including the
+  originally failing cell edge. Native popup movement during pointer glides is
+  excluded from the settled spans.
+- The add-item form now dims only intersecting, measured shop-label rectangles
+  to **35%** with an interruptible **110 ms** fade. Moving/closing it restores
+  opacity; unaffected shop labels and inventory cards remain opaque. Its source
+  observations stay held until a new verified post-closure read, and losing the
+  independently exposed shop rims removes the labels immediately. Isolated tests
+  cover overlap/miss, movement, rapid reversal, reduced motion, stale responses,
+  first detection in a reader reply, actual shop closure and capture crop/DPI
+  transforms. This revised opacity behavior has fixture coverage; the current
+  live shop did not have its price-entry form opened during this follow-up.
+- Final isolated source suite: **1,206 tests passed**, **three skips**,
+  **213.649 seconds**. Native reader: **62 tests passed**. Only the authorized
+  local reader was rebuilt; installers, installation, commits and publication
+  remain on hold. Native reader SHA-256:
+  `d69cc4e311654e1d71bb1bbda1c61adca86a52b6b3baf6eca647e699babeaf19`.
+  Private follow-up captures, diagnostics and check logs are under
+  `evidence/inventory-flicker-followup-20261101/`, excluded from distribution.
+- Inventory-hover flicker was reproduced live over **Axe Pole Arm** with a shop
+  open and the inventory near the game's right edge. Its animated hand outline
+  changed four source-cell pixels one scanline above the old cursor envelope;
+  the native panel, title and header proofs remained unchanged. Rust and Python
+  now include that measured outline with matching outward rounding, retaining
+  the previous lower/right bounds and exact remaining source checks.
+  Replaying the same saved captures improves source-proof acceptance from
+  **92/162** to **162/162** comparisons. In a repeated live stationary hover,
+  the price card is visible in **24/24** steady captured frames, versus **11/23**
+  before the correction. These are sampled captures, not a continuous-video
+  latency measurement. The user's existing sharing helper was retained and the
+  pointer was restored after the authorized hover-only test.
+  **212** focused checks passed, followed by **90** final source/capture/DPI
+  checks and **58 Rust tests** after matching fractional-scale bounds. Genuine
+  cell/title changes still fail; no extra holding delay or fuzzy identity rule
+  was added. Equipped comparisons pass fixtures; this follow-up did not test
+  such a comparison live in the current shop. Only the local reader was rebuilt;
+  installers and publishing remain on hold.
+- Follow-up regression repairs: the full isolated suite passes **1,187 tests**
+  with three skips (**166.273 seconds**), plus **92** affected card/search/
+  Database/Translation checks after sharing their cleanup path. Another **59**
+  focused observation/lifetime/acquisition checks pass. The first-shop component
+  follow-up is requested immediately once its new frame proof is established,
+  rather than waiting for the periodic locator. Name-only rows alone cannot
+  request this bootstrap, and current source validation remains mandatory.
+- A saved 41-frame down/up-scroll replay reproduced a shop that remained empty
+  across several OCR replies despite readable native rows. Its supposedly fixed
+  left guard included the alpha-blended inner bevel beside a sold-out row.
+  Moving the guard to the solid strokes recovers visible rows in both directions
+  without lending identities or asking prices from an earlier viewport.
+  Repeated hover-frame handling in that failing span falls from roughly
+  **60–70 ms** to **7–15 ms** in this local replay. These are frame-validation
+  timings, not a general capture-to-overlay latency guarantee.
+- The preceding live preview aborted in Qt/Shiboken layout destruction. Longer
+  isolated tests also reproduced freed-wrapper failures in outgoing QWidget
+  snapshots and in temporary child animation objects during parent deletion.
+  `widget_lifetime.py` now keeps a retired widget's complete QObject tree alive
+  until the event-loop turn after native teardown. Cards and transition snapshots
+  share that path; temporary references drain instead of retaining old cards.
+  The final debug-allocator stress run passes **9,000 animated updates** over
+  more than seven minutes, beyond both earlier failure points. Its bounded
+  retirement checks and explicit child-animation release tests pass. A source
+  preview is open for user testing; its previous sharing helper had exited,
+  so capture requires Start reading again. This run used saved frames and an
+  isolated desktop, with no game input. Live acceptance remains separate.
+- The earlier source preflight passed **1,182 tests**, with three explicit
+  skips, in **173.476 seconds** inside private Xvfb/D-Bus QA. The rebuilt local
+  GNU OCR reader passes **58 Rust tests**. Earlier orange-selection coverage
+  includes **171 shop/source tests**, including **26 public native-component
+  integration tests**, and is included in the full run.
+  The EXP/shop IPC fixture now supplies ongoing fresh frames during its initial
+  wait, matching live capture; the production 1.5-second freshness limit remains
+  intact. An obsolete optional-metadata assertion was corrected to preserve a
+  valid current strict-reader amount when extra component recovery abstains.
+- Recording replays verify nine stable inventory sightings with both manual and
+  automatic game cropping: **18 native/source/frame checks** pass, followed by
+  nine offline UI replays resolving the expected exact IDs and placing one card
+  outside the source and complete descriptions. These include Dark Starlight,
+  Blue Legolier Pants and the personalized Gold Nordic Helm. Translucent inventory
+  dividers no longer truncate a frame or create a combined two-panel rectangle;
+  owner lines do not move its physical cap. An independently framed comparison
+  can establish a partly visible seam without lending its name.
+- Generated reader-to-Python cases pass at **125%, 150% and 200%** UI scaling.
+  Rust and Python now use the same scaled stroke sampling, including odd-width
+  antialiasing. Version-three proofs preserve exact source/header/cell/title
+  checks while validating translucent frame structure independently of changing
+  scenery colours. Tests reject changed titles, cells, controls and missing rims.
+- The actual recorded price-entry dialog is detected despite our two opaque
+  labels covering its header/inputs. The earlier real-frame UI sequence retained both shop
+  observations through form visibility and closure/reacquisition, then accepted
+  **three** newly verified listings. That check used the previous global-hide
+  presentation; the selective fade now has the fixture coverage described above. Capture can obtain the modal
+  exclusion before GUI image delivery; stale pre-closure responses cannot restore
+  labels or mutate the held observations. Generated forms cover 75–200% scaling,
+  missing controls, annotation masks and cursor-fragmented labels.
+- These are static-recording and isolated fixture checks, not new live game
+  interaction. Some transitional/compression-damaged recording frames still
+  abstain. Live hover/scroll acceptance remains for the user; physical Windows
+  capture and installers have not been rebuilt/retested for this follow-up.
+- The real public selected-row sample reproduced a missing **Magic Potion**
+  immediately under a generated description, without reading the page first.
+  Its orange antialiasing, coloured separator and native bevel now survive both
+  the OCR stage and independent Python proof. The observed 400 asking price is
+  accepted after clearing every prior-page row/offer; altered letters and cut
+  digits remain rejected. The native/Python ink cutoff is also aligned so a faint
+  fringe cannot demand a blank column beyond the reader's exported rectangle.
+  These are isolated fixture/IPC checks, not new live game input.
+- The hover/scroll color follow-up reproduced fresh market references with null
+  asking prices: the pointer or description touched only the currency word while
+  all numerical glyphs were visible. The old currency-prefix dependency is
+  removed: two reads of `Q for N` now need a complete native numeric termination
+  boundary instead. Current-frame checks reject covered/changed digits, a hidden
+  next comma/digit slot, malformed text/amount pairs and displaced rectangles.
+  Joined zeroes retain separate measured digit cells. Saved actual frames recover
+  Kumbi Throwing Stars at **700 for 399,999**, Axe Pole Arm at **9,999** and Wooden
+  Baseball Bat at **4,288**, with agreeing native/Python component proofs.
+- Public component regressions cover the fully hidden currency word, next-comma
+  rejection, complete short-number advances, sold-out first slots and retention
+  of complete current ordinary-reader prices when optional recovery abstains.
+  A structural ledger regression rejects purchased-row
+  windows even when the totals heading is outside the viewport. Live inspection
+  confirms the real five-row shop replaces the incorrectly priced Sold Items
+  pane. The original game frames remain unmodified.
+- The stationary flashing incident is captured in 12 unmodified frames. The
+  former left guard includes four changing scenery pixels outside the shop;
+  its top guard stays unchanged. The corrected inner-bevel guard matches all 12
+  frames, while generated real-border changes still retire the page. A later
+  approved smooth-pointer/wheel check captures **81 frames** with loaded shop
+  labels retained. Its single inventory card also reproduces delayed appearance
+  and intermittent loss while moving within a cell, prompting the final protected
+  native-panel placement and cached-delivery batching changes.
+- `screenissue1.png` and `screenissue1a.png` both read **Dark Starlight (M)** as
+  the primary, independently of **Grey T-Shirt (M)**. Cold native replays, title
+  and source proofs, and an offline UI replay accept the correct item in both.
+  This establishes recognition/routing on the supplied pixels, not complete live
+  acceptance for every shop/inventory arrangement. Final tests cover six cached
+  quote deliveries causing only one panel refresh, native-frame avoidance for
+  single inventory cards and sub-one market values displaying `<1`.
+- The latest clean local preview uses GNU reader
+  `74737028c75e0a2b49282e4423a10b6a2e2abd086a533a58a3527dd6184d9a35`.
+  The approved sharing helper (PID 5703) is preserved across the handoff to
+  **Lupin — Inventory preview**. The running preview's reader executable matches
+  this hash and its annotation canvas remains running. This follow-up uses
+  saved frames without sending live game input. Earlier native timing samples
+  and these replays do not establish an across-the-board sub-second guarantee.
+- A 35-second external OS-input test uses 51 eased intermediate positions for
+  each pointer trip, including restoration, and captures **103 frames** while
+  hovering, scrolling and returning between pages. Both affected comparisons
+  retain their colored percentage badges in **all 22 selected stable second-page
+  frames**, including the two different hovered-description positions. This is
+  a sampled local regression, not a universal zero-latency guarantee.
+  The earlier Qt-pointer-only pass did not exercise the game's hover events and
+  is explicitly excluded from this acceptance claim.
+- November 1 follow-up: 71 new captured frames reproduced an unrelated Sold Items
+  candidate replacing the real shop during hover. Final native and integrated
+  UI replays recover the real table, keep six loaded labels under hover, discard
+  the previous page before scrolling reads, and accept the exposed Blue Potion
+  name/asking line. Pointer-blocked asking text stays null. With the real catalog,
+  duplicate Blue Potion identities remain unresolved rather than guessing an ID;
+  a separately labeled exact-ID control exercises its annotation path.
+- Public native-component regressions cover unrelated ledgers, independent
+  names/amounts, clipping, literal complete ellipses and partial-marker rejection.
+  Current-frame Python proof checks include broad separator ascent offsets and
+  the same three-dot morphology. Recovery remains available under a verified pane
+  after the ordinary detector returns only a known subset of rows.
+- Real own-app diagnostics verify a launch fetch and a timer-triggered 60-second
+  retry, both returning the same expired 08:00:56 UTC publication. A later normal
+  preview launch check at 09:35 UTC obtains the newer 09:15:56 publication and saves
+  1,917 exact rows / 1,396 prices. The visible Prices warning now separates check
+  time, publication age and next retry. It never refreshes publication/sale ages
+  merely because a download succeeded. New-generation annotation propagation is
+  covered independently without pointer movement or another OCR read.
+- The final clean source preview uses the rebuilt GNU reader and the approved
+  sharing helper; temporary own-app diagnostics are removed from the launcher.
+  Installer builds, version bump, commits, pushes and publication remain on hold.
+- Live tests reuse the approved capture helper. With the user's permission,
+  external scripts move the ordinary OS pointer and wheel over the open shop;
+  no input functionality was added to Lupin. Tests cover icons, names, asking
+  prices, row edges and gaps on three pages, plus wheel scrolling from six
+  positions over item rows. Final live frames and bounded diagnostics are private.
+- The tests exposed cursor/frame timing, personalized-title geometry, nearby
+  cyan scenery, partial description edges and a purple-tinted scrollbar thumb.
+  Native geometry and row-source comparisons now have separate exclusions;
+  unchanged listings remain independent of a rejected row or late OCR reply.
+- Review of the user's 19:13 OBS recording reproduced a late-read path that
+  discarded still-valid rows, shop descriptions escaping into inventory pricing,
+  and old shop references fading over newly scrolled items. Row rejection now
+  preserves independent table context, late reads preserve surviving rows, and
+  rejected shop labels have no retirement fade.
+- Repeated live testing caught duplicate browsing templates from one-pixel OCR
+  rounding. The controller and browsing cache now canonicalize slots before
+  template capture, including after old rows have been rejected. The earlier
+  68-second three-page hover sweep and 48-second scroll-over-items sweep retained
+  **509 lossless captured frames**. Bounded diagnostics recorded no container
+  losses or duplicate description-price cards. The hover sweep had no false
+  page invalidation or row rejection; its pixel check found no wrong first-row
+  references. Scroll transitions still showed the old first-row label in four
+  sampled frames (one or two samples per transition at roughly 5 FPS), so capture
+  and annotation delivery are not claimed to be instantaneous.
+- Follow-up review of the user's 19:59 recording showed labels disappearing
+  during ordinary hovering while other rows stayed unchanged. A varied live
+  replay reproduced false name-only scroll events. Same-slot native name anchors
+  and an unchanged exposed thumb now veto that fallback; confirmed thumb
+  movement still wins. Blocked loaded rows retain last-seen references without
+  retaining a current offer, including when pane geometry is incomplete.
+- The revised 46-second hover test captured **205 lossless frames**. All six
+  loaded labels remained present in **all 196 post-load frames**, verified in
+  captured pixels as well as bounded annotation-state diagnostics. There were
+  no hover-induced viewport changes or row retirements. A separate 48-second
+  scroll-over-items regression captured 201 frames and still invalidates old
+  pages. Some scroll-transition samples retain the prior label briefly; this
+  does not claim synchronous capture or perfect scrolling under occlusion.
+- The frame-first name check requires two exposed native glyph changes and no
+  unchanged page anchors for a viewport change. Selection recolours, native
+  panes, prices, blank-background rejection, masked-template retention and cursor masks
+  have regression coverage. A local 100-iteration unchanged-band benchmark
+  measured 1.2 ms median for six names and 5.0 ms for the 24-row bound. These are
+  generated-pixel timings, not end-to-end game latency guarantees.
+- Scrolling clears old items/offers while preserving the independent full-table
+  frame proof. Changed exposed item titles cannot inherit old cached items, preventing
+  repeated recovery/reset cycles beneath descriptions. Previously unseen items
+  fully covered by the game's description still require readable native pixels;
+  this preview does not guess a hidden identity or amount.
+- Captured replay with purchased items above the totals recovers the real shop
+  rather than treating the sales ledger as its listings.
+- A later scroll regression reproduced the hovered-row omission: the strict
+  reader required both its visible name and its cursor-blocked asking line.
+  Independent name recovery now reads Heckler and Blue Legolier Pants in those
+  same captured frames while leaving their asking prices null. Public-sample
+  integration tests cover a blocked Fish Spear asking line, its seven-pixel grid
+  offset, preservation of unrelated prices and refusal of a cursor-cut name.
+- The six-position live scroll test records 198 frames with the new path;
+  diagnostics recover Heckler, Blue Legolier Pants and Gold Nordic Helm under
+  the stationary pointer. A comparable first-row blank run lasted 4.4 seconds
+  before the change and one sampled frame in the revised run. This is a local
+  example, not a universal latency bound or proof of fully hidden identities.
+- A masked-panel benchmark returns identical scalar/batched geometry with
+  median time decreasing from 61 to 37 ms. Separate live profiles reduce UI
+  reading-processing p95 from about 255 to 75 ms. OCR/capture time still varies
+  with concurrent system load. The optimization preserves frame predicates;
+  it does not weaken the body, source, game-area or market-identity checks.
+- Name-only references use exact current title pixels and unique catalog IDs,
+  never an inferred amount, tier or a covered-icon guess. They remain through
+  later OCR misses and can acquire a subsequently verified asking line without
+  a page reset. Stationary unchanged shop reads and reusable verified panel
+  geometry have scheduling/source-validity regressions.
+- The final varied-hover pass retains six labels in all **202 post-load frames**
+  of 212 lossless captures, preserving the previous hover-retention repair.
+- The incremental-history follow-up passes **30 history/motion tests and all
+  99 UI-context tests** in private Xvfb/D-Bus QA. Regression checks count row
+  content paints during new active cards and insertions, isolate quote/thumbnail
+  updates, preserve interrupted opacity and bound the visual cache to viewport
+  neighbors. The two-second grace and 100-entry session limit remain unchanged.
+  These automated checks do not establish live visual acceptance of the update.
+- A further hover/scroll follow-up reproduces full-row rejection when a native
+  description touches only blank space after readable text. Recovery now covers
+  every unread hinted slot and supplies independent name/asking rectangles.
+  Twelve new controller checks cover complete versus cut/blocked text and
+  source-mask deltas; nine public native integration tests cover neighboring
+  rows, asking lines, grid alignment, native colors and conservative refusal.
+  Three retention checks ensure name-only updates preserve last-seen amounts
+  without promoting them to current offers or carrying them to a new page.
+- A 14-request replay of private captured pixels recovers complete neighboring
+  names/amounts and refuses cut prefixes. The first affected read takes 397 ms;
+  cached repeated reads have a 33 ms median. These are local reader timings,
+  not end-to-end overlay latency guarantees. Work/cache bounds remain 24 slots
+  and 96 line results, with no new model/runtime dependencies.
+- The subsequent live 19-second test captures **58 lossless frames**, including
+  actual downward and upward wheel scrolling while descriptions remain visible.
+  Exposed new-page listings recover independently of the old popup; already
+  loaded comparisons stay visible through hovering. Fresh cut-off names remain
+  unknown until exposed. This is sampled live verification, not a claim that
+  every scroll transition or completely hidden listing is immediately readable.
+- A later inventory investigation reproduces a post-OCR title-proof rejection:
+  15 consecutive Grey T-Shirt / Leather Sandals frame pairs have identical
+  visible glyphs but changed dark pixels in the title's trailing six columns.
+  The new native-panel title proof accepts all 15 while rejecting changed
+  letters, colors, bright occluders, lost panels and covered source evidence.
+- Inventory associations retain exact source-cell and interior header/frame
+  checks; only tiny rounded header corners are omitted. Ten new capture IPC
+  cases preserve fresh inventory proofs through stale shop epochs without
+  reviving old shop rows, hover descriptions, caches or timeouts. UI cases also
+  cover shop retries, source retirement and a far old popup after pointer moves.
+- Seven generated native-reader integration tests and ten private conditional
+  controls cover cold missing-marker recovery and source/cap ambiguity. Full
+  native frames with the primary marker obscured recover Emerald Staff and
+  Green Bamboo Hat from their actual primary title letters; obscured source
+  headers withhold the equipped comparison. These are stored/generated pixels,
+  not a new live two-panel acceptance test; that case remains for user testing.
+- Bounded live diagnostics confirm the former Grey T-Shirt switch rejected 13
+  correct native callbacks for about 1.96 seconds. After the fix, the available
+  Axe Pole Arm / Bronze Ingot readings are accepted on their first correct
+  callback (about 152–185 ms of GUI handling in this loaded test). Sold-items UI
+  covered the equipped clothing during the later run, so this does not claim a
+  direct live Grey/Leather before-and-after timing comparison. Stationary title
+  proofs now skip background-only OCR even when a newer frame omitted the raw
+  fingerprint; changed title ink still forces a read.
+- This is a local source preview with a locally rebuilt reader. Installers,
+  physical Windows behavior and package upgrades have not been revalidated for
+  these changes. No new package/release was built or published; the installed
+  host package remains unchanged. Private evidence stays outside release assets.
 
 ## Current release workflow
 

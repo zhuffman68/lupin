@@ -13,10 +13,13 @@ mod pickups;
 mod tooltip_text;
 mod tooltip_surface;
 mod tooltip_association;
+mod inventory_pixels;
+mod tooltip_frame;
 mod centered_tooltip;
 mod shop_prices;
 mod shop_selection;
 mod shop_panes;
+mod shop_names;
 use game_area::{Locator, Rect};
 
 #[derive(Deserialize)]
@@ -45,17 +48,22 @@ struct Request {
     pickups_only: bool,
     #[serde(default)]
     exclude: Vec<Rect>,
+    #[serde(default)]
+    annotations: Vec<Rect>,
+    shop_area: Option<minerva_core::ScreenRect>,
 }
 
 fn main() {
     let mut reader = None;
     let mut tooltip_reader = None;
     let mut centered_titles = centered_tooltip::CenteredTitles::default();
+    let mut primary_titles = tooltip_text::PrimaryTitles::default();
     let mut tooltip_association = tooltip_association::Selector::default();
     let mut locator = Locator::new();
     let mut experience = None;
     let mut pickups = pickups::PickupLogReader::default();
     let mut price_recovery = shop_prices::PriceRecovery::default();
+    let mut name_recovery = shop_names::NameRecovery::default();
     let stdin = io::stdin();
     let mut stdout = io::BufWriter::new(io::stdout());
     for line in stdin.lock().lines() {
@@ -157,8 +165,31 @@ fn main() {
                 pointer: request.pointer,
             };
             let shop_reader=reader.get_or_insert_with(PlayerShopReader::bundled);
-            let shop_reading=shop_panes::read(&capture,shop_reader,&mut price_recovery);
+            let mut shop_reading=shop_panes::read(&capture,shop_reader,&mut price_recovery);
+            let recovered=name_recovery.apply(&capture,&mut shop_reading,request.shop_area);
             let mut value = serde_json::to_value(shop_reading)?;
+            if let Some(rows)=value.get_mut("shop").and_then(|s|s.get_mut("rows"))
+                .and_then(serde_json::Value::as_array_mut) {
+                for recovered in recovered {
+                    for row in rows.iter_mut() {
+                        if row["area"]["x"].as_i64()==Some(i64::from(recovered.row.x))
+                            && row["area"]["y"].as_i64()==Some(i64::from(recovered.row.y)) {
+                            if let Some(price)=recovered.price {
+                                row["priceArea"]=serde_json::to_value(price)?;
+                                if let Some(value)=recovered.price_value {
+                                    row["priceValueArea"]=serde_json::to_value(value)?;
+                                }
+                                if let Some(text)=recovered.price_text.as_ref() {
+                                    row["priceText"]=serde_json::to_value(text)?;
+                                }
+                            } else {
+                                row["nameOnly"]=serde_json::json!(true);
+                            }
+                            row["nameArea"]=serde_json::to_value(recovered.name)?;
+                        }
+                    }
+                }
+            }
             if request.tooltip {
                 if let Some(pointer) = request.pointer {
                     let mut tooltip_capture = ItemCapture {
@@ -167,9 +198,23 @@ fn main() {
                         pointer,
                     };
                     let (prepared,markers)=tooltip_surface::prepare(&tooltip_capture.frame);
-                    if let Some(frame)=prepared {tooltip_capture.frame=frame}
                     let scale_hint=location.as_ref().and_then(|l|l.guards.get(1)).map(|r|r.width as f32/36.0);
-                    let association=tooltip_association.select(&tooltip_capture,&markers,scale_hint);
+                    let owned=annotation_rectangles(&tooltip_capture.frame,tooltip_capture.origin,&request.annotations);
+                    let association=tooltip_association.select_with_exclusions(&tooltip_capture,&markers,scale_hint,&owned);
+                    // Geometry/source guards always use raw capture pixels.
+                    // Contrast repair belongs only to title recognition.
+                    let mut raw_frame=prepared.map(|frame|std::mem::replace(&mut tooltip_capture.frame,frame));
+                    if !owned.is_empty() {
+                        if raw_frame.is_none() {raw_frame=Some(Frame{width:tooltip_capture.frame.width,
+                            height:tooltip_capture.frame.height,at_ms:tooltip_capture.frame.at_ms,
+                            rgba:tooltip_capture.frame.rgba.clone()})}
+                        // Geometry used raw pixels with explicit unknown regions.
+                        // OCR must never read Lupin's own item names as game text.
+                        mask_regions(&mut tooltip_capture.frame,tooltip_capture.origin,&request.annotations,64);
+                    }
+                    let primary_header=association.primary_header.map(|header|minerva_core::ScreenRect{
+                        x:tooltip_capture.origin.x+header.x as i32,y:tooltip_capture.origin.y+header.y as i32,
+                        width:header.w,height:header.h});
                     value["tooltipAssociation"]=association.metadata;
                     if association.rejected {
                         value["tooltip"]=serde_json::json!("none");
@@ -189,9 +234,15 @@ fn main() {
                         tooltip_capture.pointer=ScreenPoint{x:tooltip_capture.origin.x+(rect.w.min(32)/2) as i32,y:tooltip_capture.origin.y+(rect.h.min(40)/2) as i32};
                     }
                     let tooltip_reader=tooltip_reader.get_or_insert_with(ItemTooltipReader::bundled);
+                    let mut marker_title=primary_header.is_none();
+                    if let Some(header)=primary_header {
+                        value["tooltip"]=match primary_titles.read(&tooltip_capture,header) {
+                            Some(title)=>serde_json::to_value(title)?,
+                            None=>serde_json::json!("none"),
+                        };
+                    } else {
                     let reading = tooltip_reader.read(&tooltip_capture);
                     value["tooltip"] = serde_json::to_value(reading.tooltip)?;
-                    let mut marker_title=true;
                     if !value["tooltip"]["found"]["name"].is_string() {
                         let popup=if let Some(title)=centered_titles.read(&tooltip_capture) {
                             marker_title=false;
@@ -204,6 +255,7 @@ fn main() {
                             value["tooltip"]["found"]["pinned"]=serde_json::json!(true);
                         }
                     }
+                    }
                     if request.tooltip_retry {
                         let found=&value["tooltip"]["found"];
                         if found.is_object() {
@@ -211,6 +263,12 @@ fn main() {
                             value["tooltip"]["found"]["alternatives"]=serde_json::json!(candidates);
                         }
                         value["tooltipRetried"]=serde_json::json!(true);
+                    }
+                    if association.panel.is_none() {
+                        value["tooltipPanel"]=tooltip_frame::export_for_title(
+                            raw_frame.as_ref().unwrap_or(&tooltip_capture.frame),tooltip_capture.origin,
+                            &value["tooltip"]["found"]["area"],scale_hint.unwrap_or(1.0))
+                            .unwrap_or(serde_json::Value::Null);
                     }
                     }
                 }
@@ -234,7 +292,21 @@ fn main() {
 fn mask_owned_surfaces(frame: &mut Frame, origin: ScreenPoint, regions: &[Rect]) {
     // Only independent Lupin editor surfaces are supplied. Locator proofs were
     // read from the original capture; the editor must never cover those proofs.
-    for rect in regions.iter().take(8) {
+    mask_regions(frame,origin,regions,8);
+}
+
+fn annotation_rectangles(frame: &Frame,origin: ScreenPoint,regions: &[Rect]) -> Vec<tooltip_frame::BoxRect> {
+    regions.iter().take(64).filter_map(|r| {
+        let left=(i64::from(r.x)-i64::from(origin.x)).clamp(0,i64::from(frame.width)) as u32;
+        let top=(i64::from(r.y)-i64::from(origin.y)).clamp(0,i64::from(frame.height)) as u32;
+        let right=(i64::from(r.x)+i64::from(r.width)-i64::from(origin.x)).clamp(0,i64::from(frame.width)) as u32;
+        let bottom=(i64::from(r.y)+i64::from(r.height)-i64::from(origin.y)).clamp(0,i64::from(frame.height)) as u32;
+        (right>left&&bottom>top).then_some(tooltip_frame::BoxRect{x:left,y:top,w:right-left,h:bottom-top})
+    }).collect()
+}
+
+fn mask_regions(frame: &mut Frame, origin: ScreenPoint, regions: &[Rect],limit: usize) {
+    for rect in regions.iter().take(limit) {
         let left=(i64::from(rect.x)-i64::from(origin.x)).clamp(0,i64::from(frame.width)) as u32;
         let top=(i64::from(rect.y)-i64::from(origin.y)).clamp(0,i64::from(frame.height)) as u32;
         let right=(i64::from(rect.x)+i64::from(rect.width)-i64::from(origin.x)).clamp(0,i64::from(frame.width)) as u32;
@@ -271,5 +343,15 @@ mod writer_mask_tests {
         let mut frame=Frame{width:3,height:2,rgba:vec![200;3*2*4],at_ms:0};
         mask_owned_surfaces(&mut frame,ScreenPoint{x:50,y:60},&[Rect{x:0,y:0,width:u32::MAX,height:u32::MAX}]);
         assert!(frame.rgba.chunks(4).all(|pixel|pixel==[0,0,0,255]));
+    }
+
+    #[test]
+    fn annotation_geometry_clips_to_the_analysis_origin_and_is_bounded() {
+        let frame=Frame{width:10,height:8,rgba:vec![200;10*8*4],at_ms:0};
+        let owned=annotation_rectangles(&frame,ScreenPoint{x:30,y:40},&[
+            Rect{x:28,y:42,width:8,height:9},Rect{x:90,y:90,width:2,height:2}]);
+        assert_eq!(owned,vec![tooltip_frame::BoxRect{x:0,y:2,w:6,h:6}]);
+        let many:Vec<_>=(0..100).map(|_|Rect{x:30,y:40,width:1,height:1}).collect();
+        assert_eq!(annotation_rectangles(&frame,ScreenPoint{x:30,y:40},&many).len(),64);
     }
 }

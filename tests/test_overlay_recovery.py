@@ -88,7 +88,8 @@ class OverlayRecoveryTests(unittest.TestCase):
 
     def attempts(self):
         path=self.path/'helper'/'price_lens'/'attempts.txt'
-        return int(path.read_text()) if path.exists() else 0
+        # The subprocess can be between opening and writing this tiny fixture.
+        return int(path.read_text() or 0) if path.exists() else 0
 
     def failure(self):
         return json.loads((self.path/'cache'/'overlay-startup.json').read_text())

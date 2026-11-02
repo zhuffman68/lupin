@@ -42,6 +42,20 @@ class AnnotationMotionTests(unittest.TestCase):
         self.assertEqual(self.window.last_command, last_command)
         self.assertEqual(self.window.pointer_timer.interval(), 16)
 
+    def test_description_flip_replaces_the_pointer_offset_and_omission_clears_the_anchor(self):
+        row=dict(x=410,y=310,key='item',kind='item',name='Hat',text='FM 1,000',
+            follow_pointer=[450,300],pointer_region=[0,0,800,800],bounds=[0,0,800,800],
+            description_box=[400,350,236,260],avoid_regions=[[400,350,236,260]])
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        self.assertEqual(active['_cursor_offset'],(-40,10))
+        flipped={**row,'x':60,'follow_pointer':[460,300],'description_box':[50,350,236,260],
+            'avoid_regions':[[50,350,236,260]],'comparison_box':[289,350,236,200]}
+        self.window.read_command(json.dumps({**self.command,'rows':[flipped]}))
+        self.assertIs(self.window.rows[0],active);self.assertEqual(active['_cursor_offset'],(-400,10))
+        plain={key:value for key,value in row.items() if key not in ('description_box','comparison_box')}
+        self.window.read_command(json.dumps({**self.command,'rows':[plain]}))
+        self.assertIsNone(active['description_box']);self.assertIsNone(active['comparison_box'])
+
     def test_inventory_card_avoids_source_cells_and_the_native_title(self):
         row=dict(x=1000,y=238,key='inventory',kind='item',name='Hat',text='FM 1,000',
                  follow_pointer=[1100,300],pointer_region=[0,28,1366,766],bounds=[0,28,1366,766],
@@ -128,41 +142,90 @@ class AnnotationMotionTests(unittest.TestCase):
         self.window.read_command(json.dumps({**self.command,'rows':[row],'reduce_motion':False}))
         self.assertIsNone(self.window.rows[0].get('_watch_pulse'))
 
-    def test_watched_shop_label_keeps_the_tooltip_occlusion_opacity(self):
+    def test_watched_shop_label_stays_opaque_under_native_tooltips(self):
         row={'x':120,'y':90,'name':'Example Hat','key':'shop:0:1','text':'FM 1,000 mesos',
              'kind':'shop','color':'#86ceac','watched':True,'watch_event':40,'occlusion':[110,80,300,100]}
         self.window.read_command(json.dumps({**self.command,'rows':[row]}))
         active=self.window.rows[0]
-        self.assertEqual(active['_target_alpha'],.25)
+        self.assertEqual(active['_target_alpha'],1.0)
         pulse=active['_watch_pulse']
         self.window.read_command(json.dumps({**self.command,'rows':[row]}))
         self.assertIs(self.window.rows[0]['_watch_pulse'],pulse)
-        self.assertEqual(self.window.rows[0]['_target_alpha'],.25)
+        self.assertEqual(self.window.rows[0]['_target_alpha'],1.0)
 
-    def test_shop_browse_priority_keeps_labels_opaque_then_restores_native_dimming(self):
-        row={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
-             'viewport_epoch':1,'occlusion':[110,80,300,100]}
+    def test_shop_labels_stay_opaque_with_and_without_a_native_description(self):
+        row={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000','viewport_epoch':1}
         state={**self.command,'shop_viewport_epoch':1,'rows':[row],'reduce_motion':True}
         self.window.read_command(json.dumps(state));active=self.window.rows[0]
-        self.assertEqual(active['_alpha'],.25)
-        self.window.read_command(json.dumps({**state,'shop_browsing_priority':True}))
-        self.assertIs(self.window.rows[0],active);self.assertEqual(active['_alpha'],1)
-        self.assertEqual(active['occlusion'],row['occlusion'])
-        self.window.read_command(json.dumps(state))
-        self.assertEqual(active['_alpha'],.25)
+        before=self.window.label_rect(active,QPoint(0,0))
+        for box in ([110,80,300,100],None,[0,0,800,800],None):
+            self.window.read_command(json.dumps({**state,'rows':[{**row,'occlusion':box}]}))
+            self.assertIs(self.window.rows[0],active);self.assertEqual(active['_alpha'],1)
+            self.assertEqual(self.window.label_rect(active,QPoint(500,500)),before)
 
-    def test_browse_priority_immediately_disposes_active_and_retiring_description_clones(self):
-        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
-              'viewport_epoch':1,'occlusion':[250,80,300,240]}
-        clone={**shop,'key':'description:shop:1:1','kind':'item','source_shop_key':shop['key'],
-               'description_box':[250,80,300,240],'bounds':[0,0,800,800],'occlusion':None}
-        state={**self.command,'shop_viewport_epoch':1,'rows':[shop,clone]}
-        self.window.read_command(json.dumps(state));old=self.window.rows[-1]
+
+    def test_shop_description_clones_are_rejected_without_suppressing_inventory(self):
+        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000','viewport_epoch':1}
+        clone={**shop,'key':'description:shop:1:1','kind':'item','source_shop_key':shop['key']}
+        inventory={**self.command['rows'][0],'key':'inventory','kind':'item'}
+        self.window.read_command(json.dumps({**self.command,'shop_viewport_epoch':1,'rows':[shop,clone,inventory]}))
+        self.assertEqual([row['key'] for row in self.window.rows],[shop['key'],'inventory'])
+        self.assertFalse(any(row.get('source_shop_key') for row in self.window.retiring))
+
+    def test_add_item_form_fades_only_actual_shop_label_intersections_and_clears(self):
+        shop=dict(x=120,y=90,name='Hat',key='shop:1:1',kind='shop',text='FM 1,000',viewport_epoch=1)
+        other={**shop,'key':'shop:1:2','y':250}
+        item={**shop,'key':'inventory','kind':'item'}
+        state={**self.command,'shop_viewport_epoch':1,'reduce_motion':True}
+        self.window.read_command(json.dumps({**state,'rows':[shop,other,item]}))
+        active,uncovered,inventory=self.window.rows
+        box=self.window.label_rect(active,QPoint())
+        form=[box.right()-1,box.top(),50,box.height()]
+        rows=[{**row,'shop_entry':form} for row in (shop,other,item)]
+        self.window.read_command(json.dumps({**state,'rows':rows}))
+        self.assertIs(self.window.rows[0],active)
+        self.assertEqual(active['_alpha'],.35)
+        self.assertEqual(uncovered['_alpha'],1)
+        self.assertEqual(inventory['_alpha'],1)
+        # Move the form away while retaining the same native row identity.
+        self.window.read_command(json.dumps({**state,'rows':[{**shop,'shop_entry':[700,700,50,50]},other,item]}))
+        self.assertEqual(active['_alpha'],1)
+        self.window.read_command(json.dumps({**state,'rows':rows}))
+        self.window.read_command(json.dumps({**state,'rows':[shop,other,item]}))
+        self.assertIsNone(active['shop_entry']);self.assertEqual(active['_alpha'],1)
+
+    def test_add_item_form_fade_is_continuous_interruptible_and_not_restarted(self):
+        from PySide6.QtTest import QTest
+        shop=dict(x=120,y=90,name='Hat',key='shop:1:1',kind='shop',text='FM 1,000',viewport_epoch=1)
+        state={**self.command,'shop_viewport_epoch':1}
+        self.window.read_command(json.dumps({**state,'rows':[shop]}));QTest.qWait(150)
+        active=self.window.rows[0];box=self.window.label_rect(active,QPoint())
+        covered={**shop,'shop_entry':list(box.getRect())}
+        self.window.read_command(json.dumps({**state,'rows':[covered]}))
+        fade=active['_fade'];self.assertEqual(fade.endValue(),.35)
+        QTest.qWait(45);middle=active['_alpha'];self.assertGreater(middle,.35);self.assertLess(middle,1)
+        self.window.read_command(json.dumps({**state,'rows':[covered]}))
+        self.assertIs(active['_fade'],fade)
         self.window.read_command(json.dumps({**state,'rows':[shop]}))
-        self.assertIn(old,self.window.retiring)
-        self.window.read_command(json.dumps({**state,'shop_browsing_priority':True}))
-        self.assertEqual(len(self.window.rows),1);self.assertEqual(self.window.rows[0]['kind'],'shop')
-        self.assertNotIn(old,self.window.retiring);self.assertIsNone(old.get('_fade'))
+        self.assertEqual(active['_fade'].startValue(),middle);self.assertEqual(active['_fade'].endValue(),1)
+        QTest.qWait(150);self.assertEqual(active['_alpha'],1)
+        self.assertFalse(self.window.retiring)
+
+    def test_invalid_add_item_geometry_cannot_dim_a_shop_label(self):
+        shop=dict(x=120,y=90,name='Hat',key='shop:1:1',kind='shop',text='FM 1,000')
+        for form in (None,[],[100,80,-1,50],[100,80,200,0],[100,80,'200',50]):
+            self.window.read_command(json.dumps({**self.command,'reduce_motion':True,'rows':[{**shop,'shop_entry':form}]}))
+            self.assertEqual(self.window.rows[0]['_alpha'],1)
+
+    def test_rejected_shop_source_disappears_without_a_stale_fade_at_the_same_epoch(self):
+        shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000','viewport_epoch':1}
+        inventory={'x':120,'y':190,'name':'Other Hat','key':'inventory','kind':'item','text':'FM 2,000'}
+        state={**self.command,'shop_viewport_epoch':1,'hover_enabled':True}
+        self.window.read_command(json.dumps({**state,'rows':[shop,inventory]}))
+        self.window.read_command(json.dumps({**state,'rows':[]}))
+        self.assertFalse(any(row.get('kind')=='shop' for row in self.window.retiring))
+        self.assertTrue(any(row.get('kind')=='item' for row in self.window.retiring))
+
 
     def test_unknown_new_viewport_retires_old_shop_and_clone_without_new_rows(self):
         shop={'x':120,'y':90,'name':'Hat','key':'shop:1:1','kind':'shop','text':'FM 1,000',
@@ -210,18 +273,8 @@ class AnnotationMotionTests(unittest.TestCase):
         self.assertEqual(self.window.label_rect(row, QPoint(100, 100)),
                          self.window.label_rect(row, QPoint(140, 130)))
 
-    def test_hovered_shop_reference_avoids_description_and_is_only_needed_for_a_dimmed_listing(self):
-        shop=dict(x=120,y=90,key='shop:1:hat',kind='shop',name='Example Hat',text='FM 1,000',color='#86ceac',occlusion=[250,80,300,240])
-        focus=dict(shop,key='description:hat',kind='item',occlusion=None,source_shop_key=shop['key'],
-                   description_box=[250,80,300,240],bounds=[0,0,800,600])
-        self.window.read_command(json.dumps({**self.command,'rows':[shop,focus]}))
-        self.assertEqual(len(self.window.rows),2)
-        row=self.window.rows[-1];box=self.window.label_rect(row,QPoint(0,0))
-        self.assertFalse(box.intersects(QRect(*focus['description_box'])))
-        self.assertTrue(QRect(*focus['bounds']).contains(box));self.assertEqual(row['_target_alpha'],1.0)
-        clear=dict(focus,description_box=[500,300,250,240])
-        self.window.read_command(json.dumps({**self.command,'rows':[dict(shop,occlusion=None),clear]}))
-        self.assertEqual([row['kind'] for row in self.window.rows],['shop'])
+
+
 
     def test_inventory_card_has_a_short_fade_in_and_out(self):
         row = self.window.rows[0]
@@ -264,83 +317,19 @@ class AnnotationMotionTests(unittest.TestCase):
         self.assertEqual(self.window.retiring, [])
         self.assertTrue(self.window.isHidden())
 
-    def test_only_shop_labels_overlapping_the_description_fade_and_return_in_place(self):
-        rows=[{'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000'},
-              {'x':120,'y':150,'name':'Shoes','key':'shop:1','kind':'shop','text':'FM 2,000'}]
-        state={**self.command,'rows':rows}
-        self.window.read_command(json.dumps(state))
-        for row in self.window.rows:row['_fade'].setCurrentTime(110)
-        before=[self.window.label_rect(row,QPoint()) for row in self.window.rows]
-        for row in rows:row['occlusion']=[250,80,300,50]
-        self.window.read_command(json.dumps(state))
-        affected,clear=self.window.rows
-        affected['_fade'].setCurrentTime(110)
-        self.assertAlmostEqual(affected['_alpha'],.25)
-        self.assertAlmostEqual(clear['_alpha'],1)
-        self.assertEqual(before,[self.window.label_rect(row,QPoint()) for row in self.window.rows])
-        for row in rows:row['occlusion']=None
-        self.window.read_command(json.dumps(state))
-        affected['_occlusion_release'].timeout.emit()
-        affected['_fade'].setCurrentTime(110)
-        self.assertAlmostEqual(affected['_alpha'],1)
-        self.assertEqual(before,[self.window.label_rect(row,QPoint()) for row in self.window.rows])
-
-    def test_one_clear_sample_does_not_reverse_the_dimmed_shop_label(self):
+    def test_repeated_tooltip_changes_keep_the_same_pixels_color_and_label(self):
         self.window.read_command(json.dumps({**self.command,'rows':[],'hover_enabled':False}))
-        row={'x':120,'y':90,'name':'Hat','key':'shop:2:100:slot','kind':'shop',
-             'shop_page':2,'shop_slot':[60,20,180,40],'text':'FM 1,000',
-             'color':'#86ceac','deal_delta':'-25%','occlusion':[200,80,300,100]}
-        state={**self.command,'rows':[row]}
-        self.window.read_command(json.dumps(state))
-        active=self.window.rows[0];active['_fade'].setCurrentTime(110)
-        before=self.window.grab().toImage()
-        self.window.read_command(json.dumps({**state,'rows':[{**row,'occlusion':None}]}))
-        release=active['_occlusion_release']
-        self.assertIsNone(active['occlusion'])
-        self.assertAlmostEqual(active['_alpha'],.25)
-        self.assertEqual(before,self.window.grab().toImage())
-        self.window.read_command(json.dumps(state))
-        self.assertIs(self.window.rows[0],active)
-        self.assertIsNone(active.get('_occlusion_release'))
-        self.assertFalse(release.isActive())
-        self.assertEqual(active['color'],'#86ceac');self.assertEqual(active['deal_delta'],'-25%')
-        self.assertEqual(before,self.window.grab().toImage())
-
-    def test_repeated_clear_samples_share_one_bounded_release_timer(self):
-        from PySide6.QtTest import QTest
         row={'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000',
-             'occlusion':[200,80,300,100]}
+             'color':'#86ceac','deal_delta':'-25%'}
         state={**self.command,'rows':[row]}
         self.window.read_command(json.dumps(state));active=self.window.rows[0]
-        active['_fade'].setCurrentTime(110)
-        clear={**state,'rows':[{**row,'occlusion':None}]}
-        self.window.read_command(json.dumps(clear));release=active['_occlusion_release']
-        self.assertLessEqual(release.interval(),220)
-        self.window.read_command(json.dumps(clear))
-        self.assertIs(active['_occlusion_release'],release)
-        for _ in range(12):self.window.read_command(json.dumps(clear))
-        self.assertIs(active['_occlusion_release'],release)
-        QTest.qWait(220)
-        self.assertEqual(active['_target_alpha'],1)
-        if active.get('_fade'):active['_fade'].setCurrentTime(110)
-        self.assertAlmostEqual(active['_alpha'],1)
-        self.assertIsNone(active.get('_occlusion_release'))
-
-    def test_a_single_bad_sample_at_normal_150ms_delivery_does_not_brighten(self):
-        from PySide6.QtTest import QTest
-        row={'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000',
-             'occlusion':[200,80,300,100]}
-        state={**self.command,'rows':[row]}
-        self.window.read_command(json.dumps(state));active=self.window.rows[0]
-        active['_fade'].setCurrentTime(110)
-        clear={**state,'rows':[{**row,'occlusion':None}]}
-        self.window.read_command(json.dumps(clear));release=active['_occlusion_release']
-        QTest.qWait(150)
-        self.assertIs(active.get('_occlusion_release'),release)
-        self.assertAlmostEqual(active['_alpha'],.25)
-        self.window.read_command(json.dumps(state))
-        self.assertIsNone(active.get('_occlusion_release'))
-        self.assertAlmostEqual(active['_alpha'],.25)
+        active['_fade'].setCurrentTime(110);before=self.window.grab().toImage()
+        for box in ([200,80,300,100],None)*6:
+            self.window.read_command(json.dumps({**state,'rows':[{**row,'occlusion':box}]}))
+            self.assertIs(self.window.rows[0],active)
+            self.assertEqual(active['_alpha'],1.0);self.assertEqual(active['_target_alpha'],1.0)
+            self.assertEqual(active['color'],'#86ceac');self.assertEqual(active['deal_delta'],'-25%')
+            self.assertEqual(self.window.grab().toImage(),before)
 
     def test_new_shop_page_or_new_item_in_the_slot_does_not_trail_old_references(self):
         self.window.read_command(json.dumps({**self.command,'rows':[],'hover_enabled':False}))
@@ -354,22 +343,14 @@ class AnnotationMotionTests(unittest.TestCase):
             self.assertNotIn(old,self.window.retiring)
             self.assertIsNone(old.get('_fade'))
 
-    def test_reduce_motion_keeps_overlap_transparency_without_an_animation(self):
+    def test_reduce_motion_keeps_shop_labels_opaque_without_an_animation(self):
         self.window.read_command(json.dumps({**self.command,'reduce_motion':True,'rows':[
             {'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000','occlusion':[200,80,300,100]}]}))
-        self.assertAlmostEqual(self.window.rows[0]['_alpha'],.25)
+        self.assertAlmostEqual(self.window.rows[0]['_alpha'],1.0)
         self.assertIsNone(self.window.rows[0].get('_fade'))
 
-    def test_omitted_occlusion_clears_the_previous_shop_overlap(self):
-        row={'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000'}
-        state={**self.command,'reduce_motion':True,'rows':[{**row,'occlusion':[200,80,300,100]}]}
-        self.window.read_command(json.dumps(state))
-        active=self.window.rows[0]
-        self.assertAlmostEqual(active['_alpha'],.25)
-        self.window.read_command(json.dumps({**state,'rows':[row]}))
-        self.assertIs(self.window.rows[0],active)
-        self.assertIsNone(active.get('occlusion'))
-        self.assertAlmostEqual(active['_alpha'],1)
+
+
 
     def test_age_updates_do_not_pulse_a_stable_market_price(self):
         row={'x':120,'y':90,'name':'Hat','key':'shop:0','kind':'shop','text':'FM 1,000 · 1s',

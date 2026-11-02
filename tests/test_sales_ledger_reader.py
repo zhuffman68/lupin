@@ -28,7 +28,7 @@ class SalesLedgerReaderTests(unittest.TestCase):
         cls.font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0])
         cls.font.setPixelSize(11)
 
-    def frame(self, *, shop=False, description=False):
+    def frame(self, *, shop=False, description=False, purchases=False):
         image = QImage(1100, 800, QImage.Format.Format_RGBA8888)
         image.fill(QColor('#4c4c4c'))
         painter = QPainter(image)
@@ -43,7 +43,9 @@ class SalesLedgerReaderTests(unittest.TestCase):
                 painter.fillRect(x, y + dy + rule, 162, 1, QColor('white'))
             painter.fillRect(x - 37, y + dy + 54, 199, 5, QColor('#f5f6f7'))
         painter.setPen(QColor('black'))
-        for text, dy in [('Total Sales / Total Received', 0), ('0 mesos', 18), ('0 mesos', 36)]:
+        text_rows=([('Bronze Ingot',0),('Buyer: Example',18),('Number purchased: 9',36)] if purchases else
+                   [('Total Sales / Total Received',0),('0 mesos',18),('0 mesos',36)])
+        for text, dy in text_rows:
             painter.drawText(x + 5, y + dy + 14, text)
         if shop:
             painter.drawImage(20, 410, QImage(str(PUBLIC / 'player-shop/ideal-ratio-weapons-and-a-robe.png')))
@@ -69,7 +71,6 @@ class SalesLedgerReaderTests(unittest.TestCase):
         self.assertIsNone(result['shop'])
         state = PriceObservations(catalog=Catalog({'items': [dict(id=1, name='Total Sales / Total Received')]}))
         state.browsing = ShopBrowsing(identity=state.shop_identity)
-        self.addCleanup(state.browsing.timer.stop)
         state.observe_shop(result['shop'], image, image)
         self.assertFalse(state.shop_open)
         self.assertEqual(state.rows, [])
@@ -84,6 +85,33 @@ class SalesLedgerReaderTests(unittest.TestCase):
         self.assertEqual([dict(name=row['name'], **row['price']) for row in rows], expected)
         self.assertTrue(all(row['area']['x'] < 300 for row in rows))
         self.assertEqual(result['tooltip']['found']['name'], 'Screw')
+
+    def test_purchased_items_without_visible_totals_are_never_shop_listings(self):
+        result=self.read(self.frame(purchases=True))
+        self.assertIsNone(result['shop'])
+        result=self.read(self.frame(shop=True,purchases=True))
+        expected=json.loads((PUBLIC/'player-shop/ideal-ratio-weapons-and-a-robe.json').read_text())
+        self.assertEqual([dict(name=row['name'],**row['price']) for row in result['shop']['rows']],expected)
+
+    def test_hovered_visible_name_reads_when_its_asking_line_is_blocked(self):
+        image=QImage(str(PUBLIC/'player-shop/ideal-ratio-weapons-and-a-robe.png'))
+        clean=self.read(image);area=clean['shop']['area'];first=clean['shop']['rows'][0]['area']
+        painter=QPainter(image)
+        painter.fillRect(first['x'],first['y']+18,first['width'],16,QColor('white'));painter.end()
+        result=self.read(image,shop_area=area,pointer=dict(x=first['x']+120,y=first['y']+9))
+        recovered=next(row for row in result['shop']['rows'] if row.get('nameOnly'))
+        self.assertEqual(recovered['name'],'Fish Spear');self.assertIsNone(recovered['price'])
+        self.assertEqual(recovered['nameArea']['y'],first['y'])
+        self.assertTrue(any(row.get('name')=='Nakamaki' and row.get('price',{}).get('mesos')==10999
+                            for row in result['shop']['rows']))
+
+    def test_name_fallback_never_reads_a_pointer_cut_name_prefix(self):
+        image=QImage(str(PUBLIC/'player-shop/ideal-ratio-weapons-and-a-robe.png'))
+        clean=self.read(image);area=clean['shop']['area'];first=clean['shop']['rows'][0]['area']
+        painter=QPainter(image)
+        painter.fillRect(first['x'],first['y']+18,first['width'],16,QColor('white'));painter.end()
+        result=self.read(image,shop_area=area,pointer=dict(x=first['x']+24,y=first['y']+9))
+        self.assertFalse(any(row.get('nameOnly') for row in result['shop']['rows']))
 
 
 if __name__ == '__main__':

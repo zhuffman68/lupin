@@ -51,9 +51,150 @@ The visible bottom status bar and static frame evidence locate Classic World. FP
 
 Only a missing, uncovered shop price triggers a retry. A cropped shop passes through the unchanged strict upstream reader at two resamplings. Recovery requires agreement on exact name, row position, quantity and the complete meso amount. Existing prices are never overwritten. An eight-patch pixel cache also remembers failures. The pinned Minerva revision and OCR model are unchanged; the worker uses two OCR threads.
 
+`reader/src/shop_names.rs` recovers independently readable native lines across
+unread slots on a verified table, including neighbors touched by a description.
+The request supplies only known table geometry; fresh compatible row positions
+establish its grid. An unrelated palette-compatible window, such as Sold Items,
+cannot veto independently proven current components on that table or supply its
+grid, rows or hover identity. Native blue/orange text needs visible ink and a complete
+ending before a cursor/pane interruption, with agreement at two resamplings.
+An explicit native ellipsis may use its smaller natural margin only after both
+reads agree on the literal marker and the current pixels contain all three small
+aligned dots. Exact catalog-prefix rules still decide identity; arbitrary cut
+prefixes do not gain a match. Ordinary asking-line margins and number guards are unchanged.
+Each recovered name has `nameArea`; an independently readable asking line has
+`priceArea` and must pass strict quantity, grouping and measured-width checks.
+Otherwise the row is `nameOnly`, with a null price and no inferred tier. The
+fallback neither reads description text nor guesses a hidden name or number.
+The glyph cache holds at most 96 successes/misses and work is limited to 24 slots;
+it adds no weights or runtime dependencies.
+
+Asking recovery reads the complete quantity, "for" and canonical grouped amount;
+the currency word supplies no authority. Both OCR resamplings must agree.
+`priceArea` and `priceValueArea` cover the same numeric glyphs and an independently
+visible native termination boundary; `priceText` is only `Q for N`. A final group
+of three digits requires a blank next-comma footprint, including its descender;
+short amounts require a whole next-digit advance. Measured font advances, digit
+shape and full core width prevent a clipped continuation or skinny last digit
+from masquerading as a complete amount. Joined zeroes retain their separate
+measured cells instead of requiring one disconnected ink run per character.
+Python independently validates those
+rectangles, grammar, text/value equality, native pixels and exact submitted/latest
+components. Every mask over numeric ink rejects the amount. This check runs even
+when a broader masked row proof matches; page changes discard all prior amounts.
+Later visible slots can establish the bounded native row-grid phase when the top
+slots are sold out. Current complete ordinary-reader results are not downgraded
+merely because optional component recovery cannot reproduce them.
+
+Cursor exclusions match the native inventory proof's 32 by 37 pixel footprint,
+six pixels left and seven above the hotspot, scaled with the native UI. Actual foreign pixels remain
+invalid outside that envelope. Container checks sample the fixed inner bevel,
+not the external shadow or scenery; a character animating behind a shop cannot
+make its complete page repeatedly disappear.
+
+Orange-selected component recovery uses the native selection's antialiasing
+range and coloured name/price separator. Only bounded outer scanlines may accept
+a separately measured native bevel: a broad, uninterrupted prefix must match its
+known background palette. Real dark text and unknown popup pixels are retained,
+not erased. The Python component check uses the same normalization and the
+reader's rounded 8-bit `<160` ink cutoff, so a faint antialias fringe cannot add
+a spurious glyph column beyond an exported complete-line proof. A selected row
+can therefore be read on a fresh scrolled page without borrowing its old price.
+
+Cached snapshot deliveries for a newly read page are batched into one control
+panel update. The annotation helper receives complete references before the
+heavier card/history layout. No per-item network call is added. Positive market
+values below one display as `<1`, retaining their original numeric comparison.
+Single-item inventory/equipped annotations protect their independently verified
+native panel (or at least the current title when no panel proof exists), as well
+as honoring the game bounds. They cannot follow the pointer across their own
+next-read frame/title evidence. Paired inventory cards retain their additional
+source-cell, header and comparison guards.
+During a brief OCR bridge, independently present retained panel geometry stays
+protected even when no new title proof is produced. This is placement evidence
+only; it never supplies or changes an item identity.
+
+`PriceObservations` checks component rectangles against their row and submitted
+read extent. Native ink, a natural ending, exact submitted/latest pixels and no
+mask over semantic glyphs establish component authority. A masked blank tail
+cannot invalidate an otherwise complete line; blocked titles or number prefixes
+remain unknown. A broad native separator at the top edge may account for OCR's
+one-pixel ascent offset; its pixels still match the newest frame exactly, and
+isolated white caption/description pixels are not separators.
+Independent shop guards and exact catalog resolution remain
+mandatory. A covered icon or old popup cannot resolve an ambiguous rescued row.
+Loaded identity-only rows survive later misses without acquiring a current offer.
+An earlier same-page/slot/exact-item asking amount is retained separately for
+presentation; restoring name-only pixels cannot promote it to a fresh offer.
+Scrolling clears this amount with the old page. A complete asking read replaces
+the name-only row in place.
+
+The UI requests recovery for a pending page, any unknown row or a name-only row
+whose asking line remains unread. A verified description touching the table also
+keeps this bounded path available: a known subset is not proof that the ordinary
+detector returned every occupied slot. Complete pages without a pane skip it.
+Unchanged stationary shops no longer repeat description OCR on a 200 ms timer;
+pixel changes, pointer changes, explicit rescans and periodic game-location checks
+still schedule work. Description geometry uses bounded batched stroke checks
+equivalent to the scalar predicate. An unchanged recognized name rectangle may
+reuse its panel only while its existing description proof matches both the
+submitted and latest images; moved/changed/unverified descriptions are searched
+normally. Market references still come exclusively from the shared snapshot.
+
+`tooltip_source.py` gives native item titles their own bounded pixel proof.
+Inside an independently present description panel, bright white/colored glyph
+positions and colors stay exact while its dark translucent background may vary.
+Changed letters, new bright occluders, lost panels and insufficient exposed ink
+invalidate the proof. Without panel evidence, matching remains byte-exact.
+This does not relax shop-row, item-icon or asking-price source checks. Inventory
+associations reuse this title proof, retaining exact source-cell and interior
+header/frame guards, with the bounded native decoration rules below.
+For that independently bound path only, byte-exact opaque glyph cores anchor a
+bounded antialiased fringe whose blended edge colour can follow scenery behind
+the panel. Added/moved/recoloured opaque strokes, foreign bright pixels and
+erased edges still reject the title, including inside annotation/cursor masks.
+The GUI reuses the same immutable association title instead of applying a
+second strict fringe check. Generic and shop titles retain exact bright ink.
+`inventory_pixels.py` and `reader/src/inventory_pixels.rs` agree on the native
+selected-tab white pulse. Version-three exports include an explicit `sourceTab`;
+only that verified path uses an immutable `InventoryHeader` rather than a raw
+header hash. A per-pixel distance-from-white fit permits bounded 4x lighting
+change with three RGB units of quantization/resampling error and a one-pixel
+sprite fringe. Enough pink selection must remain, and the caption, buttons and
+inactive tabs stay exact outside rounded header corners. Missing/changed tabs,
+erased letters and unrelated paint still reject the source. Older metadata
+retains its strict guards. The cell interior remains byte-exact outside the
+cursor; changed rim pixels may only remain native gold on both frames within
+one scaled pixel of the border. At least 16 scaled interior pixels must be
+exposed, so the decorative ring alone never supplies item identity.
+Tooltip corners require two current strokes in a three-sample lane at each end,
+plus a terminating cap and both complete side rails. A single background pixel
+can no longer erase a corner; a short inventory divider through the header
+cannot replace a full rail. Failed candidate rails continue the bounded search.
+Known Lupin annotation rectangles travel with the immutable submitted request
+in source-image coordinates. The reader clips them to its analysis origin and
+treats those rim samples as unknown, requiring independently exposed samples
+on both sides and both corners. It masks that paint out of OCR so Lupin's own
+item names cannot become game titles. Python validates the submitted frame with
+its submitted rectangles and each latest frame with the current rectangles;
+fully hidden rims/corners and changed native title/source/header evidence still
+fail. These geometry masks do not excuse source-cell or header pixel changes.
+Stationary tooltips reuse the proof instead of repeating OCR for scenery changes.
+An ordinary unbound popup must also stay near the submitted pointer's source;
+far-away clicked/pinned descriptions retain their separately verified path.
+
+Shop viewport epochs authorize shop rows, independently of current inventory
+proofs. Capture discards stale shop/hover fields, preserves newer shop caches and
+queues a bounded rescan, then validates an independent tooltip normally. An old
+shop-only miss cannot clear a newer inventory card, and removing a stale shop
+hover cannot turn its description into an inventory reference. Shop-row retries
+do not prevent independent inventory processing. A lost container clears cached
+shop routing before reacquisition so its old rectangle cannot block inventory.
+
 `reader/src/shop_panes.rs` keeps the separate sold-items ledger out of listing
-selection. Rejection requires its normalized totals heading and native three-line
-summary/grid geometry, rather than a global item-name blacklist. It masks only
+selection. Rejection requires its native three-line purchase/summary grid and
+following cell geometry, rather than a heading or item-name blacklist. Purchases
+remain recognizable when the totals are outside the viewport. It masks only
 the proven ledger in a copied shop-selection frame, with at most two retries;
 the original pixels remain available to inventory and generic descriptions.
 
@@ -104,6 +245,11 @@ A complete generation is validated before an atomic SQLite replacement. Checks r
 
 Check time, publication time and latest observed-sale time are distinct. Validity ends at the earlier of check time plus the selected interval and publication time plus one hour. An expired publication returned successfully uses a separate bounded 60/300/900-second retry sequence, capped at the selected interval; it cannot trigger a fetch loop or acquire a false publication age. Old/missing observations, thin samples and uncertain units cannot earn deal colors. Rechecking an unchanged publication cannot make its publication or observed sales newer. Missing items stay unpriced. Fresh-generation signals update existing rows even when their numeric price is unchanged, without new OCR, pointer movement or structural animation.
 
+When a successful check still returns an expired publication, Prices keeps a
+visible source-age warning with the last successful check and next retry.
+The countdown reads the existing retry deadline and makes no requests itself.
+A new valid publication clears the warning through normal market signals.
+
 Overlay annotations show the source's latest observed-sale age rather than repeating the snapshot check age. Stale/refresh warnings remain explicit. The larger item panel shows the source's latest observed-sale time. The full list does not supply a verified individual transaction amount; the market median is never presented as the latest sale price.
 
 ## Prices and watched items
@@ -117,22 +263,55 @@ paths retain their bounded decoder. One row source proof supports exact and
 verified-selection checks, while the separate icon-result cache retains its
 own image signature.
 
-`ShopBrowsing` provides a separate 1.5-second monotonic shop-priority window after
-a verified viewport change. Exposed native scrollbar movement or changed fresh
-canonical row identities with changed native name pixels advances its epoch.
-Annotation/tooltip pixels, raw OCR corrections, quote changes and shop dragging
-cannot extend the deadline. The capture worker tags each shop read with that
-epoch; old results cannot restore prior-page identities or asking prices.
-Independent EXP and pickup replies are not discarded for a shop-only change.
+`ShopBrowsing` detects verified native viewport changes using exposed scrollbar
+thumb movement, two changed exposed native name bands before OCR, or changed
+exact row identities and name ink. Name-band checks normalize ink against the
+measured blue/orange background and reject description-tinted/covered pixels.
+The frame check is vectorized and retains at most 24 row proofs. Its epoch rejects
+late results; its pending state blocks old-page labels until fresh rows arrive.
+There is no hover-priority expiry timer. Cursor footprints join tooltip and
+annotation exclusions in both frame and row comparisons; a partly hidden thumb
+cannot establish a shortened baseline. A single changed source does not prove a scroll.
+The native thumb's balanced blue palette is required; a purple description tint
+cannot turn two pixels of apparent edge movement into a viewport change.
+Name-only frame invalidation requires no unchanged same-slot name anchors and
+no unchanged, exposed native scrollbar. Confirmed thumb movement still wins.
+Each cached template records whether genuine native name ink was initially
+visible; uniform background cannot prove an unchanged item/page. A later masked
+read of the same item cannot erase its earlier usable title template.
+Advancing the viewport clears every old row, asking price and row-pixel cache,
+while retaining the independent fixed-rim container proof. A partly hidden new
+page can therefore keep its full scan geometry without inheriting an old item.
 
-During browsing, current verified shop labels remain opaque over the native
-description and Prices keeps its shop cards. The description itself is never
-changed or hidden. Pending/old-page labels and description clones, including
-retiring clones, are removed immediately. Covered new rows remain unknown.
-Expiry wakes presentation independently of new frames and revalidates the current
-hover before restoring ordinary dimming and description focus. Manual search,
-watched selection and inventory hover outside the shop retain their precedence.
-This policy is independent of GUI history grace and same-page offer retention.
+Row rejection and loss of the independently verified table are distinct outcomes.
+Rejecting an exposed changed item clears that listing and its recovery proof;
+the table remains a shop for scan geometry and hover routing. When unchanged
+native names at their saved positions support the same loaded page, a blocked
+row retains only its last-seen reference/asking-price presentation. Its current
+offer is revoked (`price=None`, `reference_only=True`); the original source proof
+is not replaced by tooltip pixels. This also covers incomplete description
+geometry. Repeated held frames do not repeatedly request OCR or restart widgets.
+A changed exposed title or positive viewport invalidation cannot inherit this
+presentation. A late OCR
+reply validates the accepted rows against the newest frame and returns for a
+retry, without clearing surviving rows a second time. Only actual container-proof
+loss retires shop context. The same table context is used for both scan hints
+and description routing, including pending/unread pages.
+Both the observation controller and browsing templates canonicalize OCR-rounded
+rectangles before caching. The browsing cache keeps one template per physical
+list slot, even after the UI's previous row has been rejected. This prevents
+shifted copies of the same name from counting as two changed native rows.
+
+Shop labels stay fully opaque and remain attached to their rows. Native shop
+descriptions provide geometry and conservative exact identity evidence only;
+they never create an annotation or take over the Prices list. Inventory-primary
+source proofs preserve separate inventory/equipped cards while a shop is open.
+Removed shop annotations are disposed immediately, without a retirement fade
+that could show the prior item's deal colour over a newly scrolled row. Retained
+labels preserve their opacity/animation objects. Inventory/translation cards
+retain their normal fades.
+A clipped visible listing can use its verified full description title when the
+same row's catalog candidates agree. No hidden unknown row gains a guessed ID.
 
 `annotation_geometry.py` calculates description and protected-region placement
 and drawing bounds. The independent annotation process retains replacement,
@@ -141,9 +320,53 @@ opacity, animation and painting. Current tracking annotations use the shared
 
 Selected shop bands can have a different brightness from normal rows. Inside an independently detected shop, the reader measures the blue and orange palettes, validates a single broad selected band, and adjusts only its background pixels in a copy. It reuses the primary strict OCR engine and merges only complete, noncontradicting reads from that band. An eight-entry cache includes current list pixels and coordinates, so price changes and occluders cannot inherit prior amounts. The original frame still drives tooltips and occlusion.
 
-The locator can retain a proven footer span while an item description covers its white rim, provided the independent LV template and OS caption still verify the same coordinates. Cold acquisition additionally permits one independently framed, dark native description with a cyan title marker across the rim, requiring repeated real rim endpoints and a separately verified caption. Arbitrary fragmented rims remain invalid. Losing those anchors still removes the game area. Title retries keep the public description bounds but omit the verified leading marker from the glyph crop; decorative pixels must not become OCR punctuation. Exact catalog rules remain unchanged and no nearest-name fallback is used. Shop selection/unreadable names retain references under verified page guards, without an assumed current listing amount. A listing returns without another OCR pass only when the entire previously read row pixels and page guards match exactly. Occlusion alpha uses the recognized current description rectangle only; late OCR replies cannot restore a description absent from the latest frame. The old covered-row opacity fallback is removed. Labels use page/item/list-local slot identities, independent of raw OCR row order or absolute shop position. A verified covered row may preserve its last-confirmed display amount for at most thirty seconds, separately from the current-offer field. That presentation is bound to the same quote generation and verified page/slot/item; changes or expiry discard its deal appearance. Guard exceptions cover only the actual native tooltip pixels and require remaining visible proof. Repeated clear commands share a single 200 ms occlusion-release deadline, allowing a single 150 ms proof miss without an opacity reversal.
+The locator can retain a proven footer span while an item description covers its white rim, provided the independent LV template and OS caption still verify the same coordinates. Cold acquisition additionally permits one independently framed, dark native description with a cyan title marker across the rim, requiring repeated real rim endpoints and a separately verified caption. Arbitrary fragmented rims remain invalid. Losing those anchors still removes the game area. Title retries keep the public description bounds but omit the verified leading marker from the glyph crop; decorative pixels must not become OCR punctuation. Exact catalog rules remain unchanged and no nearest-name fallback is used. Shop selection/unreadable names retain references under verified page guards, without an assumed current listing amount. A listing returns without another OCR pass only when the entire previously read row pixels and page guards match exactly. Description rectangles exclude covered pixels from recognition; late OCR replies cannot restore a description absent from the latest frame. Ordinary item descriptions never dim shop labels. Labels use page/item/list-local slot identities, independent of raw OCR row order or absolute shop position. A verified covered row may preserve its last-confirmed display amount for the lifetime of the verified page, separately from the current-offer field. That presentation is bound to the same verified page/slot/item; current fresh exact-ID quotes may update the comparison in place. Guard exceptions cover only the actual native tooltip pixels and require remaining visible proof. Shop description geometry never changes label opacity.
 
-Paired frame strokes alone do not establish a description: bright shop panes have similar borders. Description geometry also requires a dark native interior, excluding Lupin's own annotation rectangles from both body evidence and name anchors. The same proof validates retained rectangles against current frames. Omitting an occlusion from a new annotation clears the previous value. This prevents our dark labels from manufacturing evidence for the pane behind them and repeatedly dimming themselves.
+Paired frame strokes alone do not establish a description: bright shop panes have similar borders. Description geometry also requires a dark native interior, excluding Lupin's own annotation rectangles from both body evidence and name anchors. The same proof validates retained rectangles against current frames. A bounded cyan-marker and paired-frame probe can find a native panel before OCR when the current shop source becomes disrupted. This supplies only an exclusion rectangle. Our own dark labels cannot manufacture evidence for a native pane.
+
+The shop's fixed top and left rims establish its container; its changing scroll
+thumb belongs to the separate viewport proof. Ordinary pointer positions can
+arrive independently of captured cursor pixels, so at most eight previous
+positions remain masked for 750 ms. Native-pane movement has a separate
+three-rectangle, 350 ms trail. Duplicate exclusions are merged before the bounded
+row proofs. A tooltip mask includes its scaled frame/shadow margin.
+When annotations hide the far edge, the native left edge and visible top or
+bottom cap can prove just the exposed portion of an occlusion. Search work stops
+at that mask instead of borrowing a border from another pane. Cyan scenery cannot
+exhaust the bounded header probe: candidates are distributed over spatial cells
+and screened for adjacent native frame strokes before detailed validation.
+Body validation measures exposed dark pixels densely, avoiding sampling-grid
+flicker; the first native bottom cap plus an ending left edge prevents a partial
+pane from following a shop border below it. Pointer coordinates never erase a
+potential native title marker; source comparisons still mask cursor footprints.
+None of these geometry proofs supplies an item
+identity or an asking price.
+
+Partial OCR crops cannot replace a still-verified full shop rectangle. Row slots
+are normalized before merging missing observations, and exact unchanged pixels
+can restore an omitted row. Fully occluded previously verified rows retain only
+their presentation, while a complete strict native row is not discarded merely
+because a pane touches its edge. Covered unknown placeholders never capture a
+description as their item source. A rejected OCR submission cannot retire accepted
+rows that independently pass validation against the latest frame; a proven
+viewport change still invalidates them immediately. Current offers and held asking-price presentation
+remain separate. A shop-origin description cannot become an independent item
+card just because the pointer leaves the list; accepted generic titles must
+still match the newest captured name pixels. The Sold Items filter checks all
+bounded visible rows and does not require the totals header to be visible.
+If visible row pixels change before a usable OCR/scrollbar result, their cached
+IDs and amounts are removed before container-only recovery. A verified empty
+recovery cache retains scan geometry, never resurrects retired items and does not
+cycle the shop back through source rejection on every frame.
+When the container remains verified, a changed row is retired independently of
+other unchanged listings. Only a lost container or changes to all current row
+sources retire the entire current observation.
+
+The accepted open shop supplies a full-table geometry hint to the reader's crop
+and scrollbar observer, separately from native row/offer authority. A shortened
+OCR result cannot shrink later scans permanently to its one exposed row. A queued
+rescan actually bypasses ROI cropping; scroll transitions and description closure
+therefore reacquire the full frame while preserving the active request deadline.
 
 Clicked item-link descriptions may be located beyond the pointer's usual search area. The Rust reader reuses its existing name/bullet recognizer over bounded analysis regions without changing the real cursor or sending input. The GUI requires a catalog match and a visible anchored native description panel before accepting those results. A structurally verified pair of native frame edges permits a local header-only contrast adjustment when chat shows through the translucent fill or upgraded equipment has colored title ink. The cyan marker and its antialiased fringe stay intact, bright foreign occluders are preserved, and the original frame still drives all shop readings and geometry. The same paired-edge proof keeps adjacent comparison panels separate even when their purple hue is lost. A unique equipment name may drop its visible upgrade count for the existing unscrolled reference; exact catalog names retain priority. Cash descriptions with no cyan marker use a separate bounded header reader. It requires paired vertical frame edges and the horizontal top rim, then reads only centered title lines. Complete descenders are retained; up to eight exact header masks cache successful/failed reads. It never searches arbitrary scene text or substitutes a guessed catalog name. Such cards remain beside the description. Small-font I/l and g/q variants and ellipsis punctuation are accepted only for unique catalog candidates; shorter shared Ink-and-Wash prefixes remain ambiguous.
 
@@ -338,6 +561,10 @@ one identity; history uses native painted rows rather than per-row widget trees.
 Once shown, an entry stays in history through re-sightings and brief OCR misses.
 New rows slide in while older visible rows move down; height changes and rapid
 updates are interruptible, respect Reduce motion and preserve the scroll anchor.
+Unchanged visible rows reuse their painted content while the active cards or
+history geometry move. Each exact item has an independent visual cache, bounded
+to viewport neighbors; quote, thumbnail, hover and style changes invalidate only
+the affected row. Interrupted insertions retain their current position and opacity.
 Price animations advance only changed identities and finish their old glyph
 layers; another row's update cannot rewind a settled price. Only visible history
 thumbnails enter image demand. Market references are
@@ -365,15 +592,23 @@ colored title pixels participate in their cache fingerprint. Frame structure and
 exact catalog identity remain required. No hooks, process access or game input
 are introduced.
 
-`reader/src/tooltip_association.rs` applies a bounded source proof to adjoining,
-marker-bearing inventory/comparison descriptions across supported placements.
+`reader/src/tooltip_frame.rs` fits complete native description frames from raw
+capture pixels, before title contrast preparation. Left/right hypotheses require
+repeated side strokes and a horizontal cap terminating at its corners. An interior
+inventory rail visible through the translucent body cannot supply that boundary.
+Owner text can move the item title below the usual header position; the actual
+frame cap remains independent. A separately framed comparison can complete a
+partly visible neighbour or split an enclosing common-rim union, without borrowing
+its title. `tooltip_association.rs` binds these frames to inventory sources.
 The inventory need not touch the capture edge, and the comparison's right edge
 need not align with the inventory. Native tabs, controls, the hovered grid cell,
 top cap and two adjacent horizontal frames establish the primary-left layout
-before its single OCR pass. Unsupported or ambiguous layouts are rejected rather
-than choosing the closest title. Ordinary single/equipped/linked descriptions
-retain their existing path outside the remembered source's scope. Marker-free
-comparison pairs and unsupported inventory layouts remain outside this override.
+before OCR. Unsupported or ambiguous layouts are rejected rather
+than choosing the closest title. Verified standalone inventory descriptions carry
+the same cell/header binding. Single/equipped/linked descriptions outside that
+source retain their ordinary path, with explicit `tooltipPanel` geometry when a
+complete frame is available. Marker-free primary headers require the existing
+independent frame proof; unsupported inventory layouts remain outside the override.
 
 One proven pair also retains its panel-body geometry independently of its title
 markers. Repeated loss of a primary marker or the primary frame cannot restore
@@ -383,16 +618,91 @@ background. Removing the comparison or establishing fresh independent source
 evidence releases ordinary selection. Source searches reject out-of-frame
 pointers before calculating crop bounds.
 
+Cold-start ambiguity also uses independently adjoining native frames, without
+requiring both title markers to survive. Missing source/header/cap evidence
+cannot authorize the nearest equipped comparison. With a proven primary role
+and complete current title ink, `PrimaryTitles` reads only that bounded header
+at two agreeing resamplings, caching at most 16 results. It never borrows a
+comparison title, previous item name or hidden text. Unprovable paired roles
+remain rejected; ordinary single/equipped/linked descriptions retain their path.
+
 `tooltip_association.py` validates this native metadata in the same pixel space
-as the recognized name. Version-two metadata carries separate primary/comparison
-rectangles, source kind, hovered cell, cursor footprint and bounded guards.
+as the recognized name. Version-three metadata carries separate primary/comparison
+rectangles (or a single-panel layout), source kind, hovered cell, cursor footprint,
+source-header guards and cap flags. Inventory scale comes from its own controls,
+with the HUD estimate used only for a bounded search. Source/header guards stay
+exact; frame rails are revalidated structurally using Rust's same scaled
+middle/outer-stroke sampling, including odd-width antialiasing at 125%. Animated
+scenery cannot invalidate a frame merely by changing its translucent colours.
+Versions one/two remain readable for compatibility.
 Source-cell validation masks old/new cursor footprints only when sufficient
 visible evidence remains; pointer motion alone does not invalidate a proven
 item. Changing the visible cell, name, guard, origin or token clears both the
 retained card and brief OCR bridge. Python geometry preserves separate native
 panels instead of joining their translucent backgrounds. Annotation placement
-avoids the source and proof pixels; when no safe placement fits, it withholds the
+avoids the complete source and both native panels; when no safe placement fits, it withholds the
 card. These are screen-image proofs with no game-window identity or fuzzy names.
+Inventory annotation commands name the verified primary `description_box` and
+optional `comparison_box` separately from protected inventory geometry. Placement
+prefers an eight-pixel gap directly above the primary, shifting horizontally to
+avoid the inventory and comparison. Adjacent sides, then below, precede the
+general safe-space fallback. Cursor motion projects the description family
+without moving inventory protection. Fresh geometry resets its pointer offset;
+omitted anchors/comparisons clear reused row state. This prevents a wider card
+from jumping above the whole inventory when a safe above-description lane exists.
+
+`shop_dialog.py` recognizes the shop's price-entry form from aligned magenta
+labels, native paper and independently exposed controls or frame evidence. Detection searches
+only a bounded neighbourhood of a verified shop and excludes our annotations.
+An already measured form rechecks those controls directly when the cursor splits
+a label. Geometry is memoized per immutable capture and source/mask context;
+capture can obtain its exclusion before `image_ready` without consuming the GUI
+visibility transition. `ShopPriceEntry` blocks source/offer mutation while the
+form is visible and after closure until a fresh verified shop read. The GUI
+retains stable labels, observations, history and snapshot prices during that
+hold. Only while the verified form is actually visible does it export a scaled,
+crop-adjusted rectangle on shop annotations. The canvas measures each actual
+label and eases intersecting shop labels to 35% opacity over 110 ms; other shop
+labels, inventory cards and ordinary descriptions stay opaque. Closing/moving
+the form restores unaffected labels through the same interruptible fade without
+recreating them. Reduced motion snaps to the target. Exposed fixed table rims
+still have to match while held, so a lost container removes labels immediately.
+Older in-flight responses cannot mutate held observations. Form changes never
+create a market request or imply a scrolled shop.
+When our own labels cover the inputs/buttons, those controls are unknown rather
+than missing. This path additionally requires exposed caption ink, connected
+left/bottom frame strokes, native paper and the three aligned magenta labels.
+Exposed contradictory controls still reject the form; owned paint cannot supply
+any cue. A measured form uses the same rule on later frames, avoiding a
+recognize/fade/forget loop while those masks remain present.
+
+Shop container guards sample the solid outer frame strokes, excluding the
+innermost bevel pixel that blends with sold-out/selected listing backgrounds.
+Scrolling invalidates listing authority without invalidating that fixed frame.
+The bounded description-cap search shares a single native-pixel grid across
+candidate widths, using prefix sums instead of repeated frame scans.
+When an initial component read establishes new container guards before it can
+accept every row, `ShopRead.retry` queues the immediate follow-up through the
+existing immutable-request scheduler. Unchanged shop fingerprints cannot defer
+that transition until the periodic locator; a known container does not loop.
+
+Removed Prices cards and outgoing animation snapshots use
+`widget_lifetime.retire_widget`. It keeps the widget and
+its child wrappers alive through Qt's complete deferred child destruction;
+the `destroyed` signal queues release for the following event-loop turn, since
+that signal itself precedes child teardown. The queue drains after deletion,
+and is not a cache of former cards.
+
+Inventory source-cell comparisons exclude the measured animated hand footprint,
+including its top outline seven native pixels above the hotspot. Rust metadata
+and Python source/title masks round the same 32-pixel width and extended top
+outward, retaining the previous bottom/right boundaries. All remaining cell
+pixels and title/header/frame proofs remain current. A narrow exposed strip can
+remain authoritative with at least 16 exactly matching native pixels (scaled
+with source size), alongside the independent title/header/frame proofs. The
+minimum is checked before the exact-byte fast path so a wholly hidden cell
+cannot alternate between accepted and unknown as the cursor animates. No grace
+delay or guessed item identity is used to hide cursor animation.
 
 ## Named item sources
 
@@ -406,4 +716,4 @@ card. These are screen-image proofs with no game-window identity or fuzzy names.
 
 Prices search count/results/spacing occupy one clipped `CardArea`, so clearing the field does not wait for a second debounce or layout-gap removal. Interrupted transitions retain outgoing pixels and current item-card identity. Database sorting is a fixed-size popup control in the existing breadcrumb row, preserving navigation and sort state without adding a row.
 
-The Prices scroll area reserves a narrow constant gutter and paints no empty scrollbar; scrollbar visibility cannot change card width or end a transition. A brief unknown name in the same proven shop slot inherits only the prior GUI presentation for two seconds. Its raw observation remains unknown. Masked shop-title identity can use only its exact captured list slot plus independent exposed shop guards and a native description body. A clear description reference is placed outside that body only when its own listing label overlaps it; a clear listing never gets a duplicate reference.
+The Prices scroll area reserves a narrow constant gutter and paints no empty scrollbar; scrollbar visibility cannot change card width or end a transition. A brief unknown name in the same proven shop slot inherits only the prior GUI presentation for two seconds. Its raw observation remains unknown. Masked shop-title identity can use only its exact captured list slot plus independent exposed shop guards and a native description body. Descriptions from shop rows never create a separate price reference. The Prices list and current-page labels keep their existing widgets and keys through hover changes.

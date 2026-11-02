@@ -11,6 +11,12 @@ from price_lens.shop_source import MAX_PIXELS,capture_proof,proof_state
 
 
 class ShopSourceTests(unittest.TestCase):
+    def test_hand_outline_geometry_rounds_outward_and_keeps_its_bottom_bound(self):
+        from price_lens.shop_source import cursor_rectangle
+        self.assertEqual(cursor_rectangle((100,100)),QRect(94,93,32,37))
+        self.assertEqual(cursor_rectangle((100,100),1.25),QRect(92,91,40,46))
+        self.assertEqual(cursor_rectangle((100,100),1.5),QRect(91,89,48,56))
+
     def setUp(self):
         self.image=QImage(800,600,QImage.Format.Format_RGBA8888);self.image.fill(QColor('#cad5df'))
         self.rect=QRect(100,100,199,39)
@@ -69,7 +75,7 @@ class ShopSourceTests(unittest.TestCase):
         point=(165,115);proof=capture_proof(self.image,self.rect,pointer=point)
         selected=self.selected(self.image,QRect(137,102,162,35))
         self.assertEqual(proof_state(proof,selected,pointer=point),'same')
-        cursor=self.painted(QRect(157,107,12,12),'white',selected)
+        cursor=self.painted(QRect(159,109,12,12),'white',selected)
         self.assertEqual(proof_state(proof,cursor,pointer=point),'occluded')
 
     def test_selected_band_cannot_hide_changed_icon_or_arbitrary_background(self):
@@ -106,9 +112,9 @@ class ShopSourceTests(unittest.TestCase):
 
     def test_old_and_current_cursor_footprints_are_both_masked(self):
         old=(110,110);new=(180,110)
-        before=self.painted(QRect(102,102,32,36),'white')
+        before=self.painted(QRect(104,104,32,36),'white')
         proof=capture_proof(before,self.rect,pointer=old)
-        latest=self.painted(QRect(172,102,32,36),'white')
+        latest=self.painted(QRect(174,104,32,36),'white')
         self.assertEqual(proof_state(proof,latest,pointer=new),'occluded')
         latest.setPixelColor(280,125,QColor('white'))
         self.assertEqual(proof_state(proof,latest,pointer=new),'changed')
@@ -118,7 +124,7 @@ class ShopSourceTests(unittest.TestCase):
         rect=QRect(100,100,398,78);point=(160,120)
         proof=capture_proof(image,rect,pointer=point,scale=2)
         self.assertIsNotNone(proof);self.assertEqual(len(proof.rgba),398*78*4)
-        changed=self.painted(QRect(144,104,64,72),'white',image)
+        changed=self.painted(QRect(148,108,64,72),'white',image)
         self.assertEqual(proof_state(proof,changed,pointer=point),'occluded')
         changed.setPixelColor(440,125,QColor('black'))
         self.assertEqual(proof_state(proof,changed,pointer=point),'changed')

@@ -4,10 +4,10 @@ import time
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QImage,QRegion
 from .domain import glyph_key,item_words,unclipped_name
+from .shop_source import native_occlusion
 
 
 class ShopRows:
-    PRESENTATION_SECONDS=30
     ROW_LIMIT=24
 
     def __init__(self,identity=None):self.resolve_identity=identity;self.reset()
@@ -15,13 +15,15 @@ class ShopRows:
     def reset(self):
         self.page_revision=getattr(self,'page_revision',-1)+1
         self.area=None;self.guards=[];self.rows={};self.row_pixels={};self.active=False;self.last_verified=0
-        self.quote_proofs={}
         self._page_proven=False
 
     def invalidate_viewport(self):
         """Retire prior-page offers immediately, retaining only shop geometry."""
         self.page_revision+=1
-        self.rows={};self.row_pixels={};self.quote_proofs={};self.guards=[]
+        # Scrolling changes listing authority, not the fixed table rims. Keep
+        # their independent container proof so a partly covered new page can
+        # still be scanned at full size without borrowing any previous item.
+        self.rows={};self.row_pixels={}
         self._page_proven=False
         self.last_verified=0
 
@@ -70,25 +72,19 @@ class ShopRows:
         if self.area is None or any(value is None for value in (x,y,w,h)):return None
         return (x-self.area['x'],y-self.area['y'],w,h)
 
-    def presentation_for(self,row,now=None,quote_key=None):
-        """Last confirmed display amount; never promotes it to a current offer."""
+    def presentation_for(self,row,now=None):
+        """Retain the last seen amount for this verified page, not a new offer."""
         if row.get('shop_page',self.page_revision)!=self.page_revision:return None
         slot=self.slot(row)
-        if quote_key is not None and self.resolve_identity and self.resolve_identity(row) is None:
-            self.quote_proofs.pop(slot,None)
-            return None
+        if self.resolve_identity and self.resolve_identity(row) is None:return None
         if row.get('price'):
-            if quote_key is not None:
-                self.quote_proofs[slot]=(self.page_revision,self.identity(row),quote_key)
             return deepcopy(row['price'])
-        if not self._page_proven or row.get('shop_slot')!=self.relative_slot(row):return None
+        if not self.active or not self._page_proven or row.get('shop_slot')!=self.relative_slot(row):return None
         saved=self.rows.get(slot)
         if saved is None or not self.identities_compatible(saved[0],row):return None
-        if quote_key is not None and self.quote_proofs.get(slot)!=(self.page_revision,self.identity(row),quote_key):return None
         now=time.monotonic() if now is None else now
-        age=now-saved[1]
-        if not 0<=age<=self.PRESENTATION_SECONDS:return None
-        return deepcopy(saved[0].get('price'))
+        if now<saved[1]:return None
+        return deepcopy(saved[0].get('price') or saved[0].get('_last_seen_price'))
 
     def decorate(self,row,now):
         row['shop_page']=self.page_revision;row['shop_slot']=self.relative_slot(row)
@@ -107,18 +103,22 @@ class ShopRows:
         current=image.copy(rect).convertToFormat(QImage.Format.Format_RGBA8888)
         return all(current.copy(part.translated(-rect.x(),-rect.y()))==previous.copy(part.translated(-rect.x(),-rect.y())) for part in visible)
 
-    def tooltip_guards_match(self,image,tooltip,exclude=()):
-        """A tooltip excuses only its own pixels, with another visible proof."""
-        if tooltip is None or not self.guards:return False
+    def guards_match(self,image,exclude=()):
+        """Require independent exposed guards; masked pixels are unknown."""
+        if not self.guards:return False
         verified=False
         for rect,reference in self.guards:
             visible=QRegion(rect)
-            for hidden in (*reference[1],*exclude,tooltip):
+            for hidden in (*reference[1],*exclude):
                 visible=visible.subtracted(QRegion(hidden))
-            if visible.isEmpty():continue
-            if not self.guard_matches(image,rect,reference,(*exclude,tooltip)):return False
+            if sum(part.width()*part.height() for part in visible)<32:continue
+            if not self.guard_matches(image,rect,reference,exclude):return False
             verified=True
         return verified
+
+    def tooltip_guards_match(self,image,tooltip,exclude=()):
+        """A tooltip excuses only its own pixels, with another visible proof."""
+        return tooltip is not None and self.guards_match(image,(*exclude,native_occlusion(tooltip,(self.area or {}).get('width',199)/199)))
 
     def stable_slots(self,raw):
         for row in raw:
@@ -131,7 +131,19 @@ class ShopRows:
     def set_guards(self,area,image,exclude=()):
         x,y,w,h=(area[k] for k in ('x','y','width','height'))
         # The owner portrait above the list animates; the table rim does not.
-        rects=[QRect(x,y-6,w,4),QRect(x+w+2,y-4,16,h+8)]
+        # The scroll rail includes a moving/highlighted thumb. Only the fixed
+        # top and left table rims establish the container; scrolling has its
+        # own thumb/row proofs and must not be confused with hover animation.
+        # The outer shadow reaches into the scenery. Sampling it made a
+        # character blinking behind a stationary shop repeatedly close/reopen
+        # the whole annotation page. Stay within the native inner bevel,
+        # including the one-pixel rounding of the reader's table coordinate.
+        scale=w/199
+        bevel=max(1,round(2*scale))
+        # The innermost bevel pixel is alpha-blended with the listing. A
+        # sold-out row or selection changes it when the viewport scrolls.
+        # Sample the two solid frame strokes immediately outside that pixel.
+        rects=[QRect(x,y-6,w,4),QRect(x-max(2,round(3*scale)),y-4,bevel,h+8)]
         self.guards=[(r,(image.copy(r).convertToFormat(QImage.Format.Format_RGBA8888),tuple(QRect(e) for e in exclude)))
                      for r in rects if image is not None and image.rect().contains(r)]
         if len(self.guards)!=len(rects):self.guards=[]
@@ -139,14 +151,18 @@ class ShopRows:
     def observe(self,shop,image,now=None,tooltip=None,exclude=()):
         now=time.monotonic() if now is None else now
         raw=deepcopy((shop or {}).get('rows') or []);area=(shop or {}).get('area')
-        guard_ok=bool(self.guards and all(self.guard_matches(image,r,v,exclude) for r,v in self.guards))
+        # Presentation history is controller-owned, never accepted from a new
+        # native read or copied into its current asking-price field.
+        for row in raw:row.pop('_last_seen_price',None)
+        guard_exclude=tuple(exclude)+((native_occlusion(tooltip,(area or self.area or {}).get('width',199)/199),) if tooltip is not None else ())
+        guard_ok=self.guards_match(image,exclude)
         # A recognized native tooltip may cover a guard, but a changed guard
         # elsewhere still invalidates the page. Hidden rows carry a bounded
-        # last-confirmed presentation, independently of current listing proof.
+        # last-seen presentation, independently of current listing proof.
         guard_safe=self.tooltip_guards_match(image,tooltip,exclude)
         self.active=bool(area)
         if not area:
-            if self.area and self.rows and (guard_ok or guard_safe):
+            if self.area and (guard_ok or guard_safe):
                 area=dict(self.area);self.active=True
                 raw=[{'area':dict(row['area']),'covered':True} for row,_ in self.rows.values()]
             else:
@@ -163,14 +179,14 @@ class ShopRows:
             self.stable_slots(raw)
             area=dict(self.area)
         clean=[r for r in raw if not r.get('covered') and r.get('name') and r.get('price')]
-        for row in raw:
-            if row.get('name') and self.resolve_identity and self.resolve_identity(row) is None:
-                self.quote_proofs.pop(self.slot(row),None)
+        known=clean+[r for r in raw if not r.get('covered') and r.get('name') and r.get('nameOnly')
+                     and r.get('_identity_source') is not None and not r.get('price')]
         contradiction=False
         if close:
             for row in clean:
                 previous=self.rows.get(self.slot(row))
-                if previous and (previous[0].get('price')!=row.get('price') or not self.identities_compatible(previous[0],row)):
+                if previous and ((previous[0].get('price') is not None and previous[0].get('price')!=row.get('price'))
+                        or not self.identities_compatible(previous[0],row)):
                     contradiction=True;break
         same=close and guard_ok and not contradiction
         # A tooltip may hide a guard. Retain recovery data without inheriting an
@@ -185,19 +201,27 @@ class ShopRows:
                 and before.get('price')==after.get('price') for before,after in zip(previous,current))
             if contradiction or (previous and (not clean or len(clean)!=len(raw) or not same_listings)):
                 self.page_revision+=1
-            self.rows={};self.row_pixels={};self.quote_proofs={};self.area=dict(area);self.set_guards(area,image,exclude)
+            self.rows={};self.row_pixels={};self.area=dict(area);self.set_guards(area,image,guard_exclude)
         elif all_verified:
-            self.set_guards(area,image,exclude);same=True
-        for row in clean:
-            slot=self.slot(row);saved=self.rows.get(slot)
-            if saved and self.identity(saved[0])!=self.identity(row):self.quote_proofs.pop(slot,None)
-            self.rows[slot]=(deepcopy(row),now)
+            if not self.guards or not (guard_ok or guard_safe) and tooltip is None:
+                self.set_guards(area,image,guard_exclude)
+            same=True
+        for row in known:
+            slot=self.slot(row)
+            cached=deepcopy(row);previous=self.rows.get(slot)
+            if row.get('nameOnly') and not row.get('price') and previous:
+                before=self.resolve_identity(previous[0]) if self.resolve_identity else self.visible_identity(previous[0])
+                after=self.resolve_identity(row) if self.resolve_identity else self.visible_identity(row)
+                if before is not None and before==after:
+                    price=previous[0].get('price') or previous[0].get('_last_seen_price')
+                    if price:cached['_last_seen_price']=deepcopy(price)
+            self.rows[slot]=(cached,now)
             rect=QRect(*slot)
             if image is not None and image.rect().contains(rect):
                 self.row_pixels[slot]=image.copy(rect).convertToFormat(QImage.Format.Format_RGBA8888)
         if len(self.rows)>self.ROW_LIMIT:
             for slot in sorted(self.rows,key=lambda key:self.rows[key][1])[:-self.ROW_LIMIT]:
-                self.rows.pop(slot,None);self.row_pixels.pop(slot,None);self.quote_proofs.pop(slot,None)
+                self.rows.pop(slot,None);self.row_pixels.pop(slot,None)
         if clean or same:self.last_verified=now
         references=bool(close and not contradiction and (guard_ok or guard_safe))
         self._page_proven=bool(references or (clean and len(clean)==len(raw)))
@@ -219,9 +243,9 @@ class ShopRows:
             result.append(self.decorate(row,now))
         return result
 
-    def restore_visible(self,image,rows,now=None):
+    def restore_visible(self,image,rows,now=None,exclude=()):
         """Restore a listing only when its exact, previously read pixels return."""
-        if not self.guards or not all(self.guard_matches(image,r,v) for r,v in self.guards):return rows
+        if not self.guards_match(image,exclude):return rows
         now=time.monotonic() if now is None else now
         result=[]
         for row in rows:

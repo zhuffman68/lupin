@@ -16,10 +16,24 @@ def place_item_away_from_proof(row,requested,bounds,*,canvas):
     width,height=requested.width(),requested.height()
     if bounds.width()<width or bounds.height()<height:return None
     protected=[]
+    description=None;moving=[]
+    for field in ('description_box','comparison_box'):
+        value=row.get(field)
+        if value is None:continue
+        if (not isinstance(value,(list,tuple)) or len(value)!=4 or any(type(v) is not int for v in value)
+                or value[2]<=0 or value[3]<=0):return None
+        rect=QRect(*value);moving.append(rect)
+        if field=='description_box':description=rect
+    shift=QPoint()
+    if description is not None and row.get('follow_pointer') is not None:
+        origin=row['follow_pointer'];point=row.get('_placement_pointer')
+        if point is not None:shift=point-QPoint(*origin)
     for value in values:
         if (not isinstance(value,(tuple,list)) or len(value)!=4
                 or any(type(part) is not int for part in value) or value[2]<=0 or value[3]<=0):return None
-        rect=QRect(*value).adjusted(-4,-4,4,4)
+        rect=QRect(*value)
+        if rect in moving:rect.translate(shift)
+        rect=rect.adjusted(-4,-4,4,4)
         if rect.intersects(bounds):protected.append(rect)
     left,right=bounds.left(),bounds.right()-width+1
     top,bottom=bounds.top(),bounds.bottom()-height+1
@@ -31,6 +45,20 @@ def place_item_away_from_proof(row,requested,bounds,*,canvas):
     for index,rect in enumerate(protected):
         xs.extend(((('before',index),clamp_x(rect.left()-width)),(('after',index),clamp_x(rect.right()+1))))
         ys.extend(((('before',index),clamp_y(rect.top()-height)),(('after',index),clamp_y(rect.bottom()+1))))
+    if description is not None:
+        description=description.translated(shift)
+        aligned=(clamp_x(description.left()),clamp_x(description.right()-width+1))
+        horizontal=set(x for _,x in xs)|set(aligned)
+        vertical=set(y for _,y in ys)|{clamp_y(description.top())}
+        safe=lambda box:bounds.contains(box) and not any(box.intersects(rect) for rect in protected)
+        above=[QRect(x,description.top()-height-8,width,height) for x in horizontal]
+        sides=[QRect(x,y,width,height) for x in (description.left()-width-8,description.right()+9)
+               for y in vertical]
+        below=[QRect(x,description.bottom()+9,width,height) for x in horizontal]
+        for candidates in (above,sides,below):
+            usable=[box for box in candidates if safe(box)]
+            if usable:return min(usable,key=lambda box:(min(abs(box.x()-x) for x in aligned),
+                abs(box.y()-description.top()),abs(box.x()-target.x()),box.x()))
     choices={}
     for xkey,x in xs:
         for ykey,y in ys:
@@ -92,6 +120,7 @@ def label_rectangle(row,point,canvas,window_origin):
         width=min(width,max(1,bounds.width()-4))
         requested=QRect(max(bounds.left()+2,min(x,bounds.right()-width-2)),
                         max(bounds.top()+2,min(y-5,bounds.bottom()-height-2)),width,height)
+        row['_placement_pointer']=point
         return place_item_away_from_proof(row,requested,bounds,canvas=canvas) if row.get('avoid_regions') else requested
     x = min(max(2, x), max(2, canvas.width() - width - 2))
     y = min(max(7, y), max(7, canvas.height() - 33))

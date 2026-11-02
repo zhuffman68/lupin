@@ -77,18 +77,15 @@ class ShopIdentityUiTests(unittest.TestCase):
         self.assertEqual(w.rows[0]['_item_id'],1041078)
         self.assertEqual(w.service.visible,[1041078])
 
-    def test_browsing_priority_suppresses_focus_and_clone_then_revalidates_hover(self):
-        w=self.window;self.prepare_shop_description()
+    def test_shop_hover_never_adds_a_description_overlay_or_replaces_shop_widgets(self):
+        w=self.window;_,cards,_=self.prepare_shop_description()
         self.assertIsNotNone(w.shop_description)
-        self.assertTrue(any(row.get('source_shop_key') for row in w.overlay.rows))
-        w.shop_browsing.priority_until=time.monotonic()+1.5;w.render()
+        self.assertEqual(len(w.overlay.rows),2)
+        self.assertTrue(all(row['kind']=='shop' for row in w.overlay.rows))
+        self.assertTrue(all(w.card_views[key] is card and not card.isHidden() for key,card in cards.items()))
+        w.render()
         self.assertFalse(any(row.get('source_shop_key') for row in w.overlay.rows))
-        shops=[row for row in w.overlay.rows if row.get('kind')=='shop']
-        self.assertTrue(shops);self.assertTrue(all(row['browsing_priority'] for row in shops))
-        self.assertTrue(all(not record[2] for record in w.screen_card_structure))
-        w.shop_browsing.priority_until=0;w.on_shop_browsing_changed()
-        self.assertTrue(any(row.get('source_shop_key') for row in w.overlay.rows))
-        self.assertTrue(w.screen_card_structure[0][2])
+
 
     def test_old_viewport_read_cannot_restore_cleared_shop_prices(self):
         w=self.window;result=self.reading(shop_hover=True);w.on_reading(result)
@@ -121,7 +118,7 @@ class ShopIdentityUiTests(unittest.TestCase):
         self.assertEqual(w.rows[0]['_item_id'],1041078)
         self.assertEqual(w.rows[0]['price'],dict(quantity=1,mesos=100))
         self.assertEqual(w.shop_browsing.epoch,epoch)
-        self.assertFalse(w.shop_browsing.active())
+        self.assertFalse(w.shop_browsing.pending)
 
     def test_unknown_new_panel_cannot_establish_a_scroll_from_changed_row_pixels(self):
         result,_=self.blue_moon();w=self.window;w.on_reading(result)
@@ -131,7 +128,7 @@ class ShopIdentityUiTests(unittest.TestCase):
         w.reader.last_frame=time.monotonic();w.on_image(w.reader.image)
         self.assertEqual(w.rows,[])
         self.assertEqual(w.shop_browsing.epoch,epoch)
-        self.assertFalse(w.shop_browsing.active())
+        self.assertFalse(w.shop_browsing.pending)
 
 
 if __name__=='__main__':unittest.main()

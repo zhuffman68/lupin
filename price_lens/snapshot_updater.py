@@ -125,6 +125,10 @@ class SnapshotUpdater(QObject):
         self.schedule()
         self.changed.emit()
 
+    def source_old(self):
+        meta = self.store.meta
+        return bool(meta and time.time() >= meta['published_at'] + MAX_SNAPSHOT_AGE)
+
     def summary(self):
         if self.busy:
             return "Updating the full market in the background…"
@@ -135,7 +139,10 @@ class SnapshotUpdater(QObject):
             now = time.time()
             summary = f"{meta['priced']:,} market prices cached · checked {age_text(now-meta['checked_at'])} ago"
             if now >= meta['published_at'] + MAX_SNAPSHOT_AGE:
-                summary += " · source snapshot old"
+                summary += f"\nsource snapshot old · published {age_text(now-meta['published_at'])} ago"
+                if self.enabled and not self.closed and self.retry_at is not None:
+                    remaining = ceil(self.retry_at-now)
+                    summary += f" · retry in {age_text(remaining)}" if remaining > 0 else " · retry due"
             return summary
         return ""
 

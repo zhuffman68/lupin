@@ -89,7 +89,11 @@ class RecentRows(QListWidget):
     row_height=59
 
     def __init__(self,parent=None):
-        super().__init__(parent);self.motion={};self.progress=1.0;self.hovered=None;self.pressed=None
+        super().__init__(parent);self.motion={};self.progress=1.0;self.hovered=None;self.pressed=None;self.pixels={}
+        self.model().dataChanged.connect(self.invalidate_data)
+
+    def invalidate_data(self,first,last,*_):
+        for row in range(first.row(),last.row()+1):self.pixels.pop(self.identity(self.item(row)),None)
 
     @staticmethod
     def identity(item):
@@ -123,12 +127,28 @@ class RecentRows(QListWidget):
 
     def paintEvent(self,event):
         painter=QPainter(self.viewport());painter.setClipRegion(event.region())
-        for item in self.nearby():
+        nearby=list(self.nearby());identities={self.identity(item) for item in nearby}
+        # Height changes in the active-card canvas can expose the whole history
+        # viewport. Reuse each unchanged row's pixels rather than repainting its
+        # text, thumbnail and price whenever a different item appears above it.
+        # Keep only viewport neighbors, not one pixmap per session entry.
+        self.pixels={identity:cached for identity,cached in self.pixels.items() if identity in identities}
+        for item in nearby:
             rect=self.visualItemRect(item)
             if not rect.intersects(event.rect()):continue
             option=QStyleOptionViewItem();self.initViewItemOption(option);option.rect=rect;option.state&=~QStyle.StateFlag.State_MouseOver
-            if self.identity(item)==self.hovered:option.state|=QStyle.StateFlag.State_MouseOver
-            painter.save();painter.setOpacity(self.opacity(item));self.itemDelegate().paint(painter,option,self.indexFromItem(item));painter.restore()
+            identity=self.identity(item)
+            if identity==self.hovered:option.state|=QStyle.StateFlag.State_MouseOver
+            dpr=self.viewport().devicePixelRatioF()
+            signature=(rect.size(),dpr,option.font.toString(),option.palette.cacheKey(),option.state)
+            cached=self.pixels.get(identity)
+            if cached is None or cached[0]!=signature:
+                pixels=QPixmap(max(1,round(rect.width()*dpr)),max(1,round(rect.height()*dpr)));pixels.setDevicePixelRatio(dpr);pixels.fill(Qt.GlobalColor.transparent)
+                row_painter=QPainter(pixels);option.rect=QRect(QPoint(),rect.size())
+                self.itemDelegate().paint(row_painter,option,self.indexFromItem(item));row_painter.end()
+                self.pixels[identity]=(signature,pixels)
+            else:pixels=cached[1]
+            painter.save();painter.setOpacity(self.opacity(item));painter.drawPixmap(rect.topLeft(),pixels);painter.restore()
 
     def mouseMoveEvent(self,event):
         identity=self.identity(self.itemAt(event.position().toPoint()))
@@ -198,9 +218,10 @@ class RecentItems(QWidget):
         self.rows_height=2;self.rows.setFixedHeight(2);self.full_height=0;self.setFixedHeight(0);self.visible_ids=()
         self.hide()
 
-    def update_rows(self,identities):
+    def update_rows(self,identities,*,content_changed=True):
         dirty=QRegion();area=self.rows.viewport().rect()
         for identity in identities:
+            if content_changed:self.rows.pixels.pop(identity,None)
             item=self.rows_by_id.get(identity)
             if item is not None:
                 rect=self.rows.visualItemRect(item).intersected(area)
@@ -235,7 +256,7 @@ class RecentItems(QWidget):
 
     def finish_geometry(self):
         self.geometry_animation.stop();affected=set(self.rows.motion);self.rows.motion={};self.rows.progress=1.0
-        self.setFixedHeight(self.full_height);self.update_rows(affected)
+        self.setFixedHeight(self.full_height);self.update_rows(affected,content_changed=False)
 
     def observe(self,observations,catalog,now,*,active=None):
         if not catalog:return
@@ -264,7 +285,7 @@ class RecentItems(QWidget):
         if fingerprint==self.fingerprint:return
         age_changed=self.fingerprint is None or self.fingerprint[0]!=fingerprint[0]
         self.fingerprint=fingerprint;position=self.rows.verticalScrollBar().value()
-        before={identity:self.rows.visualItemRect(item) for identity,item in self.rows_by_id.items()}
+        before={identity:(self.rows.visualItemRect(item),self.rows.opacity(item)) for identity,item in self.rows_by_id.items()}
         old_order=tuple(self.rows.identity(self.rows.item(i)) for i in range(self.rows.count()))
         new_order=tuple(row['item'].game_id for row in visible)
         target_height=min(5,len(visible))*59+2
@@ -274,10 +295,9 @@ class RecentItems(QWidget):
         anchor=self.rows.itemAt(QPoint(8,2));anchor_id=anchor.data(Qt.ItemDataRole.UserRole)['item'].game_id if anchor else None
         anchor_y=self.rows.visualItemRect(anchor).top() if anchor else 0
         previous=self.rows_by_id;current={};changed_prices=set()
-        if layout_changed:self.rows.setUpdatesEnabled(False)
         identities={row['item'].game_id for row in visible}
         for identity,item in previous.items():
-            if identity not in identities:self.rows.takeItem(self.rows.row(item))
+            if identity not in identities:self.rows.takeItem(self.rows.row(item));self.rows.pixels.pop(identity,None)
         for index,row in enumerate(visible):
             identity=row['item'].game_id;item=previous.get(identity)
             if item is None:item=QListWidgetItem();item.setSizeHint(QSize(0,59));self.rows.insertItem(index,item)
@@ -308,14 +328,13 @@ class RecentItems(QWidget):
             area=self.rows.viewport().rect();motions={}
             for identity,item in current.items():
                 target=self.rows.target_rect(item);old=before.get(identity)
-                if old is not None and old.intersects(area):
-                    offset=old.top()-target.top()
-                    if offset:motions[identity]=(offset,1.0)
+                if old is not None and old[0].intersects(area):
+                    offset=old[0].top()-target.top()
+                    if offset or old[1]<1:motions[identity]=(offset,old[1])
                 elif target.intersects(area):motions[identity]=(-16,0.0)
             self.rows.motion=motions;self.rows.progress=0.0;self.height_from=height_from
             self.geometry_animation.setStartValue(0.0);self.geometry_animation.setEndValue(1.0);self.geometry_animation.start()
         elif layout_changed or not enabled(self):self.finish_geometry()
-        if layout_changed:self.rows.setUpdatesEnabled(True)
         if age_changed:self.update_rows(current)
         if changed_prices and enabled(self):
             self.animation.stop()
@@ -338,7 +357,7 @@ class RecentItems(QWidget):
             item.setIcon(QIcon(QPixmap.fromImage(image)));item.setData(Qt.ItemDataRole.UserRole+3,image.cacheKey())
 
     def clear(self):
-        self.geometry_animation.stop();self.rows.motion={};self.rows.progress=1.0;self.rows_height=2;self.rows.setFixedHeight(2);self.full_height=0;self.setFixedHeight(0)
+        self.geometry_animation.stop();self.rows.motion={};self.rows.pixels.clear();self.rows.progress=1.0;self.rows_height=2;self.rows.setFixedHeight(2);self.full_height=0;self.setFixedHeight(0)
         self.animation.stop();self.animating.clear();self.entries.clear();self.active.clear();self.rows.clear();self.rows_by_id.clear();self.rolls.clear();self.fingerprint=None
         self.hide();self.changed.emit()
 

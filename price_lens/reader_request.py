@@ -25,6 +25,7 @@ class SubmittedRequest:
     local_roi: bool = False
     locate_game: bool = False
     deadline_at: float | None = None
+    annotations: tuple = ()
 
     def __post_init__(self):
         if self.mode not in ('prices','location','tracking-location','experience'):raise ValueError('Invalid reader request mode')
@@ -35,6 +36,7 @@ class SubmittedRequest:
         for field in ('crop','analysis_rect'):
             value=getattr(self,field)
             if value is not None:object.__setattr__(self,field,tuple(value))
+        object.__setattr__(self,'annotations',tuple(tuple(rect) for rect in self.annotations))
         if self.deadline_at is None:object.__setattr__(self,'deadline_at',self.started_at+25)
 
     def source_image(self):

@@ -1,9 +1,10 @@
 //! Keep a player-shop sales ledger out of the pinned listing detector.
 //!
 //! The separate Sold Items window reuses the listing palette and width. Its
-//! totals header can therefore win Minerva's candidate order before the real
-//! shop. A header name alone is not a rejection: require its native three-line
-//! summary cell and the following long grid cell, then retry without that pane.
+//! rows can therefore win Minerva's candidate order before the real shop. The
+//! totals may be scrolled out of view. Require the native three-line purchased
+//! cell and following grid cell, then retry without that pane. Names alone never
+//! establish a ledger or exclude ordinary shop listings.
 use crate::shop_prices::PriceRecovery;
 use minerva_core::{Frame, PlayerShopReader, ScreenRect, ShopCapture, ShopReading};
 
@@ -21,43 +22,44 @@ fn blue(p: [u8; 3]) -> bool {
 
 fn ledger_area(capture: &ShopCapture, reading: &ShopReading) -> Option<ScreenRect> {
     let shop = reading.shop.as_ref()?;
-    let row = shop.rows.first()?;
-    let name: String = row
-        .name
-        .as_ref()?
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .map(|c| c.to_ascii_lowercase())
-        .collect();
-    if name != "totalsalestotalreceived"
-        || row.covered
-        || row.price.is_some()
-        || !(140..=480).contains(&row.area.width)
-    {
-        return None;
-    }
-    let scale = row.area.width as f32 / 162.0;
-    let px = |n: f32| (n * scale).round() as u32;
-    if row.area.y.abs_diff(shop.area.y) > px(4.0) || shop.area.height < px(110.0) {
-        return None;
-    }
-    let x = i64::from(row.area.x) - i64::from(capture.origin.x);
-    let y = i64::from(row.area.y) - i64::from(capture.origin.y);
-    let frame = &capture.frame;
-    if x < 0
-        || y < 0
-        || x + i64::from(row.area.width) > i64::from(frame.width)
-        || y + i64::from(px(76.0)) > i64::from(frame.height)
-    {
-        return None;
-    }
-    let (x, y) = (x as u32, y as u32);
-    let slack = px(4.0);
-    // OCR's price-line ascent can move the inferred listing top a few pixels.
-    // Find the native rules within that tolerance rather than trusting ascent.
-    (y.saturating_sub(slack)..=(y + slack).min(frame.height - px(76.0)))
-        .any(|top| ledger_grid(frame, x, top, row.area.width, scale))
-        .then_some(shop.area)
+    // Purchases and the summary share this three-lane grid. The totals header
+    // can be entirely outside the visible page; its words are not authority.
+    shop.rows
+        .iter()
+        .take(24)
+        .filter(|row| {
+            !row.covered
+                && row.price.is_none()
+                && (140..=480).contains(&row.area.width)
+                && row.name.as_ref().is_some_and(|name| !name.is_empty())
+        })
+        .find_map(|row| {
+            let scale = row.area.width as f32 / 162.0;
+            let px = |n: f32| (n * scale).round() as u32;
+            if i64::from(row.area.y) < i64::from(shop.area.y) - i64::from(px(4.0))
+                || i64::from(row.area.y) + i64::from(px(76.0)) > shop.area.bottom()
+                || shop.area.height < px(110.0)
+            {
+                return None;
+            }
+            let x = i64::from(row.area.x) - i64::from(capture.origin.x);
+            let y = i64::from(row.area.y) - i64::from(capture.origin.y);
+            let frame = &capture.frame;
+            if x < 0
+                || y < 0
+                || x + i64::from(row.area.width) > i64::from(frame.width)
+                || y + i64::from(px(76.0)) > i64::from(frame.height)
+            {
+                return None;
+            }
+            let (x, y) = (x as u32, y as u32);
+            let slack = px(4.0);
+            // OCR's price-line ascent can move the inferred listing top a few pixels.
+            // Find the native rules within that tolerance rather than trusting ascent.
+            (y.saturating_sub(slack)..=(y + slack).min(frame.height - px(76.0)))
+                .any(|top| ledger_grid(frame, x, top, row.area.width, scale))
+                .then_some(shop.area)
+        })
 }
 
 fn ledger_grid(frame: &Frame, x: u32, y: u32, band_width: u32, scale: f32) -> bool {
@@ -232,6 +234,24 @@ mod tests {
     }
 
     #[test]
+    fn a_sold_item_before_the_totals_does_not_turn_the_ledger_into_a_shop() {
+        for scale in [1, 2] {
+            let (mut capture, mut reading) = example(scale);
+            let shift = 58 * scale;
+            let bytes = (shift * capture.frame.width * 4) as usize;
+            let end = capture.frame.rgba.len() - bytes;
+            capture.frame.rgba.copy_within(0..end, bytes);
+            let shop = reading.shop.as_mut().unwrap();
+            let mut sold = shop.rows[0].clone();
+            sold.name = Some("Work Gloves".into());
+            shop.rows[0].area.y += shift as i32;
+            shop.rows.insert(0, sold);
+            let area = shop.area;
+            assert_eq!(ledger_area(&capture, &reading), Some(area));
+        }
+    }
+
+    #[test]
     fn a_name_without_ledger_geometry_is_not_a_blacklist() {
         let (mut capture, reading) = example(1);
         for yy in 46..50 {
@@ -244,12 +264,21 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_names_prices_and_covered_rows_cannot_exclude_a_pane() {
+    fn a_purchase_grid_without_the_totals_is_still_a_ledger() {
+        for scale in [1, 2] {
+            let (capture, mut reading) = example(scale);
+            reading.shop.as_mut().unwrap().rows[0].name = Some("Bronze Ingot".into());
+            assert_eq!(
+                ledger_area(&capture, &reading),
+                reading.shop.map(|shop| shop.area)
+            );
+        }
+    }
+
+    #[test]
+    fn prices_and_covered_rows_cannot_exclude_a_pane() {
         let (capture, reading) = example(1);
         let mut changed = reading.clone();
-        changed.shop.as_mut().unwrap().rows[0].name = Some("Example Hat".into());
-        assert!(ledger_area(&capture, &changed).is_none());
-        changed = reading.clone();
         changed.shop.as_mut().unwrap().rows[0].covered = true;
         assert!(ledger_area(&capture, &changed).is_none());
         changed = reading.clone();

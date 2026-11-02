@@ -19,6 +19,7 @@ from .market_lookup import market_lookup_reason
 from .overlay import Overlay
 from .hotkeys import HotkeyManager
 from .ui_components import display_labels, price_card, mesos
+from .widget_lifetime import retire_widget
 from .tray import TrayController
 from .experience_ui import ExperiencePanel
 from .platform_paths import data_directory
@@ -27,10 +28,13 @@ from .motion import AnimatedTabs, ContentArea, CardArea, MotionLabel,StableScrol
 from .fonts import interface_family
 from .branding import Brand
 from .price_observations import PriceObservations
+from .shop_source import capture_proof,proof_state
 from .shop_browsing import ShopBrowsing
-from .tooltip_geometry import description_bounds, still_present, TooltipReference
+from .tooltip_geometry import description_bounds, still_present, TooltipReference,native_panel
 from .tooltip_names import name_key
 from .tooltip_association import TooltipAssociation,association_state
+from .tooltip_source import capture_title
+from .shop_dialog import ShopPriceEntry
 from .chat import ChatTranslation
 from .translation_ui import TranslationPanel
 from .compose import KoreanComposer
@@ -138,6 +142,7 @@ class LensWindow(QMainWindow):
         self.card_sightings.changed.connect(self.render)
         self.tooltip_reference=TooltipReference()
         self.tooltip_context=None
+        self.shop_price_entry=ShopPriceEntry()
         self.tooltip_names=self.observations.tooltip_names
         self.quotes = {}
         self.quote_generation = None
@@ -258,11 +263,13 @@ class LensWindow(QMainWindow):
             self.reader.shop_browsing = self.shop_browsing
         self.observations.browsing=self.shop_browsing
         self.shop_browsing.resolve_identity = self.observations.shop_identity
-        self.shop_browsing.changed.connect(self.on_shop_browsing_changed)
-        self.reader.shop_exclusions = self.annotation_exclusions
+        self.reader.shop_exclusions = lambda:self.shop_source_exclusions(self.shop_tooltip_rect)
+        self.reader.shop_context_provider = self.effective_shop_context
+        self.reader.shop_name_recovery_needed = self.needs_shop_name_read
         if hasattr(self.reader, 'shop_viewport_changed'):
             self.reader.shop_viewport_changed.connect(self.on_shop_viewport_changed)
         self.reader.exclude_regions=self.pickup_capture_exclusions
+        self.reader.annotation_regions=self.annotation_exclusions
         self.reader.writer_regions=self.writer_capture_exclusions
         self.reader.auto_enabled = self.auto_game_area
         self.reader.tooltip_enabled = self.hover_enabled and self.labels_enabled and self.prices_enabled
@@ -931,9 +938,9 @@ class LensWindow(QMainWindow):
                 rect=owned.frameGeometry().translated(-geometry.x(),-geometry.y())
                 exclude.append([round(rect.x()*sx),round(rect.y()*sy),round(rect.width()*sx),round(rect.height()*sy)])
         contexts=[]
-        if self.shop_open and self.reader.shop_context is not None:
+        if self.shop_open and self.effective_shop_context() is not None:
             offset=self.reader.crop.topLeft() if self.reader.crop else QPoint()
-            store=self.reader.shop_context.translated(offset).intersected(region).intersected(image.rect())
+            store=self.effective_shop_context().translated(offset).intersected(region).intersected(image.rect())
             if not store.isEmpty():contexts.append({'role':'store','box':list(store.getRect()),'verified':True})
         self.chat.request(image,region,exclude,contexts=contexts)
 
@@ -949,7 +956,7 @@ class LensWindow(QMainWindow):
                 rect=owned.frameGeometry().translated(-geometry.x(),-geometry.y())
                 regions.append(QRect(round(rect.x()*sx),round(rect.y()*sy),round(rect.width()*sx),round(rect.height()*sy)))
         offset=self.reader.crop.topLeft() if self.reader.crop else QPoint()
-        for rect in (self.reader.shop_context,self.shop_tooltip_rect):
+        for rect in (self.effective_shop_context(),self.shop_tooltip_rect):
             if rect:regions.append(rect.translated(offset))
         return regions
 
@@ -1460,6 +1467,7 @@ class LensWindow(QMainWindow):
         self.reader.shop_fingerprint = None
         self.tooltip_result = None
         self.tooltip_context = None
+        self.reader.tooltip_title_proof = None
         self.reader.image_sequence += 1
         self.render()
 
@@ -1480,25 +1488,48 @@ class LensWindow(QMainWindow):
         if point != self.reader.pointer:
             previous = self.reader.pointer
             context_point = (point[0] - self.reader.crop.x(), point[1] - self.reader.crop.y()) if self.reader.crop else point
+            self.observations.cursor_exclusions(context_point)
             outside = (self.reader.auto_active and
                        (self.reader.game_area is None or not self.reader.game_area.contains(QPoint(*point))))
             jumped = previous is not None and max(abs(point[0] - previous[0]), abs(point[1] - previous[1])) > 64
-            clear = outside or (jumped and not (self.tooltip_result or {}).get('pinned')) or pointer_in_shop(context_point, self.reader.shop_context)
+            clear = outside or (jumped and not (self.tooltip_result or {}).get('pinned')) or (pointer_in_shop(context_point, self.effective_shop_context()) and self.tooltip_context is None)
             if self.tooltip_context and not self.tooltip_context.contains_pointer(context_point):clear=True
             had_tooltip = bool(self.tooltip_result and clear)
             if clear:
                 self.tooltip_result = None
                 self.tooltip_context = None
+                self.reader.tooltip_title_proof = None
                 self.tooltip_reference.clear()
             self.reader.pointer = point
             self.reader.image_sequence += 1
-            shop_cleared=False
             if self.shop_description:
                 pixels=image.copy(self.reader.crop) if self.reader.crop else image
-                if not self.shop_description_matches(pixels,context_point):shop_cleared=self.clear_shop_description()
-            if had_tooltip or shop_cleared:
+                if not self.shop_description_matches(pixels,context_point):self.clear_shop_description()
+            if had_tooltip:
                 self.request_prices()
                 self.render()
+
+    def effective_shop_context(self):
+        # Table visibility is independent of whether its current rows have
+        # finished OCR. A pending page is still a shop for hover routing.
+        area=self.shop_rows.area
+        if self.shop_open and area:
+            return QRect(*(area[key] for key in ('x','y','width','height')))
+        return getattr(self.reader,'shop_context',None)
+
+    def needs_shop_name_read(self,pointer):
+        # A description can touch several rows after scrolling. Recovery must
+        # cover their current native text, independently of the hovered slot.
+        # One fresh row can finish viewport reacquisition while the ordinary
+        # detector omits its neighbours entirely. Keep the bounded line cache
+        # available under a verified pane, rather than treating that subset as
+        # a complete page. Unchanged captures still skip the reader itself.
+        area=self.effective_shop_context()
+        pane_touches=bool(self.shop_open and area is not None and any(
+            area.intersects(panel) for panel in self.observations.native_exclusions(self.shop_tooltip_rect)))
+        return bool(pane_touches or self.shop_browsing.pending or not self.rows or any(
+            self.item_for(row) is None or row.get('nameOnly') and not row.get('price')
+            for row in self.rows))
 
     def item_for(self, row):
         return self.observations.item_for(row)
@@ -1508,7 +1539,15 @@ class LensWindow(QMainWindow):
 
     def shop_source_exclusions(self, panel=None):
         hidden = list(self.annotation_exclusions())
-        if panel is not None:hidden.append(panel)
+        image=self.reader.image.copy(self.reader.crop) if self.reader.crop else self.reader.image
+        # Capture checks scrolling before delivering image_ready. Supply the
+        # same frame's modal geometry there, without committing UI state early.
+        entry=self.shop_price_entry.peek(image,self.effective_shop_context(),hidden)
+        if entry is not None:hidden.append(entry)
+        point=self.reader.pointer
+        if point is not None and self.reader.crop:point=(point[0]-self.reader.crop.x(),point[1]-self.reader.crop.y())
+        hidden.extend(self.observations.cursor_exclusions(point))
+        hidden.extend(self.observations.native_exclusions(panel))
         writer_regions = getattr(self.reader,'writer_regions',None)
         if callable(writer_regions):
             offset=self.reader.crop.topLeft() if self.reader.crop else QPoint()
@@ -1525,7 +1564,9 @@ class LensWindow(QMainWindow):
             exclude=self.shop_source_exclusions(self.shop_tooltip_rect))
 
     def retire_shop_source(self):
+        self.shop_price_entry.clear()
         self.observations.retire_source()
+        self.reader.shop_context=self.reader.shop_rect=self.reader.shop_fingerprint=None
         self.reader.request_rescan()
 
     def refresh_identity_candidates(self):
@@ -1559,12 +1600,12 @@ class LensWindow(QMainWindow):
             self.request_prices()
             self.render()
 
-    def on_shop_browsing_changed(self):
-        if self.closing:return
-        # Revalidation, rather than restoration of a pre-scroll description,
-        # decides whether normal hover presentation can resume at expiry.
-        self.reader.request_rescan()
-        self.render()
+    def observe_shop_price_entry(self,image,exclude=()):
+        previous=self.shop_price_entry.rectangle
+        changed=self.shop_price_entry.observe(image,self.effective_shop_context(),exclude)
+        if previous is not None and self.shop_price_entry.rectangle is None:
+            self.reader.request_rescan(preserve_shop_cache=True)
+        return changed
 
     def on_image(self, image):
         if self.mode not in ("live", "screenshot"):return
@@ -1575,20 +1616,45 @@ class LensWindow(QMainWindow):
         self.last_screen=time.time()-max(0,time.monotonic()-self.reader.last_frame)
         self.sync_tracking_context(refresh=False)
         pixels=image.copy(self.reader.crop) if self.reader.crop else image
+        entry_changed=self.observe_shop_price_entry(pixels,self.annotation_exclusions())
+        frame_exclude=(*self.annotation_exclusions(),*((self.shop_price_entry.rectangle,) if self.shop_price_entry.rectangle is not None else ()))
         pointer=self.reader.pointer
         if pointer is not None and self.reader.crop:pointer=(pointer[0]-self.reader.crop.x(),pointer[1]-self.reader.crop.y())
         cleared_tooltip=False
-        if self.tooltip_result and self.tooltip_context and not self.tooltip_context.matches(pixels,pointer):
+        if self.tooltip_result and self.tooltip_context and not self.tooltip_context.matches(pixels,pointer,exclude=self.annotation_exclusions()):
             self.tooltip_result=None;self.tooltip_context=None;self.tooltip_reference.clear()
+            self.reader.tooltip_title_proof=None
             self.reader.tooltip_association=None;self.reader.tooltip_fingerprint=None
             self.request_prices();cleared_tooltip=True
-        frame=self.observations.validate_frame(pixels,pointer=pointer,shop_context=self.reader.shop_context,
-            exclude=self.annotation_exclusions(),source_exclusions=self.shop_source_exclusions)
-        if frame.panel_changed:self.reader.shop_tooltip_bounds=self.shop_tooltip_rect
+        if self.shop_price_entry.blocking:
+            # A verified native form occludes the table; it is neither a new
+            # page nor evidence that a previous item was removed. Retain the
+            # last observations without refreshing any source/offer proof.
+            # Independent exposed table rims still have to prove the shop;
+            # a form or pending reply must not retain labels after it closes.
+            if self.shop_open and not self.observations.container_matches(pixels,self.shop_tooltip_rect,
+                    (*frame_exclude,*self.observations.cursor_exclusions(pointer))):
+                self.retire_shop_source()
+                self.request_prices();self.draw_labels(time.time(),False)
+                self.update_capture_controls();self.render()
+                return
+            if entry_changed or cleared_tooltip or self.chat.has_overlay:self.draw_labels(time.time(),False)
+            self.update_capture_controls()
+            if was_starting or cleared_tooltip:self.render()
+            return
+        frame=self.observations.validate_frame(pixels,pointer=pointer,shop_context=self.effective_shop_context(),
+            exclude=frame_exclude,source_exclusions=self.shop_source_exclusions)
+        if frame.container_lost:
+            # A closed shop cannot suppress an inventory occupying its old
+            # rectangle while the full-frame reader is catching up.
+            self.reader.shop_context=self.reader.shop_rect=self.reader.shop_fingerprint=None
+        if frame.panel_changed:
+            self.reader.shop_tooltip_bounds=self.shop_tooltip_rect
+            if self.shop_tooltip_rect is None:self.reader.request_rescan()
         if frame.retired:
             self.reader.request_rescan()
             self.request_prices()
-        if self.chat.has_overlay:self.draw_labels(time.time(),False)
+        if entry_changed or self.chat.has_overlay:self.draw_labels(time.time(),False)
         self.update_capture_controls()
         if was_starting or cleared_tooltip or frame.changed:self.render()
 
@@ -1596,8 +1662,13 @@ class LensWindow(QMainWindow):
         if self.mode not in ("live", "screenshot"):
             return
         epoch = result.get('shopViewportEpoch')
-        if type(epoch) is int and epoch != self.shop_browsing.epoch:
+        stale_shop=bool(result.get('_shop_stale') or type(epoch) is int and epoch!=self.shop_browsing.epoch)
+        if stale_shop and result.get('hover') and association_state(result.get('tooltipAssociation'))!='inventory-primary':
             return
+        if stale_shop:
+            # Shop viewport authority is independent of a current inventory
+            # source/title proof from the same immutable capture.
+            result={**result,'shop':None,'hover':None}
         self.ocr_ms = result.get("atMs")
         shop = result.get("shop")
         request=result.get('_submitted_request')
@@ -1607,11 +1678,13 @@ class LensWindow(QMainWindow):
             if self.reader.crop:image = image.copy(self.reader.crop)
         tooltip=result.get('tooltip')
         tooltip=tooltip if isinstance(tooltip,dict) else {}
+        supplied_panel=native_panel(result.get('tooltipPanel'),tooltip.get('found'),image,self.annotation_exclusions())
         hover=result.get('hover')
         hover=hover if isinstance(hover,dict) else {}
         shop_tooltip=hover.get('tooltip')
         shop_tooltip=shop_tooltip if isinstance(shop_tooltip,dict) else {}
         exclusions=self.annotation_exclusions()
+        if self.shop_price_entry.rectangle is not None:exclusions=(*exclusions,self.shop_price_entry.rectangle)
         latest=self.reader.image.copy(self.reader.crop) if self.reader.crop else self.reader.image
         read_pointer = result.get("pointerAtRead", self.reader.pointer)
         pointer = self.reader.pointer
@@ -1623,9 +1696,20 @@ class LensWindow(QMainWindow):
         context=None
         if state=='inventory-primary':
             context=TooltipAssociation.from_result(result,image,pointer=read_point)
-            if context is None or not context.contains_pointer(read_point) or not context.matches(latest,pointer):state='rejected'
+            if context is None or not context.contains_pointer(read_point) or not context.matches(latest,pointer,exclude=self.annotation_exclusions()):state='rejected'
         native = (shop_tooltip or {}).get('found') or ((tooltip or {}).get('found') if shop or self.shop_open else None)
+        reuse_panel=False
+        proof=self.observations.shop_description_proof
+        if native and proof and self.shop_tooltip_rect is not None and state!='inventory-primary':
+            try:
+                title=QRect(*(native['area'][key] for key in ('x','y','width','height')))
+                reuse_panel=(title==proof['name'] and
+                    self.observations.description_matches(image,read_point,shop_context=self.effective_shop_context(),exclude=exclusions) and
+                    self.observations.description_matches(latest,pointer,shop_context=self.effective_shop_context(),exclude=exclusions))
+            except (KeyError,TypeError,ValueError):pass
         bounds=(context.panel if context is not None and state=='inventory-primary' else
+                self.shop_tooltip_rect if reuse_panel else
+                supplied_panel if supplied_panel is not None else
                 description_bounds(image,native.get('area'),exclusions) if native else None)
         # A known list slot supplies identity when our own price labels hide
         # the title. It cannot anchor a panel by itself: independently visible
@@ -1647,24 +1731,42 @@ class LensWindow(QMainWindow):
         bounds_changed=bounds!=self.shop_tooltip_rect
         self.shop_tooltip_rect=bounds
         self.reader.shop_tooltip_bounds=bounds
-        shop_read=self.observations.observe_shop(shop,image,latest,pointer=pointer,read_point=read_point,
+        if bounds is None or state=='inventory-primary':self.observations.shop_tooltip_from_shop=False
+        elif self.shop_source_row(self.rows,read_point,read_point)[0] is not None:
+            self.observations.shop_tooltip_from_shop=True
+        entry_changed=self.observe_shop_price_entry(latest,self.annotation_exclusions())
+        old_entry_reply=bool(self.shop_price_entry.closed_at is not None and isinstance(request,SubmittedRequest)
+            and request.started_at<self.shop_price_entry.closed_at)
+        shop_read=(self.observations.observe_shop(shop,image,latest,pointer=pointer,read_point=read_point,
             panel=bounds,exclude=exclusions,source_exclude=self.shop_source_exclusions(bounds))
-        if shop_read.retry:
+            if not stale_shop and not old_entry_reply and self.shop_price_entry.rectangle is None else None)
+        entry_restored=self.shop_price_entry.accept(request.started_at if isinstance(request,SubmittedRequest) else time.monotonic(),
+            verified=bool(not stale_shop and shop_read is not None and shop_read.shop is not None
+                          and not shop_read.retry and self.shop_rows._page_proven),
+            closed=bool(not stale_shop and shop_read is not None and not self.shop_open))
+        self.reader.shop_tooltip_bounds=self.shop_tooltip_rect
+        if shop_read is not None and shop_read.retry:
             self.reader.request_rescan()
-            self.request_prices()
-            self.render()
-            return
-        if shop_read.viewport_changed:
+        if shop_read is not None and shop_read.viewport_changed:
             self.card_sightings.discard(False)
             self.reader.request_rescan()
         rows=self.rows
-        result={**result,'shop':shop_read.shop}
+        result={**result,'shop':shop_read.shop if shop_read is not None else None}
         found = tooltip.get("found") if isinstance(tooltip, dict) else None
-        eligible = self.hover_enabled and pointer is not None and not result.get("hover") and not pointer_in_shop(pointer, self.reader.shop_context)
+        separate_header=False
+        if found and bounds is not None:
+            try:
+                header=QRect(*(found['area'][key] for key in ('x','y','width','height')))
+                separate_header=header.width()>=40 and header.height()>=8 and image.rect().contains(header) and not bounds.intersects(header)
+            except (KeyError,TypeError,ValueError):pass
+        eligible = self.hover_enabled and pointer is not None and (state=='inventory-primary' or
+            not result.get("hover") and not pointer_in_shop(pointer, self.effective_shop_context())
+            and (not self.observations.shop_tooltip_from_shop or separate_header))
         if state=='rejected':eligible=False
         if self.tooltip_context and (context is None or context.token!=self.tooltip_context.token):self.tooltip_reference.clear()
         raw_found=found
         found = found if eligible else None
+        title_proof=None
         if found:
             found = self.tooltip_names.resolve(found,image,self.catalog)
             name = found.get("name")
@@ -1677,14 +1779,32 @@ class LensWindow(QMainWindow):
                 # This is the name line, not the whole tooltip. Tall tooltips
                 # can place it well above the pointer near the screen's edge.
                 near = read_point is not None and box.adjusted(-640, -640, 640, 640).contains(QPoint(*read_point))
-                popup=(context.panel if context is not None else description_bounds(image,area,exclusions)) if found.get('pinned') else None
-                pinned=bool(popup and still_present(latest,popup,exclusions))
+                popup=context.panel if context is not None else (
+                    supplied_panel if supplied_panel is not None and supplied_panel.contains(box) else
+                    bounds if bounds is not None and bounds.contains(box) else description_bounds(image,area,exclusions))
+                pinned=bool(found.get('pinned') and popup and still_present(latest,popup,exclusions))
                 moved = read_point is None or max(abs(pointer[0] - read_point[0]), abs(pointer[1] - read_point[1])) > 64
                 if context is not None and state=='inventory-primary':near=True;moved=False
+                elif popup is not None and not found.get('pinned'):
+                    # A newly sampled pointer can precede the captured game
+                    # cursor. An old popup far from that source must not be
+                    # reattached to the new inventory/equipment item.
+                    near=bool(near and read_point is not None and popup.adjusted(-64,-64,64,64).contains(QPoint(*read_point)))
                 known = bool(name and (self.catalog is None or self.catalog.candidates(name, found.get("tier"))))
+                title_exclude=tuple(exclusions)+self.observations.cursor_exclusions(pointer)
+                if context is not None and state=='inventory-primary':
+                    # The association checks the cell/header/frame and its
+                    # source-bound title raster together. Do not independently
+                    # reject the same title's scenery-blended antialias pixels.
+                    title_proof=context.title
+                    title_current=bool(title_proof and box==QRect(*title_proof.rect) and context.matches(latest,pointer,exclude=self.annotation_exclusions())
+                        and title_proof.matches(latest,panel=popup,pointer=pointer,exclude=title_exclude,antialias=True))
+                else:
+                    title_proof=capture_title(image,box,panel=popup,pointer=read_point,exclude=title_exclude)
+                    title_current=bool(title_proof and title_proof.matches(latest,panel=popup,pointer=pointer,exclude=title_exclude))
                 if not known and near and not moved and not result.get('tooltipRetried') and hasattr(self.reader,'retry_tooltip'):
                     self.reader.retry_tooltip(name_key(found,image))
-                if not (known and box.width() >= 40 and box.height() >= 8
+                if not (known and title_current and box.width() >= 40 and box.height() >= 8
                         and (pinned or near and not found.get('pinned')) and (pinned or not moved)):
                     found = None
                 else:
@@ -1697,22 +1817,28 @@ class LensWindow(QMainWindow):
             description=raw_found if found is not None else None,association=context if state=='inventory-primary' else None)
         found=self.tooltip_reference.observe(found,latest,pointer,
             allow=eligible and (not raw_found or not raw_found.get('name') or found is not None),
-            context=context if state=='inventory-primary' else None)
+            context=context if state=='inventory-primary' else None,exclude=self.annotation_exclusions())
         self.tooltip_context=context if found and state=='inventory-primary' else None
+        self.reader.tooltip_title_proof=title_proof if found else None
+        if found and separate_header:self.observations.shop_tooltip_from_shop=False
         previous_description=self.shop_description
         read_point=read_pointer
         if read_point is not None and self.reader.crop:read_point=(read_point[0]-self.reader.crop.x(),read_point[1]-self.reader.crop.y())
         previous_description_proof=self.shop_description_proof
-        self.update_shop_description(shop_tooltip.get('found'),rows,image,latest,pointer,read_point,
-                                     allow=bool(hover) and state!='inventory-primary')
+        if shop_read is not None and not shop_read.retry:
+            self.update_shop_description(shop_tooltip.get('found'),rows,image,latest,pointer,read_point,
+                                         allow=bool(hover) and state!='inventory-primary')
         if (self.shop_description and self.shop_description_proof is not previous_description_proof
                 and isinstance(shop_tooltip.get('found'),dict)):
             self.observe_native_availability(result,image,latest,description=shop_tooltip['found'])
-        changed = bounds_changed or shop_read.changed or found != self.tooltip_result or self.shop_description!=previous_description
+        changed = entry_changed or entry_restored or bounds_changed or (shop_read is not None and shop_read.changed) or found != self.tooltip_result or self.shop_description!=previous_description
         self.tooltip_result = found
-        self.request_prices()
+        quotes_changed=self.request_prices(refresh=False)
         self.update_price_status()
-        if changed:
+        if changed or quotes_changed:
+            # The independent canvas can paint already cached references
+            # before the control panel lays out item cards and recent history.
+            self.draw_labels(time.time(),time.time()-self.last_screen>3)
             self.render()
 
     def observe_native_availability(self,result,image,latest,*,rows=(),description=None,association=None):
@@ -1781,7 +1907,7 @@ class LensWindow(QMainWindow):
             if (rect is not None and rect.width()>=40 and rect.height()<=32
                     and not any(rect.intersects(hidden) for hidden in exclusions) and image.copy(rect)==latest.copy(rect)):
                 if association is not None:
-                    proven=bool(association.regions and association.regions[0]==rect and association.matches(latest,reader.pointer))
+                    proven=bool(association.regions and association.regions[0]==rect and association.matches(latest,reader.pointer,exclude=exclusions))
                 else:
                     panel=description_bounds(image,description.get('area'),exclusions)
                     proven=bool(panel is not None and game.contains(panel) and panel.contains(rect) and still_present(latest,panel,exclusions))
@@ -1798,29 +1924,16 @@ class LensWindow(QMainWindow):
         return self.observations.clear_description()
 
     def shop_description_matches(self,image,pointer):
-        return self.observations.description_matches(image,pointer,shop_context=self.reader.shop_context,
+        return self.observations.description_matches(image,pointer,shop_context=self.effective_shop_context(),
             exclude=self.annotation_exclusions())
-
-    def shop_description_source_matches(self,image,proof,exclusions):
-        return self.observations.description_source_matches(image,proof,exclusions)
 
     @staticmethod
     def shop_source_row(rows,pointer,read_point):
         return PriceObservations.source_row(rows,pointer,read_point)
 
-    @staticmethod
-    def shop_description_title_matches(image,proof,exclusions):
-        return PriceObservations.description_title_matches(image,proof,exclusions)
-
     def update_shop_description(self,native,rows,image,latest,pointer,read_point,*,allow):
-        had_description=self.shop_description is not None
         self.observations.update_description(native,rows,image,latest,pointer,read_point,allow=allow,
-            shop_context=self.reader.shop_context,exclude=self.annotation_exclusions())
-        if self.shop_description:
-            if not had_description:self.card_sightings.discard(True)
-            item=self.item_for(self.shop_description)
-            quote=self.service.cached(item) if item else None
-            if quote is not None:self.quotes[item.game_id]=quote
+            shop_context=self.effective_shop_context(),exclude=self.annotation_exclusions())
 
     def annotation_exclusions(self):
         if self.screen_index is None or self.reader.image.isNull():return []
@@ -1848,10 +1961,10 @@ class LensWindow(QMainWindow):
                     and (self.mode != "live" or self.last_screen and time.time() - self.last_screen <= 8)
                     and (not self.reader.auto_active or self.reader.game_area is not None))
 
-    def request_prices(self):
+    def request_prices(self,*,refresh=True):
         if not self.prices_active():
             self.service.clear_visible()
-            return
+            return False
         observations = ([self.tooltip_result] if self.tooltip_result else []) + self.rows
         items = []
         for row in observations:
@@ -1860,7 +1973,20 @@ class LensWindow(QMainWindow):
             item = self.item_for(row)
             if item:
                 items.append(item)
-        self.service.observe(items)
+        # Snapshot lookups deliver synchronously. A new six-item shop should
+        # update its views once, rather than rebuilding the page six times
+        # before the first complete overlay can be submitted.
+        collecting=getattr(self,'_collecting_quotes',False)
+        revision=getattr(self,'_quote_revision',0)
+        self._collecting_quotes=True
+        try:self.service.observe(items)
+        finally:self._collecting_quotes=collecting
+        changed=getattr(self,'_quote_revision',0)!=revision
+        if changed and not collecting:
+            self.database_panel.update_market()
+            self.update_price_status()
+            if refresh:self.render()
+        return changed
 
     def on_price_state(self):
         if not self.closing:
@@ -1872,9 +1998,9 @@ class LensWindow(QMainWindow):
                 self.quote_generation=generation
                 selected=self.search_panel.selected
                 identities=set(self.quotes)
+                identities.update(item.game_id for row in self.rows+([self.tooltip_result] if self.tooltip_result else [])
+                    if (item:=self.item_for(row)) is not None)
                 if selected:identities.add(selected.game_id)
-                focused=self.item_for(self.shop_description)
-                if focused:identities.add(focused.game_id)
                 for item in self.catalog.items:
                     if item.game_id not in identities:continue
                     quote=self.service.reference(item)
@@ -1887,8 +2013,10 @@ class LensWindow(QMainWindow):
 
     def on_quote(self, item_id, quote):
         self.quotes[item_id] = quote
+        self._quote_revision=getattr(self,'_quote_revision',0)+1
         self.errors.pop(item_id, None)
         self.search_panel.accept_quote(item_id,quote)
+        if getattr(self,'_collecting_quotes',False):return
         self.database_panel.update_market()
         self.update_price_status()
         self.render()
@@ -1913,7 +2041,9 @@ class LensWindow(QMainWindow):
                      and item.game_id in self.errors for row in observations)
         snapshot = self.service.snapshot_summary() if hasattr(self.service, "snapshot_summary") else ""
         updater=getattr(self.service,'snapshot_updater',None)
-        self.search_panel.set_market_status(snapshot if updater and (updater.busy or updater.error) else '',bool(updater and updater.error))
+        source_old=bool(updater and updater.source_old())
+        warning=bool(updater and (updater.error or source_old))
+        self.search_panel.set_market_status(snapshot if updater and (updater.busy or warning) else '',warning)
         self.status_label.setText("Some market references are unavailable; cached prices are kept." if failed else snapshot or "Market references cached locally")
 
     def tick(self):
@@ -1998,17 +2128,18 @@ class LensWindow(QMainWindow):
             retain=self.mode=='live' and not screen_old and self.prices_enabled,
             context=(self.screen_index,self.reader.crop.getRect() if self.reader.crop else None),
             page=self.shop_rows.page_revision,identity=self.card_identity)
-        focus=self.shop_description if self.shop_description and not self.tooltip_result and not self.shop_browsing.active() and not self.shop_browsing.pending else None
-        card_rows=[(focus,True)] if focus else normal_card_rows
-        cached_rows=normal_card_rows+([(focus,True)] if focus else [])
-        if focus:observations=observations+[focus]
+        card_rows=[]
+        for row,hovered in normal_card_rows:
+            presentation=self.shop_rows.presentation_for(row) if not hovered and not row.get('price') else None
+            card_rows.append(({**row,'price':presentation} if presentation else row,hovered))
+        cached_rows=card_rows
         displayed=[row for row,_ in card_rows]
         active={item.game_id for row,_ in cached_rows if (item:=self.item_for(row))}
         if self.catalog:
             if self.mode in ('live','screenshot') and not screen_old and self.prices_enabled:self.recent_items.observe(observations,self.catalog,now,active=active)
             else:self.recent_items.active=active
             self.recent_items.refresh(self.service,self.ttl,now)
-        structure=tuple((hovered,item.game_id if (item:=self.item_for(row)) else row.get('name'),bool(row.get('_shop_description')))
+        structure=tuple((hovered,item.game_id if (item:=self.item_for(row)) else row.get('name'))
                         for row,hovered in card_rows)
         if not structure:
             structure=('empty',self.mode,self.shop_open,self.capture_starting,self.catalog_error,self.catalog_loading,self.reader.game_area is not None,bool(self.recent_items.rows_by_id))
@@ -2042,7 +2173,7 @@ class LensWindow(QMainWindow):
                             quote.fresh(now,self.ttl) if quote else False,
                             age_text(now-quote.observed_at) if quote and quote.observed_at is not None else '',
                             self.service.state_for() if item else '',
-                            self.lookup_reason_for(item),bool(row.get('_shop_description'))))
+                            self.lookup_reason_for(item)))
         card_key = (tuple(visible),structure,
                     self.mode, self.shop_open, screen_old, self.capture_starting, self.catalog_loading,
                     self.catalog_error, id(self.catalog), self.ttl,self.prices_enabled,bool(self.recent_items.rows_by_id),self.reader.game_area is not None)
@@ -2081,7 +2212,7 @@ class LensWindow(QMainWindow):
                 data = dict(item=item, row=row, quote=quote, now=now, ttl=self.ttl,
                                   paused=self.mode == "paused" or not self.prices_enabled, old_capture=self.mode == "live" and screen_old,
                                   lookup_error=bool(item and item.game_id in self.errors), hovered=hovered,
-                                  context_name='Shop item description' if row.get('_shop_description') else 'Linked item' if hovered and row.get('pinned') else None,
+                                  context_name='Linked item' if hovered and row.get('pinned') else None,
                                   lookup_state=self.service.state_for() if item else "",
                                   lookup_reason=self.lookup_reason_for(item),
                                   open_source=self.open_source)
@@ -2104,7 +2235,7 @@ class LensWindow(QMainWindow):
                 if key not in used:
                     card = self.card_views.pop(key)
                     self.cards_layout.removeWidget(card)
-                    card.hide();card.deleteLater()
+                    retire_widget(self,card)
             for index,card in enumerate(ordered):
                 if self.cards_layout.indexOf(card)!=index:self.cards_layout.insertWidget(index,card)
                 # Reparenting into a layout hides a newly created widget until
@@ -2143,6 +2274,9 @@ class LensWindow(QMainWindow):
             sx, sy = geometry.width() / image.width(), geometry.height() / image.height()
             crop = self.reader.crop
             offset_x, offset_y = (crop.x(), crop.y()) if crop else (0, 0)
+            entry=self.shop_price_entry.rectangle if self.shop_open else None
+            entry_box=([round((entry.x()+offset_x)*sx),round((entry.y()+offset_y)*sy),
+                        round(entry.width()*sx),round(entry.height()*sy)] if entry is not None else None)
             for row in self.rows:
                 if not row.get('name'):
                     continue
@@ -2155,14 +2289,14 @@ class LensWindow(QMainWindow):
                 verdict = compare(item, price.get("quantity"), price.get("mesos"), quote, now, self.ttl)
                 compatible=bool(item and quote and quote.game_id==item.game_id and quote.world==WORLD
                     and quote.condition=='clean' and quote.per_set==item.per_set and quote.fresh(now,self.ttl))
-                quote_key=(self.quote_generation,quote) if compatible else None
-                presentation=self.shop_rows.presentation_for(row,quote_key=quote_key) if compatible else None
+                presentation=self.shop_rows.presentation_for(row) if compatible else None
                 presentation_held=bool(presentation and not row.get('price'))
                 if presentation_held:
                     verdict=compare(item,presentation.get('quantity'),presentation.get('mesos'),quote,now,self.ttl)
                 if quote and quote.price is not None and quote.fresh(now, self.ttl):
                     ready_price = True
-                    suffix = "listing covered" if row.get("listing_old") and not presentation_held else "listing price unclear" if verdict.label == "Unreadable" else ""
+                    suffix = ("" if row.get('nameOnly') else "listing covered" if row.get("listing_old") and not presentation_held
+                              else "listing price unclear" if verdict.label == "Unreadable" else "")
                     text = f"FM {mesos(quote.price)} • {suffix} • {status}"
                     if not suffix:text = f"FM {mesos(quote.price)} • {status}"
                     if verdict.label == "Thin data":
@@ -2187,31 +2321,10 @@ class LensWindow(QMainWindow):
                                     "key": f"shop:{page}:{item.game_id if item else row.get('name')}:{tuple(slot)}",
                                     "shop_page":page,"shop_slot":list(slot),"presentation_held":presentation_held,
                                     "viewport_epoch": self.shop_browsing.epoch,
-                                    "browsing_priority": self.shop_browsing.active(),
                                     "item_id": item.game_id if item else None,
                                     "content_id":[item.game_id if item else row.get('name'),quote.price if quote else None],
-                                    "animate_move": True,"kind":"shop",
-                                    "occlusion": ([round((self.shop_tooltip_rect.x()+offset_x)*sx),
-                                                   round((self.shop_tooltip_rect.y()+offset_y)*sy),
-                                                   round(self.shop_tooltip_rect.width()*sx),
-                                                   round(self.shop_tooltip_rect.height()*sy)] if self.shop_tooltip_rect is not None else None),
+                                    "animate_move": True,"kind":"shop","shop_entry":entry_box,
                                     "deal_delta":f"{verdict.delta:+.0f}%" if verdict.delta is not None else ""})
-        if self.shop_description and self.shop_tooltip_rect is not None and annotations and not self.shop_browsing.active() and not self.shop_browsing.pending:
-            proof=self.shop_description_proof
-            source=proof.get('source') if proof else None
-            for row,annotation in zip((row for row in self.rows if row.get('name') and row.get('shop_slot') is not None),annotations):
-                if annotation.get('kind')!='shop' or source is None:continue
-                band=(row.get('area') or {})
-                if not band or not source.contains(QRect(*(band[k] for k in ('x','y','width','height')))):continue
-                if annotation.get('item_id')!=proof.get('item_id'):continue
-                region=self.reader.game_area if self.reader.auto_active else self.reader.crop or image.rect()
-                popup=self.shop_tooltip_rect
-                annotations.append({**annotation,'key':'description:'+annotation['key'],'kind':'item',
-                    'source_shop_key':annotation['key'],'occlusion':None,'animate_move':False,
-                    'description_box':[round((popup.x()+offset_x)*sx),round((popup.y()+offset_y)*sy),
-                                       round(popup.width()*sx),round(popup.height()*sy)],
-                    'bounds':[round(region.x()*sx),round(region.y()*sy),round(region.width()*sx),round(region.height()*sy)]})
-                break
         if self.prices_enabled and self.labels_enabled and self.hover_enabled and self.tooltip_result and self.mode == "live" and not screen_old and screen_matches and self.catalog and game_visible:
             found = self.tooltip_result
             area = found["area"]
@@ -2251,11 +2364,41 @@ class LensWindow(QMainWindow):
                 if self.tooltip_context is not None:
                     # Our own card must not cover the inventory cell or the
                     # native pixels that authorize this reference.
-                    protected=(self.tooltip_context.source,*self.tooltip_context.regions)
+                    protected=(self.tooltip_context.source,self.tooltip_context.panel,
+                               *((self.tooltip_context.comparison,) if self.tooltip_context.comparison is not None else ()))
+                    primary=self.tooltip_context.panel
+                    annotations[-1]['description_box']=[round((primary.x()+ox)*sx),round((primary.y()+oy)*sy),
+                        max(1,round(primary.width()*sx)),max(1,round(primary.height()*sy))]
+                    if self.tooltip_context.comparison is not None:
+                        comparison=self.tooltip_context.comparison
+                        annotations[-1]['comparison_box']=[round((comparison.x()+ox)*sx),round((comparison.y()+oy)*sy),
+                            max(1,round(comparison.width()*sx)),max(1,round(comparison.height()*sy))]
                     annotations[-1]['avoid_regions']=[[
                         round((rect.x()+ox)*sx),round((rect.y()+oy)*sy),
                         max(1,round(rect.width()*sx)),max(1,round(rect.height()*sy))]
                         for rect in protected]
+                    annotations[-1]['bounds']=[round(region.x()*sx),round(region.y()*sy),
+                        round(region.width()*sx),round(region.height()*sy)]
+                else:
+                    # A single inventory/equipped description has no paired
+                    # source context. Its price card must still avoid its
+                    # native frame/title while the pointer and popup move;
+                    # covering those pixels can invalidate our next reading.
+                    proof=getattr(self.reader,'tooltip_title_proof',None)
+                    native_panel=QRect(*proof.panel) if proof is not None and proof.panel is not None else None
+                    if native_panel is None:
+                        retained_panel=getattr(self.tooltip_reference,'panel',None)
+                        if retained_panel is not None and still_present(image,retained_panel,self.annotation_exclusions()):
+                            # Brief OCR retention verifies this panel separately;
+                            # keep its geometry without lending it any new name.
+                            native_panel=QRect(retained_panel)
+                    protected=native_panel or QRect(*(area[k] for k in ('x','y','width','height')))
+                    if native_panel is not None:
+                        annotations[-1]['description_box']=[round((native_panel.x()+ox)*sx),round((native_panel.y()+oy)*sy),
+                            max(1,round(native_panel.width()*sx)),max(1,round(native_panel.height()*sy))]
+                    annotations[-1]['avoid_regions']=[[
+                        round((protected.x()+ox)*sx),round((protected.y()+oy)*sy),
+                        max(1,round(protected.width()*sx)),max(1,round(protected.height()*sy))]]
                     annotations[-1]['bounds']=[round(region.x()*sx),round(region.y()*sy),
                         round(region.width()*sx),round(region.height()*sy)]
                 if found.get('pinned'):
@@ -2289,7 +2432,6 @@ class LensWindow(QMainWindow):
                 if notice:annotations.append(notice)
         self.watch_encounters.apply(annotations, self.watchlist.ids, page=self.shop_rows.page_revision)
         self.overlay.shop_viewport_epoch = self.shop_browsing.epoch
-        self.overlay.shop_browsing_priority = self.shop_browsing.active()
         self.overlay.shop_viewport_pending = self.shop_browsing.pending
         self.overlay.update(list(geometry.getRect()), annotations, hover_enabled=self.prices_enabled and self.labels_enabled and self.mode == "live" and game_visible and screen_matches and not screen_old)
         if (annotations and ready_price and not self.first_price_seen):

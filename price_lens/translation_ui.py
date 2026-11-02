@@ -4,6 +4,7 @@ from shiboken6 import isValid
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QCheckBox,QPushButton,QScrollArea,QFrame,QLabel,QDoubleSpinBox
 from .motion import reveal,AnimatedTabs,MotionLabel
 from .composer_ui import ComposerWidget
+from .widget_lifetime import retire_widget
 
 
 def grouped_history(cards):
@@ -120,9 +121,9 @@ class TranslationPanel(QWidget):
         wanted={card['_widget_key'] for card in cards}
         for identity in list(self.result_cards):
             if identity not in wanted:
-                widget=self.result_cards.pop(identity);self.results_layout.removeWidget(widget);widget.hide();widget.deleteLater()
+                widget=self.result_cards.pop(identity);self.results_layout.removeWidget(widget);retire_widget(self,widget)
         if self.empty_label is not None:
-            self.results_layout.removeWidget(self.empty_label);self.empty_label.deleteLater();self.empty_label=None
+            self.results_layout.removeWidget(self.empty_label);retire_widget(self,self.empty_label);self.empty_label=None
         for index,card in enumerate(cards):
             identity=card['_widget_key'];frame=self.result_cards.get(identity)
             if frame is None:

@@ -97,6 +97,79 @@ class MarketDeadlineTests(unittest.TestCase):
             self.assertEqual(self.updater.timer.interval(), delay*1000)
             self.now += delay
 
+    def test_source_old_summary_keeps_publication_age_separate_from_successful_rechecks(self):
+        doc=document(self.now);doc['generated_at']=iso(self.now-4200)
+        self.updater.accept(doc)
+        self.assertIn('checked 0s ago',self.updater.summary())
+        self.assertIn('source snapshot old · published 1h 10m ago',self.updater.summary())
+        self.assertIn('retry in 1m',self.updater.summary())
+        published=self.store.meta['published_at']
+        self.now+=61
+        self.updater.refresh();self.updater.accept(doc)
+        summary=self.updater.summary()
+        self.assertIn('checked 0s ago',summary)
+        self.assertIn('published 1h 11m ago',summary)
+        self.assertIn('retry in 5m',summary)
+        self.assertEqual(self.store.meta['published_at'],published)
+        self.assertFalse(self.store.quote(self.item).cache_valid(self.now,3600))
+        self.assertEqual(self.fetch.call_count,1)
+
+    def test_source_retry_countdown_is_live_without_fetching_or_changing_the_deadline(self):
+        doc=document(self.now);doc['generated_at']=iso(self.now-4200)
+        self.updater.accept(doc);deadline=self.updater.retry_at
+        self.now+=17
+        self.assertIn('checked 17s ago',self.updater.summary())
+        self.assertIn('retry in 43s',self.updater.summary())
+        self.now=deadline-.2
+        self.assertIn('retry in 1s',self.updater.summary())
+        self.now=deadline
+        self.assertIn('retry due',self.updater.summary())
+        self.assertEqual(self.updater.retry_at,deadline)
+        self.assertEqual(self.fetch.call_count,0)
+        self.updater.refresh()
+        self.assertEqual(self.updater.summary(),'Updating the full market in the background…')
+        self.assertEqual(self.fetch.call_count,1)
+
+    def test_new_publication_clears_source_old_and_retry_status_without_changing_sale_age(self):
+        old=document(self.now);old['generated_at']=iso(self.now-4200)
+        self.updater.accept(old)
+        self.now+=60
+        fresh=document(self.now)
+        fresh['items'][0]['lastSold']=old['items'][0]['lastSold']
+        self.updater.accept(fresh)
+        self.assertNotIn('source snapshot old',self.updater.summary())
+        self.assertNotIn('retry',self.updater.summary())
+        self.assertIn('checked 0s ago',self.updater.summary())
+        self.assertIsNone(self.updater.retry_at)
+        quote=self.store.quote(self.item)
+        self.assertTrue(quote.cache_valid(self.now,3600))
+        self.assertEqual(quote.observed_at,self.now-180)
+
+    def test_disabled_updater_does_not_claim_an_automatic_retry_is_scheduled(self):
+        doc=document(self.now);doc['generated_at']=iso(self.now-4200)
+        self.updater.accept(doc);self.updater.set_enabled(False)
+        self.assertIn('published 1h 10m ago',self.updater.summary())
+        self.assertNotIn('retry',self.updater.summary())
+
+    def test_old_source_and_next_retry_are_visible_on_prices_until_a_fresh_publication(self):
+        import test_ui_context as ui_fixtures
+        fixture=ui_fixtures.ContextUiTests();fixture.app=self.app
+        self.addCleanup(fixture.doCleanups);fixture.setUp();self.addCleanup(fixture.tearDown)
+        window=fixture.window
+        window.service.snapshot_updater=self.updater
+        window.service.snapshot_summary=self.updater.summary
+        doc=document(self.now);doc['generated_at']=iso(self.now-4200)
+        self.updater.accept(doc);window.update_price_status()
+        status=window.search_panel.market_status
+        self.assertFalse(status.isHidden())
+        self.assertIn('published 1h 10m ago',status.text())
+        self.assertIn('retry in 1m',status.text())
+        self.assertTrue(self.updater.source_old())
+        self.updater.accept(document(self.now));window.update_price_status()
+        self.assertFalse(self.updater.source_old())
+        self.assertTrue(status.isHidden())
+        self.assertNotIn('source snapshot old',status.text())
+
     def test_interval_changes_preserve_pending_source_retry_instead_of_looping(self):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3601)

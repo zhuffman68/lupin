@@ -9,9 +9,17 @@ from PySide6.QtWidgets import QApplication
 from price_lens.domain import Item,Quote
 from price_lens.price_widgets import PriceCard
 from price_lens.market_lookup import market_lookup_reason
+from price_lens.ui_components import mesos
 
 
 class PriceWidgetStatusTests(unittest.TestCase):
+    def test_sub_one_market_reference_is_not_displayed_as_zero(self):
+        self.assertEqual(mesos(.5),'<1')
+        self.assertEqual(mesos(.01),'<1')
+        self.assertEqual(mesos(0),'0')
+        self.assertEqual(mesos(None),'—')
+        self.assertEqual(mesos(1899),'1,899')
+
     @classmethod
     def setUpClass(cls):
         os.environ.setdefault('QT_QPA_PLATFORM','offscreen')

@@ -14,6 +14,7 @@ from .watchlist_ui import WatchedItems,WatchButton
 from .search_field import SearchField
 from .reference_details import EntryDetails
 from .market_lookup import market_lookup_reason
+from .widget_lifetime import retire_widget
 
 
 class PriceSearch(QWidget):
@@ -425,8 +426,8 @@ class PriceSearch(QWidget):
             if record:
                 if not isinstance(card,EntryDetails) or card.entry.id!=self.selected.game_id or card.row!=record[1]:
                     old=card;previous=old.state() if isinstance(old,EntryDetails) and old.entry.id==self.selected.game_id else None
-                    if old:self.detail_layout.removeWidget(old);old.hide();old.deleteLater()
-                    else:self.watch_button.hide();self.watch_button.deleteLater()
+                    if old:self.detail_layout.removeWidget(old);retire_widget(self,old)
+                    else:retire_widget(self,self.watch_button)
                     card=self.price_view=EntryDetails(self,*record);self.watch_button=card.watch_button
                     card.media_changed.connect(self.reference_changed.emit);self.detail_layout.insertWidget(0,card)
                     if previous:card.restore(previous)

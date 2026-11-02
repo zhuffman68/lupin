@@ -23,7 +23,7 @@ Lupin keeps legacy internal application/settings/socket IDs for upgrade compatib
 
 EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 
-Linux packages are named `lupin` and replace `classic-price-lens`. Preserve existing per-user data and the desktop/portal identity during migration. Prices includes manual search; Translation has its own tab. Shortcuts default on both platforms to Super/Win+F9 prices, +F10 EXP, +F11 reading Korean and +F8 writing Korean; retain explicitly customized assignments. Shop labels stay in place and fade to 25 percent opacity only where they overlap a recognized native item-description tooltip.
+Linux packages are named `lupin` and replace `classic-price-lens`. Preserve existing per-user data and the desktop/portal identity during migration. Prices includes manual search; Translation has its own tab. Shortcuts default on both platforms to Super/Win+F9 prices, +F10 EXP, +F11 reading Korean and +F8 writing Korean; retain explicitly customized assignments. Shop labels stay fully opaque and in place for the verified current page, except where a verified add-item form overlaps their measured rectangles. Native shop descriptions may refine a clipped listing identity, but never create another price overlay or replace the shop list in Prices.
 
 Super/Win+F8 opens the clipboard-only Korean writer, independently of capture and incoming translation. Only explicit Enter/Translate & Copy may write the current validated draft to the OS clipboard; edit/cancel must invalidate pending copies. Never paste, send keys or focus a game field. Keep known item names, explicit numeric scales/currency/percent roles, UTF-8 pipes and local-only processing. All Wayland portal callbacks must marshal onto the Qt GUI thread; activation tokens may focus only our own surface. Both verified local model bundles ship on Windows and Linux; no chat/drafts may enter logs or packages.
 
@@ -35,7 +35,7 @@ Program packaging uses /opt/lupin, the lupin launcher and lupin-screen-reader bi
 
 The control panel cannot be pinned on top or maximized. Clear the removed keep-on-top preference during migration. Watched-item rows show thumbnails and cached references, with three visible before scrolling. Expanding shows the list only; a click opens an item card. Deselecting keeps the watched view; collapsing clears it and returns to store cards. Watch alerts shimmer twice inside the annotation, with a steady border. GUI currency words use the small coin except MESO on the tracking panel and EXP/Meso Tracking on the tab. Price-overlay text remains plain; the tracking meso gain uses a tiny coin aligned with the EXP percent symbol. Hide tracking coin units until their values exist.
 
-Fresh windows use 27.0833% of the logical screen width and 77.7778% of its height (520 × 840 at 1920 × 1080), bounded to the available area. Remember manual resizing as screen-relative fractions and retain the 460-pixel minimum width. All price cards share the exact-ID watch control. An expanded watch list alone does not hide the ready/shop view; only a selected item takes priority. Tabs use plain labels and a filled active-tab background. Price transparency depends only on a recognized description rectangle; never restore the old row-covered opacity fallback. Listing amounts can return without another OCR pass only when the exact previously read row pixels and page guards match. A tall description may cross the footer rim: cached game bounds require the independent LV anchor and caption to remain verified. Clicked item-link descriptions may be located away from the cursor using the same pixel-only reader, followed by catalog and panel validation.
+Fresh windows use 27.0833% of the logical screen width and 77.7778% of its height (520 × 840 at 1920 × 1080), bounded to the available area. Remember manual resizing as screen-relative fractions and retain the 460-pixel minimum width. All price cards share the exact-ID watch control. An expanded watch list alone does not hide the ready/shop view; only a selected item takes priority. Tabs use plain labels and a filled active-tab background. Shop labels never dim for a cursor or item description. Tooltip geometry remains an OCR exclusion, not a presentation mode. Listing amounts can return without another OCR pass only when the exact previously read row pixels and page guards match. A tall description may cross the footer rim: cached game bounds require the independent LV anchor and caption to remain verified. Clicked item-link descriptions may be located away from the cursor using the same pixel-only reader, followed by catalog and panel validation.
 
 Meso tracking counts confirmed visible pickup-log arrivals, independently of EXP gains; it does not scan the wallet or infer potion costs/profit. Seed messages already visible at Start/Resume or after lost coverage. Keep the ledger bounded, distinguish repeated amounts in different arrivals, and hold when known windows cover the log. EXP and meso overlays are separate compact cards stacked in the empty corner left of the HUD, with an above-HUD fallback when that corner is too narrow and independent checkboxes. Preserve the native locator's guard pixels instead of weakening detection to tolerate our overlays. Gains, rates and ETA update every two seconds; elapsed clocks tick each second, with immediate pause/context changes. User Pause freezes identity, map, run, watch totals and pickup state; another visible character must not reset or switch them. Reconfirm the original captured identity before showing its paused cards or enabling Resume on a changed game area. Preserve the basis of legacy wallet-history records. Enter in the Korean popup submits its current draft, animates the popup closed without canceling that authorization, then copies and shows an expiring overlay notification. Escape/edit still revoke pending copies.
 
@@ -43,15 +43,127 @@ EXP warmup requires 30 seconds of clear accepted readings, not wall-clock time. 
 
 Distinguish held readings from numerical validation or reacquisition. Relearn an inconsistent numerical baseline only from bounded, fresh, changing and mutually consistent observations for the same captured identity/level; retain confirmed gains and exclude the untrusted interval. Captured name proofs come from the same submitted frame as the EXP result. Keep visual identity stable through OCR spelling changes, with bounded template variants and conservative confirmation for genuinely changed pixels; never globally alias characters such as Z and 2. Tracking gains use a large rolling font, bold headings, a larger percent unit and aligned units in 56-pixel cards. Narrow down to 200 logical pixels before using the above-HUD fallback. The tracking page explains both rate windows once with “Rates based on the last 5 minutes”; normal overlay headers omit a rolling-window label. Keep warmup/paused/held states, and indent EXP/MESO headings past the plus-sign gutter. Use Level X · ETA on both displays.
 
-Shop dimming requires an anchored, dark native description body, not just similar frame strokes. Exclude our annotation pixels from name/body evidence and validate retained occlusions against the newest frame. A missing occlusion field clears old state; bright shop panes must never make their own labels dim in a feedback loop.
+Shop occlusion geometry requires a native dark body and structural frame evidence.
+A bounded cyan-marker/frame probe may find a description before OCR when a
+verified shop source is disrupted. It supplies geometry only, never item identity
+or an asking price. Exclude our annotation pixels and both cursor footprints from
+row, frame and scrollbar comparisons; cursor-covered thumb edges remain unknown.
+Use fixed table rims for container proof, independently of scrollbar animation.
+Allow a bounded 750 ms trail of at most eight ordinary pointer positions for
+capture latency. Pointer masks apply to source comparisons, never to finding
+native frame/body geometry. A previous native pane has its own 350 ms trail.
+Native geometry masks include their frame/shadow margin; a
+clipped native occlusion still requires independent native edges and body pixels.
+Canonicalize verified slots before merging omitted rows so OCR rounding cannot
+duplicate labels. Generic tooltip names must match the latest captured pixels.
+Tooltip-title proofs may tolerate dark translucent background changes only with
+an independently present native panel. Independently bound inventory titles
+also permit antialiased fringe blending immediately around byte-exact opaque
+glyphs; added/moved/recolored opaque strokes, foreign ink and erased edges fail.
+Generic/shop title policies stay strict. Do not weaken shop-row or asking-price
+proofs to achieve this. Inventory source cells and interior header/frame guards
+remain independently verified. With an explicit native sourceTab, recognize
+only the selected-tab white pulse using the shared bounded colour-direction
+fit; retain exact caption/buttons/inactive-tab pixels and visible pink selection.
+Only changed native-gold rim pixels may animate within the scaled outermost
+cell pixel; exposed icon interiors must match exactly with a scaled 16-pixel
+minimum even on a byte-identical cursor frame. Older metadata retains strict
+guards. Fully covered
+cells remain unknown rather than alternating authority with cursor animation.
+Native capped frames need bounded corner lanes and both full-height rails;
+a short divider cannot supply their boundary. Carry only Lupin-owned annotation
+rectangles with each immutable request, in source coordinates, and convert them
+to the actual native analysis origin. Treat those rim samples as unknown and
+black out that paint for OCR. Python checks the old frame with its submitted
+masks and the latest frame with current masks. Require exposed native rails and
+corners; these masks never excuse changed cell/header/title pixels or borrow a
+comparison name. Completely hidden geometry remains unverified.
+Shop epochs/retries must not discard independently current inventory proofs.
+Discard stale shop/hover authority without allowing its old description to
+become an inventory reference. Clear cached shop routing when its container is
+lost. Inventory/equipped pricing remains independent while a shop is open.
 
-Verified shop scrolling gives current listings 1.5 seconds of priority over the
-hovered shop description. It never reveals unknown covered rows. Source changes
-alone do not prove scrolling. Keep submitted reader context immutable and request
-fresh work through `PixelReader.request_rescan`; UI code must not reset an active
-request's timeout. Price observations belong to the widget-free controller;
-capture scheduling, market lookup and annotation painting remain separate.
+Verified scrolling advances the viewport epoch and invalidates previous-page
+labels immediately. Clear row/offer caches while preserving independent fixed-rim
+geometry proof; covered new rows cannot inherit a previous item. Reject purple
+tooltip-tinted thumb pixels as unknown, not scrolling. There is no temporary
+shop-hover priority timer. Keep
+submitted reader context immutable and request fresh work through
+`PixelReader.request_rescan`; UI code must not reset an active timeout. Known
+last-seen asking prices remain available for the lifetime of the verified page,
+separately from current offers. Market expiry and exact identity checks still
+apply, and fresh compatible quotes may update an existing comparison in place.
+Unchanged exposed native names at the saved slots support retention of loaded
+references beneath descriptions, even when pane geometry is incomplete. Such
+held rows have no current offer. An exposed changed title must not inherit the
+old item; positive scrolling clears all old rows. A same-slot name anchor or an
+unchanged exposed thumb vetoes name-only frame scroll detection, while confirmed
+thumb movement wins. Blank background is not a name anchor. Preserve an earlier
+usable same-item title template when a later read is masked.
+When an exposed shop name is readable but its asking line is blocked, the local
+reader may return a name-only row with its own exact name rectangle. Require
+independent table proof and unique catalog identity; do not resolve a covered
+icon or infer an amount/tier. A fresh name can finish viewport reacquisition.
+Retain that identity without a current offer until a complete asking line is read.
+Apply bounded component recovery to every unread slot on the verified table,
+independently of the pointer's row. Native blue/orange text must have a complete
+ending before a pane/cursor; description text never supplies a new listing.
+Keep this path available while a verified pane touches the table, even if every
+returned row is known: omitted slots are not proof of a complete page. An
+unrelated palette-compatible panel cannot supply its rows or grid to that hint.
+Complete native UI ellipses require three actual aligned dot components as well
+as agreeing OCR before using their smaller blank margin; ordinary asking guards are unchanged.
+Independent asking recovery requires two agreeing reads of the complete
+quantity, "for" and strictly grouped amount; no currency word is required.
+Bind priceText (`Q for N`) to the numeric tuple. priceArea and priceValueArea
+must match and include the positively visible blank next-comma footprint for
+complete three-digit groups, or the next-digit advance for short amounts.
+Validate digit shape, font advances, core width and exact latest numeric pixels;
+joined zeroes may contain multiple measured cells within one ink run.
+A mask over any numeric ink rejects the amount. Always validate this proof even
+when the broader masked row matches. Preserve complete current ordinary-reader
+rows when optional recovery fails; never borrow a prior-page price. Later native
+slots can establish the row-grid phase when the first slots are sold out.
+Cursor footprints match the native inventory proof: 32 by 37 pixels at 1x,
+with six pixels left and seven above the hotspot for the animated top outline.
+Round outward consistently at fractional scales, preserving the bottom bound. Fixed container guards stay inside the inner bevel, away from
+animated scenery. Batch cached price deliveries and draw annotations before
+performing the heavier control-panel card layout.
+Orange-selected components use their native antialiasing and separator palette.
+Known bevel colours may be normalized only at bounded outer scanlines with a
+broad uninterrupted native prefix; retain all dark glyphs and foreign pixels.
+Python must match the reader's rounded 8-bit <160 ink cutoff when validating
+exported components. A new scrolled selected row requires fresh identity/amount
+proof; it cannot inherit a prior-page price.
+Names and amounts have separate current-pixel proofs. Blank-tail clipping or a
+masked-margin change cannot discard otherwise complete exposed components.
+A name-only update may retain an earlier same-page/slot/exact-item amount for
+presentation, separately from its null current offer; scrolling clears both.
+Unchanged stationary shops need no fixed 200 ms description OCR loop. Pixel or
+pointer changes, explicit retries and periodic locator checks still trigger work.
 
-On-screen item cards have a GUI-only 2 second grace period before retirement to session history. Current observations alone supply overlays and offer verification. Animate the active-card canvas independently of history, including the first history header/gap; quote and age updates must not restart structural motion. Keep at most 100 unique session entries and animate/repaint only visible rows. Stable shop annotation keys use the verified page, canonical item and list-local slot. Held shop presentation stays separate from current offers and is bounded to the same fresh quote generation and verified context. Nearest-name/fuzzy pricing remains deferred; native retries may omit a decorative marker only on a proven marker-bearing title path.
+Native tooltip frames use raw captures and independently terminating cap corners;
+inventory rails visible through a translucent body cannot define its boundary.
+Owner tags do not set title-to-cap padding. A separately framed comparison can
+split a common-rim union without supplying the primary's title. Version-three
+inventory proofs bind both single descriptions and primary-left pairs to exact
+source/header/cell/title pixels; translucent rails use the same scaled structural
+predicate in Rust and Python. Protect the complete source and both native panels
+from our annotations. A positively verified shop price-entry form fades only
+shop labels whose actual annotation rectangles overlap it, retaining stable
+labels/observations/history. Closing the form restores opacity, while source and
+offer updates still require a newly submitted, verified shop read. Exposed table
+rims must remain current throughout; losing the container removes the labels.
+Late replies cannot mutate held observations. Form evidence excludes Lupin's
+own labels and supports partially covered fields without treating those labels
+as native controls. Fully covered inputs/buttons may remain unknown only with
+independent exposed caption ink, connected frame strokes, paper and all three
+magenta labels. Visible contradictory controls reject the form. Inventory labels
+and ordinary shop descriptions never dim. Inventory cards prefer directly above
+the verified hovered description, using side/below fallbacks when necessary;
+never anchor them to the inventory or equipped comparison. Reset pointer offsets
+when description geometry changes and clear omitted anchor metadata.
 
-GitHub Releases is the sole distribution and update destination. GitHub application updates use the public stable release feed, pinned Ed25519 signatures and exact artifact hashes. Check on launch and the configured timer; never install without Download & install. Linux authentication goes through the fixed root-owned polkit helper and native package manager. Never bypass authentication or patch managed install files in place. Source checkouts do not automatically check/install. Keep release signing keys outside the repository and all packages. Patch decoding uses bounded chunks, with verified full-download fallback. Publication and repository visibility still require user authorization. A hovered shop may have one clear description reference only when its own listing label is dimmed; exact source/panel/guard proofs remain mandatory, and no fuzzy name matching is added.
+On-screen item cards have a GUI-only 2 second grace period before retirement to session history. Current observations alone supply overlays and offer verification. Animate the active-card canvas independently of history, including the first history header/gap; quote and age updates must not restart structural motion. Keep at most 100 unique session entries and animate/repaint only visible rows. Stable shop annotation keys use the verified page, canonical item and list-local slot. Held shop presentation stays separate from current offers and requires the same verified page/slot/item and a fresh exact-ID market reference. Nearest-name/fuzzy pricing remains deferred; native retries may omit a decorative marker only on a proven marker-bearing title path.
+
+GitHub Releases is the sole distribution and update destination. GitHub application updates use the public stable release feed, pinned Ed25519 signatures and exact artifact hashes. Check on launch and the configured timer; never install without Download & install. Linux authentication goes through the fixed root-owned polkit helper and native package manager. Never bypass authentication or patch managed install files in place. Source checkouts do not automatically check/install. Keep release signing keys outside the repository and all packages. Patch decoding uses bounded chunks, with verified full-download fallback. Publication and repository visibility still require user authorization. Exact source/panel/guard proofs remain mandatory; no fuzzy name matching is added.

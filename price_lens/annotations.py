@@ -28,7 +28,6 @@ class CommandPipe(QObject):
 
 class AnnotationWindow(QWidget):
     korean_family=None
-    OCCLUSION_RELEASE_MS=200
 
     def __init__(self, start_listener=True):
         flags = (Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
@@ -49,7 +48,6 @@ class AnnotationWindow(QWidget):
         self.last_pointer = None
         self.reduce_motion = False
         self.watch_events = {}
-        self.shop_viewport_epoch = None
         self.translation_layout=TranslationLayout()
         from .composer_overlay import WriterHost
         self.writer=WriterHost(self.report_writer,self)
@@ -107,9 +105,6 @@ class AnnotationWindow(QWidget):
             previous_boxes = {key: self.label_rect(row, QCursor.pos()) for key, row in previous.items()}
             viewport=state.get('shop_viewport_epoch')
             viewport=viewport if type(viewport) is int else None
-            viewport_changed=viewport is not None and viewport!=self.shop_viewport_epoch
-            if viewport is not None:self.shop_viewport_epoch=viewport
-            browsing=bool(state.get('shop_browsing_priority'))
             viewport_pending=bool(state.get('shop_viewport_pending'))
             geometry = state.get("geometry")
             if geometry:
@@ -120,9 +115,9 @@ class AnnotationWindow(QWidget):
                 description=supplied.get('source_shop_key') is not None
                 old_viewport=viewport is not None and supplied.get('viewport_epoch',viewport)!=viewport
                 if (shop or description) and (viewport_pending or old_viewport):continue
-                if description and browsing:continue
+                if description:continue
                 supplied_rows.append(supplied)
-            incoming = self.description_references(supplied_rows)
+            incoming = supplied_rows
             self.rows = []
             self.retiring = []
             metrics = QFontMetrics(self.price_font)
@@ -139,10 +134,13 @@ class AnnotationWindow(QWidget):
                 old_content=old.get('content_id',old_text) if old else None
                 old_alpha_target=old.get('_target_alpha',1.0) if old else None
                 row = old if old is not None else supplied
-                row['occlusion']=supplied.get('occlusion')
                 row['avoid_regions']=supplied.get('avoid_regions',[])
-                row['browsing_priority']=bool(supplied.get('browsing_priority',browsing)) if supplied.get('kind')=='shop' else False
                 row['secondary']=supplied.get('secondary','')
+                # This is a verified add-item form, not an ordinary native
+                # description. Omission must clear it on reused shop rows.
+                row['shop_entry']=supplied.get('shop_entry')
+                row['description_box']=supplied.get('description_box')
+                row['comparison_box']=supplied.get('comparison_box')
                 if 'follow_pointer' not in supplied:
                     for field in ('follow_pointer','pointer_region','_cursor_offset'):row.pop(field,None)
                 row.update(supplied)
@@ -168,17 +166,14 @@ class AnnotationWindow(QWidget):
                 if row.get("follow_pointer") is not None:
                     point = row["follow_pointer"]
                     offset = (row["x"] - (point[0] - self.x()), row["y"] - (point[1] - self.y()))
-                    row["_cursor_offset"] = row.get("_cursor_offset", offset)
+                    row["_cursor_offset"] = offset if row.get('description_box') else row.get("_cursor_offset", offset)
                 elif row.get('kind')!='translation' and row.get("animate_move") and old_target != (row["x"], row["y"]):
                     target = QPointF(row["x"], row["y"])
                     start = row.get("_draw_pos", QPointF(*old_target)) if old_target else target
                     self.animate_position(row, start, target)
                 self.rows.append(row)
                 if row.get('kind')=='notification':self.update_notice(row,old_notice,old_notice_target)
-                box=self.label_rect(row,QCursor.pos())
-                occlusion=row.get('occlusion')
-                covered=bool(occlusion and box and box.intersects(QRect(*occlusion)))
-                target=self.occlusion_alpha(row,covered)
+                target=self.shop_entry_alpha(row)
                 row['_target_alpha']=target
                 if self.reduce_motion:row['_alpha']=target
                 if row.get('kind')!='notification' and old_text is not None and old_text != row["text"] and old_content!=row.get('content_id',row['text']) and not self.reduce_motion and not any(c.isdigit() for c in row['text']):
@@ -191,28 +186,26 @@ class AnnotationWindow(QWidget):
                     self.fade(row, target)
             self.place_translations(translations,previous,previous_boxes)
             current_hover = any(row.get("follow_pointer") is not None for row in self.rows)
-            current_shops=[row for row in self.rows if row.get('kind')=='shop']
             for key, row in previous.items():
                 box = previous_boxes.get(key)
                 # Never trail an old item's reference behind a newly identified one.
                 replaced_hover = current_hover and row.get("follow_pointer") is not None
-                replaced_shop=row.get('kind')=='shop' and any(
-                    (new.get('shop_page') is not None and row.get('shop_page') is not None
-                     and new['shop_page']!=row['shop_page']) or
-                    (new.get('shop_slot') is not None and new.get('shop_slot')==row.get('shop_slot')
-                     and self.row_key(new)!=key) for new in current_shops)
                 shop_reference=row.get('kind')=='shop' or row.get('source_shop_key') is not None
-                invalid_viewport=shop_reference and (viewport_changed or viewport_pending or (
-                    viewport is not None and row.get('viewport_epoch',viewport)!=viewport))
-                suppressed_description=row.get('source_shop_key') is not None and browsing
-                if not self.reduce_motion and (state.get("hover_enabled") or row.get('kind')=='notification') and box is not None and not replaced_hover and not replaced_shop and not invalid_viewport and not suppressed_description:
+                # A rejected shop source must stop drawing immediately. Fade
+                # only non-shop cards; otherwise a discarded name/deal colour
+                # lingers over a different item while a new page is read.
+                if not self.reduce_motion and not shop_reference and (state.get("hover_enabled") or row.get('kind')=='notification') and box is not None and not replaced_hover:
                     row["_retired_rect"] = box
                     self.retiring.append(row)
                     if not row.get("_fading_out"):
                         self.fade(row, 0.0)
                 else:
                     self.dispose_row(row)
-            self.pointer_timer.setInterval(16 if any(row.get("follow_pointer") is not None for row in self.rows) else 100)
+            # Shop source comparisons also need the current OS cursor. A
+            # 100 ms report can arrive after the capture of its next position
+            # and make cursor/description pixels look like changed listings.
+            following=any(row.get("follow_pointer") is not None or row.get('kind')=='shop' for row in self.rows)
+            self.pointer_timer.setInterval(16 if following else 100)
             if self.rows or self.retiring:
                 self.show()
                 self.raise_()
@@ -244,43 +237,6 @@ class AnnotationWindow(QWidget):
     @staticmethod
     def row_key(row):
         return row.get("key", (row.get("name"), row.get("x"), row.get("y")))
-
-    def description_references(self,incoming):
-        """One clear reference for the hovered shop row, only if it is dimmed.
-
-        Keep native title pixels free. Decide from target rectangles rather
-        than fading pixels, so animation opacity cannot reverse this decision.
-        """
-        metrics=QFontMetrics(self.price_font)
-        shops={}
-        for row in incoming:
-            if row.get('kind')!='shop':continue
-            draft=dict(row,_width=min(350,max(230,metrics.horizontalAdvance(row['text'])+20,
-                metrics.horizontalAdvance(row.get('name',''))+20)))
-            shops[self.row_key(row)]=self.label_rect(draft,QCursor.pos())
-        result=[]
-        for row in incoming:
-            source=row.get('source_shop_key')
-            if source is None:result.append(row);continue
-            native=QRect(*row['description_box']);box=shops.get(source)
-            if box is None or not box.intersects(native):continue
-            bounds=QRect(*row['bounds']).intersected(self.rect()).adjusted(2,2,-2,-2)
-            width=min(bounds.width(),min(350,max(230,metrics.horizontalAdvance(row['text'])+20,
-                metrics.horizontalAdvance(row.get('name',''))+20)))
-            height=36;gap=8
-            candidates=[(native.left(),native.top()-height-gap),(native.right()-width+1,native.top()-height-gap),
-                (native.right()+gap,native.top()),(native.left()-width-gap,native.top()),
-                (native.left(),native.bottom()+gap),(bounds.left(),bounds.top()),(bounds.left(),bounds.bottom()-height+1)]
-            def placed(point):
-                return QRect(max(bounds.left(),min(point[0],bounds.right()-width+1)),
-                             max(bounds.top(),min(point[1],bounds.bottom()-height+1)),width,height)
-            def area(rect):return max(0,rect.width())*max(0,rect.height())
-            def cost(rect):
-                return (area(rect.intersected(native))*100+sum(area(rect.intersected(other)) for other in shops.values()),
-                        abs(rect.top()-native.top())+abs(rect.left()-native.left()))
-            target=min((placed(point) for point in candidates),key=cost)
-            result.append({**row,'x':target.x(),'y':target.y()+5})
-        return result
 
     def measure_translation(self,row):
         limit=min(360,max(1,row.get('bounds',[0,0,364,0])[2]-4))
@@ -394,7 +350,6 @@ class AnnotationWindow(QWidget):
                 target=dict(row);target.pop('_draw_pos',None)
                 rect=self.label_rect(target,pointer)
                 if rect is not None:occupied.append(rect.getRect())
-            if row.get('occlusion'):occupied.append(row['occlusion'])
         for key,row in previous.items():
             if row.get('kind')=='translation' and previous_boxes.get(key) is not None:
                 occupied.append(previous_boxes[key].getRect())
@@ -421,33 +376,6 @@ class AnnotationWindow(QWidget):
                 if animation:animation.stop();animation.deleteLater()
                 row.pop('_draw_pos',None)
             else:self.animate_position(row,start,endpoint)
-
-    def occlusion_alpha(self,row,covered):
-        """Dim immediately; absorb one brief clear sample before reversing."""
-        row['_occlusion_requested']=covered
-        timer=row.get('_occlusion_release')
-        if row.get('kind')=='shop' and row.get('browsing_priority'):
-            if timer is not None:
-                timer.stop();timer.deleteLater();row['_occlusion_release']=None
-            return 1.0
-        if covered or self.reduce_motion or row.get('kind')!='shop':
-            if timer is not None:
-                timer.stop();timer.deleteLater();row['_occlusion_release']=None
-            return .25 if row.get('kind')=='shop' and covered else 1.0
-        if row.get('_target_alpha')!=.25:return 1.0
-        if timer is None:
-            timer=QTimer(self);timer.setSingleShot(True);timer.setInterval(self.OCCLUSION_RELEASE_MS)
-            row['_occlusion_release']=timer
-            def release():
-                timer.stop()
-                if row.get('_occlusion_release') is timer:
-                    row['_occlusion_release']=None
-                    if row in self.rows and not row.get('_occlusion_requested'):
-                        row['_target_alpha']=1.0
-                        self.fade(row,1.0)
-                timer.deleteLater()
-            timer.timeout.connect(release);timer.start()
-        return .25
 
     def update_numbers(self, row):
         rolls=row.setdefault('_rolls',{});animations=row.setdefault('_roll_animations',{})
@@ -526,6 +454,13 @@ class AnnotationWindow(QWidget):
         animation.valueChanged.connect(changed)
         animation.finished.connect(finished)
         animation.start()
+
+    def shop_entry_alpha(self,row):
+        form=row.get('shop_entry')
+        if (row.get('kind')!='shop' or not isinstance(form,(list,tuple)) or len(form)!=4
+                or any(type(value) is not int for value in form) or form[2]<=0 or form[3]<=0):return 1.0
+        box=self.label_rect(row,QCursor.pos())
+        return .35 if box is not None and box.intersects(QRect(*form)) else 1.0
 
     def fade(self, row, target):
         if self.reduce_motion:
@@ -607,8 +542,6 @@ class AnnotationWindow(QWidget):
 
     @staticmethod
     def dispose_row(row):
-        timer=row.pop('_occlusion_release',None)
-        if timer is not None:timer.stop();timer.deleteLater()
         notice_timer=row.pop('_notice_expiry',None)
         if notice_timer is not None:notice_timer.stop();notice_timer.deleteLater()
         for key in ("_move", "_fade", "_text_fade", "_watch_pulse",'_notice_transition'):

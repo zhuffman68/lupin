@@ -1,6 +1,8 @@
 """Session history stays bounded and does not become a price-request queue."""
 import tempfile,time,unittest
+from unittest.mock import patch
 from PySide6.QtCore import Qt,QCoreApplication,QEvent,QPoint,QObject
+from PySide6.QtGui import QImage,QColor
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from price_lens.domain import Catalog,Quote
@@ -131,3 +133,82 @@ class RecentItemsTests(unittest.TestCase):
         self.app.setProperty('reduceMotion',True);self.panel.advance_geometry(.5)
         self.assertFalse(self.panel.rows.motion);self.assertEqual(self.panel.rows.height(),61)
         self.app.setProperty('reduceMotion',False)
+
+    def test_new_history_row_reuses_existing_visuals_while_the_rows_move(self):
+        self.app.setProperty('reduceMotion',False)
+        self.see(1);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents()
+        old=self.panel.rows_by_id[1];delegate=self.panel.rows.itemDelegate()
+        self.panel.rows.viewport().repaint()
+        with patch.object(delegate,'paint',wraps=delegate.paint) as paint:
+            self.see(2);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+            for ms in (40,90,140,180):
+                self.panel.geometry_animation.setCurrentTime(ms);self.app.processEvents();self.panel.rows.viewport().repaint()
+            painted={call.args[2].data(Qt.ItemDataRole.UserRole)['item'].game_id for call in paint.call_args_list}
+        self.assertIs(self.panel.rows_by_id[1],old)
+        self.assertIn(2,painted);self.assertNotIn(1,painted)
+
+    def test_a_new_active_overlay_does_not_redraw_unchanged_history_content(self):
+        self.app.setProperty('reduceMotion',False)
+        self.see(1);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents();self.panel.rows.viewport().repaint()
+        delegate=self.panel.rows.itemDelegate();old=self.panel.rows_by_id[1]
+        with patch.object(delegate,'paint',wraps=delegate.paint) as paint:
+            self.see(2);self.panel.refresh(self.market,900,self.now)
+            # A sibling active card growing can invalidate the history viewport.
+            # Its existing row must still reuse its content, not redraw the text.
+            self.panel.rows.viewport().repaint()
+        self.assertEqual(self.panel.rows.count(),1);self.assertIs(self.panel.rows_by_id[1],old)
+        paint.assert_not_called()
+
+    def test_reference_change_repaints_only_its_own_history_row(self):
+        self.app.setProperty('reduceMotion',False)
+        for identity in (1,2):self.see(identity)
+        self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents();self.panel.rows.viewport().repaint()
+        delegate=self.panel.rows.itemDelegate()
+        quote=Quote(1,3000,self.now,self.now,10,'MesoWatch','','24h')
+        self.market.cached=lambda item:quote if item.game_id==1 else None
+        with patch.object(delegate,'paint',wraps=delegate.paint) as paint:
+            self.panel.refresh(self.market,900,self.now)
+            self.panel.animation.setCurrentTime(80);self.app.processEvents();self.panel.rows.viewport().repaint()
+            painted={call.args[2].data(Qt.ItemDataRole.UserRole)['item'].game_id for call in paint.call_args_list}
+        self.assertEqual(painted,{1})
+
+    def test_a_late_thumbnail_repaints_only_its_own_history_row(self):
+        self.app.setProperty('reduceMotion',False)
+        for identity in (1,2):self.see(identity)
+        self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents();self.panel.rows.viewport().repaint()
+        delegate=self.panel.rows.itemDelegate();image=QImage(30,30,QImage.Format.Format_ARGB32);image.fill(QColor('red'))
+        with patch.object(delegate,'paint',wraps=delegate.paint) as paint:
+            self.panel.set_image(1,image);self.app.processEvents();self.panel.rows.viewport().repaint()
+            painted={call.args[2].data(Qt.ItemDataRole.UserRole)['item'].game_id for call in paint.call_args_list}
+        self.assertEqual(painted,{1})
+        self.assertEqual(self.panel.rows_by_id[1].icon().pixmap(30,30).toImage().pixelColor(15,15),QColor('red'))
+
+    def test_interrupted_insertion_keeps_the_previous_rows_current_opacity(self):
+        self.app.setProperty('reduceMotion',False)
+        self.see(1);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents()
+        self.see(2);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(60)
+        row=self.panel.rows_by_id[2];before=self.panel.rows.visualItemRect(row);opacity=self.panel.rows.opacity(row)
+        self.assertTrue(0<opacity<1)
+        self.see(3);self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.assertEqual(self.panel.rows.visualItemRect(row),before)
+        self.assertAlmostEqual(self.panel.rows.opacity(row),opacity)
+        self.panel.geometry_animation.setCurrentTime(180)
+        self.assertEqual(self.panel.rows.opacity(row),1)
+
+    def test_history_visual_cache_is_bounded_to_viewport_neighbors(self):
+        self.app.setProperty('reduceMotion',False)
+        for identity in range(1,101):self.see(identity)
+        self.panel.observe([],self.catalog,self.now);self.panel.refresh(self.market,900,self.now)
+        self.panel.geometry_animation.setCurrentTime(180);self.app.processEvents()
+        bar=self.panel.rows.verticalScrollBar()
+        for position in (0,bar.maximum()//2,bar.maximum(),0):
+            bar.setValue(position);self.app.processEvents();self.panel.rows.viewport().repaint()
+            self.assertLessEqual(len(self.panel.rows.pixels),10)
+        self.assertEqual(self.panel.rows.count(),100)
+        self.panel.clear();self.assertFalse(self.panel.rows.pixels)

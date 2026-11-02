@@ -1,6 +1,6 @@
 # Generated payload is built by scripts/package_linux.py; no runtime downloads.
 pkgname=lupin
-pkgver=0.16.0
+pkgver=1.0.3
 pkgrel=1
 pkgdesc='Tools for MapleStory Classic World'
 arch=('x86_64')

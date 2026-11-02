@@ -5,6 +5,27 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## 1.0.3
+
+See [the patch record](PATCH_1.0.3.md) for installation and verification details.
+
+- Shop prices and comparisons stay visible while hovering and scrolling,
+  including orange-selected rows and pages with sold-out listings. Covered
+  currency text and characters moving behind a shop no longer interrupt labels.
+- Inventory and equipped-item prices appear with less delay and flicker, including
+  personalized equipment, equipped comparisons and items near the window’s edges
+  while shops are open. Animated hand cursors no longer make inventory prices
+  repeatedly disappear and return; new-item highlights and scenery behind
+  descriptions no longer interrupt an otherwise verified item. Inventory price
+  cards prefer the space directly above the hovered description.
+- Only shop labels overlapped by the add-item price form fade, then brighten when
+  it closes, even when labels initially cover its inputs and buttons. Other
+  labels stay visible while the listings are checked again.
+- Recent-item history updates more smoothly as items are added.
+- Animated card changes use safer cleanup to prevent native crashes.
+- Sold Items windows no longer replace active shop listings.
+- Market status shows when the source's prices are old and when Lupin will check again.
+
 ## 1.0.2
 
 See [the patch record](PATCH_1.0.2.md) for validation and platform checks.

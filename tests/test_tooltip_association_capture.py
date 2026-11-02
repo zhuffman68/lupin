@@ -48,7 +48,7 @@ class AssociationCaptureTests(unittest.TestCase):
                 self.assertIsNotNone(reader.tooltip_fingerprint)
                 self.assertIsNotNone(reader.tooltip_association)
                 self.assertIs(received[-1]['_tooltip_context'],reader.tooltip_association)
-                reader.image=frame.copy();reader.image.setPixelColor(301,151,QColor('red'))
+                reader.image=frame.copy();reader.image.setPixelColor(310,155,QColor('red'))
                 receive()
                 self.assertEqual(received[-1]['tooltipAssociation']['state'],'rejected')
                 self.assertIsNone(received[-1]['tooltip']['found'])

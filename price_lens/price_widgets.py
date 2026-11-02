@@ -7,6 +7,7 @@ from .motion import RollingLabel,visibility
 from .ui_components import COLORS,mesos,text_label
 from .thumbnails import ItemImage
 from .watchlist_ui import WatchButton
+from .widget_lifetime import retire_widget
 
 
 LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant unverified',
@@ -107,7 +108,7 @@ class PriceCard(QFrame):
         self.price_column.setMinimumWidth(146);self.price_column.setMaximumWidth(146)
         panel.setMinimumWidth(0);panel.setMinimumHeight(200)
         self.selected_body=SelectedCardBody(self,panel);self.layout().addWidget(self.selected_body)
-        self.columns_widget.hide();self.columns_widget.deleteLater()
+        retire_widget(self,self.columns_widget)
 
     def put(self,name,text,style=None):
         label=self.fields[name]

@@ -21,11 +21,14 @@ class ExperienceCaptureTests(unittest.TestCase):
         os.environ.setdefault("QT_QPA_PLATFORM","offscreen")
         cls.app = QApplication.instance() or QApplication([])
 
-    def wait(self, condition):
+    def wait(self, condition, *, feed=None):
         deadline = time.monotonic()+10
+        next_frame=0
         while not condition():
             self.assertLess(time.monotonic(),deadline,"EXP/shop reader did not respond")
             self.app.processEvents()
+            if feed is not None and time.monotonic()>=next_frame:
+                feed();next_frame=time.monotonic()+.15
             time.sleep(.005)
 
     def test_exp_only_results_preserve_stationary_shop_and_use_one_process(self):
@@ -48,7 +51,11 @@ class ExperienceCaptureTests(unittest.TestCase):
             reader.on_stream_frame(frame,time.monotonic())
             self.wait(lambda:reader.manual_game_area is not None)
             reader.on_stream_frame(frame,time.monotonic())
-            self.wait(lambda:bool(shops) and bool(exp))
+            # Model an ongoing capture, rather than letting the fixture's only
+            # frame expire during a cold/loaded reader startup. Production
+            # correctly refuses EXP from a frame older than 1.5 seconds.
+            self.wait(lambda:bool(shops) and bool(exp),
+                feed=lambda:reader.on_stream_frame(frame,time.monotonic()))
             self.assertEqual(exp[-1]["experience"]["bar"]["exp"],100300)
             self.assertIsNotNone(proof_pixels(exp[-1]['experience']['nameProof']))
             self.assertTrue(shops[-1]["shop"]["rows"])

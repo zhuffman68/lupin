@@ -65,6 +65,7 @@ def resolve_shop_item(catalog, row, image=None, thumbnails=None):
         return IdentityResult(None,candidates,'ambiguous' if candidates else 'unidentified')
     if len(candidates) == 1:return IdentityResult(candidates[0],candidates,'identified','name')
     if not candidates:return IdentityResult(None,(),'unidentified')
+    if row.get('nameOnly'):return IdentityResult(None,candidates,'ambiguous')
     rectangle = shop_icon_rect(row)
     if rectangle is None:return IdentityResult(None,candidates,'ambiguous')
     return resolve_icon(candidates,image,rectangle,thumbnails,scale=row['area']['width']/162.0)

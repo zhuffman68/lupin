@@ -5,6 +5,7 @@ from PySide6.QtGui import QPainter, QPalette,QPixmap
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QTabWidget, QWidget,QSizePolicy,QStackedWidget,QStyle,QStyleOption,QScrollArea,QScrollBar
 from .number_motion import NumberRoll
 from . import gui_currency
+from .widget_lifetime import retire_widget
 
 
 def enabled(widget):
@@ -155,7 +156,7 @@ def fade_away(widget):
     effect=QGraphicsOpacityEffect(snapshot);snapshot.setGraphicsEffect(effect)
     animation=QVariantAnimation(snapshot);animation.setDuration(100)
     animation.setStartValue(1.0);animation.setEndValue(0.0);animation.valueChanged.connect(effect.setOpacity)
-    animation.finished.connect(snapshot.deleteLater)
+    animation.finished.connect(lambda:retire_widget(host,snapshot))
     snapshot.show();snapshot.raise_();animation.start()
 
 
@@ -206,7 +207,7 @@ class ContentArea(QWidget):
     def finish(self):
         self.animation.stop();self.before=None
         if self.outgoing:
-            self.outgoing.hide();self.outgoing.deleteLater();self.outgoing=None
+            retire_widget(self,self.outgoing);self.outgoing=None
 
     def resizeEvent(self,event):
         super().resizeEvent(event)
@@ -298,7 +299,7 @@ class CardArea(QWidget):
     def finish(self):
         self.animation.stop();self.before=None
         if self.outgoing:
-            self.outgoing.hide();self.outgoing.deleteLater();self.outgoing=None
+            retire_widget(self,self.outgoing);self.outgoing=None
         self.setFixedHeight(self.full_height)
         self.content.setVisible(self.full_height>0)
 
