@@ -5,6 +5,35 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## 1.0.4
+
+See [the patch record](PATCH_1.0.4.md) for downloads, installation and verification.
+
+- Meso pickups keep counting while EXP values are being confirmed. Briefly
+  unreadable character text holds the affected reading without restarting the
+  session; a different character still pauses it safely. Waiting messages now
+  distinguish a covered log from a delayed or unreadable reading.
+- Shop prices reuse verified unchanged pages and avoid redundant reading.
+  Newly opened or scrolled shops receive earlier reader time, and complete rows
+  can appear while missing rows are still being checked.
+- Inventory prices stay steady while a new item's orange highlight animates,
+  including the blended border beside a weapon's icon.
+- Shop labels fade more reliably when the add-item price form opens or moves
+  over them, including when labels hide part of the form. Only overlapping
+  labels fade. Moving the pointer over a verified form's controls no longer
+  incorrectly ends the fade while other native form evidence remains visible.
+- Settings pulses and shimmers while an application update is available.
+  Reduce motion keeps a static update indicator.
+- Settings uses compact General, Prices, Tracking, Translation and Updates
+  pages, with matching cards and sliding navigation. Translation controls stay
+  in sync with the main page, and the main window remains usable while editing.
+- Shop rows touched by item descriptions recover more reliably after scrolling.
+  A missed row no longer holds back other new prices or keeps the previous
+  page's labels in place.
+- NPC buy, Buy Back and sell lists stay excluded when changing inventory tabs,
+  including empty Set-up pages. Separate inventory and equipped-item descriptions
+  can still show prices, including when they overlap the NPC shop.
+
 ## 1.0.3
 
 See [the patch record](PATCH_1.0.3.md) for installation and verification details.

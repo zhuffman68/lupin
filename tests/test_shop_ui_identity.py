@@ -86,6 +86,34 @@ class ShopIdentityUiTests(unittest.TestCase):
         w.render()
         self.assertFalse(any(row.get('source_shop_key') for row in w.overlay.rows))
 
+    def test_npc_exclusion_cannot_resurrect_rows_from_a_same_position_player_shop(self):
+        w=self.window;result=self.reading(shop_hover=True);w.on_reading(result)
+        self.assertTrue(w.rows);self.assertTrue(w.shop_rows.rows)
+        # Keep every frame/row pixel byte-identical: NPC classification, not
+        # a fortunate guard mismatch, must invalidate this recovery cache.
+        area=w.shop_rows.area;epoch=w.shop_browsing.epoch
+        w.on_reading(dict(atMs=2,shop=None,hover=None,tooltip=None,
+            _npc_shop_area=tuple(area[key] for key in ('x','y','width','height'))))
+        self.assertEqual(w.rows,[]);self.assertEqual(w.shop_rows.rows,{})
+        self.assertFalse(w.shop_open)
+        self.assertGreater(w.shop_browsing.epoch,epoch)
+        self.assertFalse(any(row.get('kind')=='shop' for row in w.overlay.rows))
+        epoch=w.shop_browsing.epoch
+        w.on_reading(dict(atMs=3,shop=None,hover=None,tooltip=None,
+            _npc_shop_area=tuple(area[key] for key in ('x','y','width','height'))))
+        self.assertEqual(w.shop_browsing.epoch,epoch,'An idle NPC cannot keep resetting shop epochs')
+
+    def test_npc_geometry_signal_clears_prices_before_another_reader_reply(self):
+        w=self.window;w.on_reading(self.reading(shop_hover=True));self.assertTrue(w.rows)
+        rectangle=QRect(*(w.shop_rows.area[key] for key in ('x','y','width','height')))
+        w.on_npc_shop_changed(rectangle)
+        self.assertEqual(w.rows,[]);self.assertEqual(w.shop_rows.rows,{})
+        self.assertEqual(w.service.visible,[])
+        self.assertFalse(any(row.get('kind')=='shop' for row in w.overlay.rows))
+        self.assertEqual(w.card_sightings.groups[False],())
+        epoch=w.shop_browsing.epoch;w.on_npc_shop_changed(rectangle)
+        self.assertEqual(w.shop_browsing.epoch,epoch)
+
 
     def test_old_viewport_read_cannot_restore_cleared_shop_prices(self):
         w=self.window;result=self.reading(shop_hover=True);w.on_reading(result)

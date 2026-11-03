@@ -101,7 +101,14 @@ class SalesLedgerReaderTests(unittest.TestCase):
         result=self.read(image,shop_area=area,pointer=dict(x=first['x']+120,y=first['y']+9))
         recovered=next(row for row in result['shop']['rows'] if row.get('nameOnly'))
         self.assertEqual(recovered['name'],'Fish Spear');self.assertIsNone(recovered['price'])
-        self.assertEqual(recovered['nameArea']['y'],first['y'])
+        # The ordinary reader infers ascent; component recovery measures the
+        # actual native band. One-pixel rounding must not become an OCR origin
+        # requirement. Verify the complete current title proof instead.
+        self.assertLessEqual(abs(recovered['nameArea']['y']-first['y']),2)
+        self.assertEqual(recovered['nameArea']['y'],recovered['area']['y'])
+        self.assertIsNotNone(PriceObservations.component_proof(recovered,'name',image,image,
+            pointer=(first['x']+120,first['y']+9)))
+        self.assertIsNone(PriceObservations.component_proof(recovered,'price',image,image))
         self.assertTrue(any(row.get('name')=='Nakamaki' and row.get('price',{}).get('mesos')==10999
                             for row in result['shop']['rows']))
 

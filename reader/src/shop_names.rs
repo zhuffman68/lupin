@@ -1,9 +1,11 @@
 //! Recover independently exposed native shop lines on a verified table hint.
 //! The hint supplies geometry only. Every name and asking amount is read from
-//! this capture, twice; no popup title, hidden icon tier or old row is reused.
+//! this capture. Missing components need two agreeing reads; complete ordinary
+//! rows retain their already strict read and receive current numeric proofs.
+//! No popup title, hidden icon tier or previous-page offer supplies a component.
 use image::{GrayImage, Luma, imageops::FilterType};
 use minerva_core::{ListedPrice, ScreenRect, ShopCapture, ShopList, ShopReading, ShopRow};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 const MAX_ROWS: usize = 24;
 const MAX_LINE_PIXELS: u32 = 32768;
@@ -12,8 +14,10 @@ const MAX_CACHE_LINES: usize = 96;
 #[derive(Default)]
 pub struct NameRecovery {
     cache: HashMap<Vec<u8>, Option<String>>,
+    cache_order: VecDeque<Vec<u8>>,
 }
 
+#[derive(Clone)]
 pub struct RecoveredComponents {
     pub row: ScreenRect,
     pub name: ScreenRect,
@@ -163,6 +167,37 @@ fn native_anchor(capture: &ShopCapture, table: ScreenRect, x: i32, scale: f32) -
     })
 }
 
+// A table's horizontal crop is allowed to round independently of its row
+// pitch. Locate each exposed band from the broad two-line slot divider and
+// the following blank native prefix instead of accumulating that rounding
+// down the page. The thin name/amount rule is only one line and cannot anchor
+// a new slot. This is geometry only; title and amount proofs stay unchanged.
+fn band_top(capture: &ShopCapture, row: ScreenRect) -> Option<i32> {
+    let scale = row.width as f32 / 162.0;
+    let left = row.x.checked_add(scale.round().max(1.0) as i32)?;
+    let width = (60.0 * scale).round().max(20.0) as i32;
+    let slack = (4.0 * scale).ceil() as i32;
+    let rule = (2.0 * scale).round().max(2.0) as i32;
+    let prefix = (3.0 * scale).round().max(2.0) as i32;
+    let broad = |y: i32, native: bool| {
+        let count = (0..width).filter(|dx| {
+            left.checked_add(*dx).and_then(|xx| pixel(capture, xx, y)).is_some_and(|p| {
+                if native {
+                    [[202.0, 213.0, 223.0], [251.0, 167.0, 46.0]].into_iter()
+                        .any(|base| gain(p, base).is_some_and(|k| k >= 0.45))
+                } else {
+                    p.iter().all(|&v| v >= 235) && p[0].abs_diff(p[2]) <= 15
+                }
+            })
+        }).count();
+        count * 5 >= width as usize * 4
+    };
+    (row.y.saturating_sub(slack)..=row.y.saturating_add(slack))
+        .filter(|&top| (1..=rule).all(|dy| top.checked_sub(dy).is_some_and(|y| broad(y, false)))
+            && (0..prefix).all(|dy| top.checked_add(dy).is_some_and(|y| broad(y, true))))
+        .min_by_key(|top| top.abs_diff(row.y))
+}
+
 fn same_table(table: ScreenRect, candidate: ScreenRect) -> bool {
     let scale = table.width as f32 / 199.0;
     let slack = (4.0 * scale).ceil() as i64;
@@ -276,12 +311,15 @@ fn rows(capture: &ShopCapture, table: ScreenRect, reading: &ShopReading) -> Vec<
         .unwrap_or(0.0);
     let anchor = i64::from(table.y) + i64::from(offset.round() as i32);
     (0..MAX_ROWS)
-        .map(|index| ScreenRect {
-            x,
-            y: (anchor + (index as f32 * pitch).round() as i64)
+        .map(|index| {
+            let row = ScreenRect {
+                x,
+                y: (anchor + (index as f32 * pitch).round() as i64)
                 .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
-            width,
-            height,
+                width,
+                height,
+            };
+            ScreenRect { y: band_top(capture, row).unwrap_or(row.y), ..row }
         })
         .take_while(|row| row.bottom() <= table.bottom() + i64::from(slack))
         .collect()
@@ -759,6 +797,18 @@ fn numeric_prefix(value: &str) -> Option<String> {
 }
 
 impl NameRecovery {
+    fn remember(&mut self, key: Vec<u8>, value: Option<String>) {
+        if !self.cache.contains_key(&key) {
+            if self.cache.len() >= MAX_CACHE_LINES {
+                if let Some(oldest) = self.cache_order.pop_front() {
+                    self.cache.remove(&oldest);
+                }
+            }
+            self.cache_order.push_back(key.clone());
+        }
+        self.cache.insert(key, value);
+    }
+
     fn read_numeric(&mut self, raw: &NativeLine) -> Option<String> {
         let ink =
             image::imageops::crop_imm(&raw.ink, 0, 0, raw.available, raw.ink.height()).to_image();
@@ -774,10 +824,7 @@ impl NameRecovery {
         let second = crate::text::read_scaled(&ink, 3, FilterType::Triangle)
             .and_then(|text| numeric_prefix(&text));
         let value = first.filter(|text| second.as_ref() == Some(text));
-        if self.cache.len() >= MAX_CACHE_LINES {
-            self.cache.clear();
-        }
-        self.cache.insert(key, value.clone());
+        self.remember(key, value.clone());
         value
     }
     fn read(&mut self, prepared: &Prepared) -> Option<String> {
@@ -795,10 +842,7 @@ impl NameRecovery {
                 .as_ref()
                 .is_some_and(|b| normalized(a) == normalized(b))
         });
-        if self.cache.len() >= MAX_CACHE_LINES {
-            self.cache.clear();
-        }
-        self.cache.insert(key, value.clone());
+        self.remember(key, value.clone());
         value
     }
 
@@ -855,7 +899,14 @@ impl NameRecovery {
             let mut price_value = None;
             let mut price_text = None;
             if let Some(raw) = native_line(capture, area, true) {
-                if let Some(text) = self.read_numeric(&raw) {
+                // A complete ordinary read already passed the pinned reader's
+                // full currency grammar and measured font width in this frame.
+                // Export its independent numeric shape/ending proof without
+                // recognizing those same digits twice more. Unread/covered
+                // prices still require two agreeing independent OCR readings.
+                let ordinary = previous.filter(|row| !row.covered && row.name.as_ref() == Some(&text))
+                    .and_then(|row| row.price).map(asking_text);
+                if let Some(text) = ordinary.or_else(|| self.read_numeric(&raw)) {
                     if let Some(number) = asking_number(capture, area, raw, &text) {
                         price = Some(number.price);
                         price_area = Some(number.area);
@@ -937,10 +988,41 @@ impl NameRecovery {
     }
 }
 
+fn asking_text(price: ListedPrice) -> String {
+    let digits = price.mesos.to_string();
+    let mut amount = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 { amount.push(','); }
+        amount.push(digit);
+    }
+    format!("{} for {amount}", price.quantity)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use minerva_core::{Frame, ScreenPoint};
+
+    #[test]
+    fn ordinary_prices_keep_canonical_grouping_without_another_ocr_pass() {
+        for amount in [9, 999, 1_000, 123_456_789, u64::MAX] {
+            let price = ListedPrice { quantity: 700, mesos: amount };
+            let text = asking_text(price);
+            assert_eq!(parse_numeric(&text), Some(price));
+        }
+    }
+
+    #[test]
+    fn component_cache_evicts_one_old_entry_instead_of_every_current_line() {
+        let mut recovery = NameRecovery::default();
+        for i in 0..MAX_CACHE_LINES { recovery.remember(vec![i as u8], Some(i.to_string())); }
+        recovery.remember(vec![250], None);
+        assert_eq!(recovery.cache.len(), MAX_CACHE_LINES);
+        assert!(!recovery.cache.contains_key(&vec![0]));
+        assert!(recovery.cache.contains_key(&vec![1]));
+        assert!(recovery.cache.contains_key(&vec![250]));
+        assert_eq!(recovery.cache_order.len(), MAX_CACHE_LINES);
+    }
 
     fn sample(pointer: Option<ScreenPoint>) -> (ShopCapture, ScreenRect, ShopReading) {
         let mut frame = Frame {
@@ -991,6 +1073,32 @@ mod tests {
         let name = prepare(&capture, bands[0], false).unwrap();
         assert_eq!(name.area.height, 17);
         assert_eq!(name.area.width, 58);
+    }
+
+    #[test]
+    fn exposed_slot_rules_prevent_crop_rounding_from_drifting_down_the_page() {
+        let (mut capture, table, reading) = sample(None);
+        capture.frame.height = 300;
+        capture.frame.rgba = [202, 213, 223, 255].repeat(300 * 300);
+        for top in [40, 80, 120, 160, 200, 240] {
+            for y in top - 2..top {
+                for x in 77..239 {
+                    let at = (y * 300 + x) * 4;
+                    capture.frame.rgba[at..at + 3].copy_from_slice(&[255, 255, 255]);
+                }
+            }
+            // Internal name/amount rules cannot be mistaken for new slots.
+            for x in 77..239 {
+                let at = ((top + 17) * 300 + x) * 4;
+                capture.frame.rgba[at..at + 3].copy_from_slice(&[255, 255, 255]);
+            }
+        }
+        for width in 197..=200 {
+            let bands = rows(&capture, ScreenRect { width, height: 235, ..table }, &reading);
+            assert_eq!(bands.iter().map(|r| r.y).collect::<Vec<_>>(), vec![40, 80, 120, 160, 200, 240]);
+        }
+        assert!(band_top(&capture, ScreenRect { y: 58, ..row(table) }).is_none());
+        assert!(band_top(&capture, ScreenRect { x: i32::MAX - 4, y: i32::MIN + 1, ..row(table) }).is_none());
     }
 
     #[test]

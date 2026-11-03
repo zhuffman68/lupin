@@ -1,11 +1,10 @@
 from pathlib import Path
-import shutil
 import time
 
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, QSettings, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, QSettings, QSignalBlocker, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QCursor
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
     QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
     QScrollArea, QVBoxLayout, QWidget,
 )
@@ -53,7 +52,9 @@ from .reference_ui import DatabasePanel
 from .recent_items import RecentItems,ActiveCards
 from .overlay_notice import OverlayNotice
 from .update_service import UpdateService
-from .update_ui import UpdatePanel,UpdateDialog
+from .update_ui import UpdateDialog
+from .settings_ui import SettingsDialog
+from .update_attention import UpdateSettingsButton
 from . import APP_NAME, LEGACY_APP_NAME,__version__
 
 COLORS = {"green": "#86ceac", "red": "#ed9394", "amber": "#e4bd7b", "blue": "#9ebde3", "muted": "#98a3b1"}
@@ -268,6 +269,8 @@ class LensWindow(QMainWindow):
         self.reader.shop_name_recovery_needed = self.needs_shop_name_read
         if hasattr(self.reader, 'shop_viewport_changed'):
             self.reader.shop_viewport_changed.connect(self.on_shop_viewport_changed)
+        if hasattr(self.reader,'npc_shop_changed'):
+            self.reader.npc_shop_changed.connect(self.on_npc_shop_changed)
         self.reader.exclude_regions=self.pickup_capture_exclusions
         self.reader.annotation_regions=self.annotation_exclusions
         self.reader.writer_regions=self.writer_capture_exclusions
@@ -296,7 +299,7 @@ class LensWindow(QMainWindow):
         self.shortcuts_button=QPushButton("Hotkeys…")
         self.shortcuts_button.setObjectName('ghost')
         self.shortcuts_button.clicked.connect(self.configure_shortcuts)
-        self.settings_button = QPushButton("Settings")
+        self.settings_button = UpdateSettingsButton()
         self.settings_button.setObjectName('ghost')
         self.settings_button.clicked.connect(self.open_settings)
         corner=QVBoxLayout();corner.setSpacing(4);corner.setContentsMargins(0,0,0,0)
@@ -381,6 +384,8 @@ class LensWindow(QMainWindow):
         self.cards_stack.addStretch()
         self.scroll.setWidget(self.cards)
         self.exp_panel = ExperiencePanel(data_directory()/"exp-sessions.sqlite",parent=self)
+        if hasattr(self.reader,'metrics'):self.exp_panel.metrics=self.reader.metrics
+        if hasattr(self.reader,'pickup_status'):self.reader.pickup_status.connect(self.exp_panel.set_pickup_issue)
         self.exp_panel.tracking_epoch_changed.connect(lambda epoch:setattr(self.reader,'tracking_epoch',epoch))
         self.reader.tracking_epoch=self.exp_panel.tracking_epoch
         self.exp_panel.enabled_changed.connect(self.set_exp_enabled)
@@ -538,115 +543,19 @@ class LensWindow(QMainWindow):
             QTimer.singleShot(800,lambda:self.set_chat_enabled(True))
 
     def build_settings(self):
-        self.settings_dialog = QDialog(self)
-        self.settings_dialog.setWindowTitle("Settings")
-        self.settings_dialog.setMinimumSize(430, 300)
-        height = max(300, min(720, QApplication.primaryScreen().availableGeometry().height()-64))
-        self.settings_dialog.resize(480, height)
-        outer = QVBoxLayout(self.settings_dialog)
-        settings_scroll = QScrollArea()
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        contents = QWidget()
-        layout = QVBoxLayout(contents)
-        settings_scroll.setWidget(contents)
-        outer.addWidget(settings_scroll)
-        layout.setSpacing(10)
-        layout.addWidget(label("Overlay", "font-size: 15px; font-weight: 650"))
-        self.auto_area_check = QCheckBox("Automatically find the Classic World area")
-        self.auto_area_check.setChecked(self.auto_game_area)
-        self.auto_area_check.setToolTip("Finds visible Classic UI in the shared pixels. A manually selected area takes priority until reset.")
-        self.auto_area_check.toggled.connect(self.set_auto_area)
-        layout.addWidget(self.auto_area_check)
-        self.labels_check = QCheckBox("Show market prices beside items")
-        self.labels_check.setChecked(self.labels_enabled)
-        self.labels_check.toggled.connect(self.set_labels)
-        layout.addWidget(self.labels_check)
-        self.hover_check = QCheckBox("Show inventory and equipment prices")
-        self.hover_check.setToolTip("Hover an inventory or equipped item, including while a shop is open. Shop listings use their own price labels.")
-        self.hover_check.setChecked(self.hover_enabled)
-        self.hover_check.setEnabled(self.labels_enabled)
-        self.hover_check.toggled.connect(self.set_hover)
-        layout.addWidget(self.hover_check)
-        self.exp_overlay_check = QCheckBox("Show EXP overlay at the bottom left of the game")
-        self.exp_overlay_check.setChecked(self.exp_overlay)
-        self.exp_overlay_check.toggled.connect(self.set_exp_overlay)
-        layout.addWidget(self.exp_overlay_check)
-        self.meso_overlay_check=QCheckBox('Show meso overlay at the bottom left of the game')
-        self.meso_overlay_check.setChecked(self.meso_overlay)
-        self.meso_overlay_check.toggled.connect(self.set_meso_overlay)
-        layout.addWidget(self.meso_overlay_check)
-        layout.addWidget(label("EXP rate display", "font-size: 12px; color: #a6b1bf"))
-        self.exp_display_combo = QComboBox()
-        for value,title in (("percent","Percentage (default)"),("raw","Raw EXP"),("both","Both · percentage first")):
-            self.exp_display_combo.addItem(title,value)
-        self.exp_display_combo.setCurrentIndex(self.exp_display_combo.findData(self.exp_display))
-        self.exp_display_combo.currentIndexChanged.connect(lambda *_:self.set_exp_display(self.exp_display_combo.currentData()))
-        layout.addWidget(self.exp_display_combo)
-        self.motion_check = QCheckBox("Reduce motion")
-        self.motion_check.setChecked(self.reduce_motion)
-        self.motion_check.toggled.connect(self.set_reduce_motion)
-        layout.addWidget(self.motion_check)
-        self.tray_check = QCheckBox("Minimize to the system tray")
-        self.tray_check.setChecked(self.minimize_to_tray)
-        self.tray_check.toggled.connect(self.set_minimize_to_tray)
-        layout.addWidget(self.tray_check)
-        self.hotkey_button = QPushButton("Hotkeys…")
-        self.hotkey_button.clicked.connect(self.configure_shortcuts)
-        layout.addWidget(self.hotkey_button)
-        translation_settings=QPushButton("Translation settings…")
-        def open_translation():
-            self.settings_dialog.close();self.tabs.setCurrentIndex(self.translation_tab_index)
-        translation_settings.clicked.connect(open_translation);layout.addWidget(translation_settings)
-        layout.addWidget(label("Downloads the full market on launch, then at the interval below. Its system web view closes after each update. Saved references remain available if an update fails.", "font-size: 11px; color: #a6b1bf", True))
-        layout.addWidget(label("Refresh all prices every", "font-size: 13px; font-weight: 650"))
-        self.ttl_combo = QComboBox()
-        for minutes in (5, 15, 30, 60):
-            self.ttl_combo.addItem(f"{minutes} minutes" + (" · recommended" if minutes == 15 else ""), minutes * 60)
-        self.ttl_combo.setCurrentIndex((300, 900, 1800, 3600).index(self.ttl))
-        self.ttl_combo.currentIndexChanged.connect(lambda index: self.set_ttl(self.ttl_combo.itemData(index)))
-        layout.addWidget(self.ttl_combo)
-        layout.addWidget(label("One shared update supplies the overlay, search and watched items. No individual price lookups. Expired references lose their deal colors until fresh data arrives.", "font-size: 11px; color: #a6b1bf", True))
-        layout.addWidget(label('Database','font-size:15px;font-weight:650'))
-        self.database_update_button=QPushButton('Check for database updates')
-        self.database_update_button.clicked.connect(lambda:self.reference.start())
-        layout.addWidget(self.database_update_button)
-        self.database_update_status=label('', 'font-size:11px;color:#a6b1bf',True)
-        layout.addWidget(self.database_update_status)
-        layout.addWidget(label('Checks for changes and downloads only changed reference files. Saved data stays available offline.','font-size:11px;color:#a6b1bf',True))
+        self.settings_dialog = SettingsDialog(self)
         self.update_database_settings()
-        self.update_panel=UpdatePanel(self.updates,self.settings_dialog,settings=True)
-        layout.addWidget(self.update_panel)
-        layout.addWidget(label("Troubleshooting", "font-size: 15px; font-weight: 650"))
-        self.crop_button = QPushButton("Limit the reading area…")
-        self.crop_button.clicked.connect(self.crop)
-        layout.addWidget(self.crop_button)
-        screenshot = QPushButton("Open a saved screenshot…")
-        screenshot.clicked.connect(self.open_screenshot)
-        layout.addWidget(screenshot)
-        if shutil.which("spectacle"):
-            self.kde_button = QPushButton("Try KDE screenshot capture")
-            self.kde_button.clicked.connect(self.start_kde)
-            layout.addWidget(self.kde_button)
-        self.diagnostics_button = QPushButton("Connection details / capture preview…")
-        self.diagnostics_button.clicked.connect(self.troubleshoot)
-        layout.addWidget(self.diagnostics_button)
-        about = QPushButton("About / price sources")
-        about.clicked.connect(self.about)
-        layout.addWidget(about)
-        layout.addStretch()
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(self.settings_dialog.reject)
-        outer.addWidget(buttons)
 
     def open_settings(self):
         self.update_capture_controls()
         self.update_database_settings()
-        self.settings_dialog.exec()
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
+        self.settings_dialog.activateWindow()
 
     def update_update_status(self):
         if not hasattr(self,'settings_button'):return
-        self.settings_button.setText('Settings · update' if self.updates.offer else 'Settings')
+        self.settings_button.set_update_available(self.updates.offer)
         if hasattr(self,'tray'):self.tray.update()
 
     def on_update_available(self,version):
@@ -901,9 +810,16 @@ class LensWindow(QMainWindow):
         self.chat.configure(scan,linger)
         self.settings.setValue('chat-scan-seconds',self.chat.scan_seconds)
         self.settings.setValue('chat-linger-seconds',self.chat.linger_seconds)
+        for widget,value in ((self.translation_panel.scan,self.chat.scan_seconds),
+                             (self.translation_panel.linger,self.chat.linger_seconds)):
+            with QSignalBlocker(widget):widget.setValue(value)
+        if hasattr(self,'settings_dialog'):self.settings_dialog.sync_translation()
 
     def set_chat_enabled(self,enabled):
         self.chat_enabled=enabled;self.settings.setValue("korean-chat",enabled)
+        with QSignalBlocker(self.chat_check):self.chat_check.setChecked(enabled)
+        self.translation_panel.translate_button.setEnabled(enabled)
+        if hasattr(self,'settings_dialog'):self.settings_dialog.sync_translation()
         self.chat.enable(enabled)
         if not enabled:
             self.on_chat_status("Disabled · local models unloaded")
@@ -1080,6 +996,7 @@ class LensWindow(QMainWindow):
         self.reduce_motion = reduced
         self.settings.setValue("reduce-motion",reduced)
         QApplication.instance().setProperty("reduceMotion",reduced)
+        self.settings_button.sync_motion()
         self.overlay.reduce_motion = reduced
         self.brand.sync()
         self.database_panel.sync_motion()
@@ -1540,12 +1457,12 @@ class LensWindow(QMainWindow):
     def shop_source_exclusions(self, panel=None):
         hidden = list(self.annotation_exclusions())
         image=self.reader.image.copy(self.reader.crop) if self.reader.crop else self.reader.image
-        # Capture checks scrolling before delivering image_ready. Supply the
-        # same frame's modal geometry there, without committing UI state early.
-        entry=self.shop_price_entry.peek(image,self.effective_shop_context(),hidden)
-        if entry is not None:hidden.append(entry)
         point=self.reader.pointer
         if point is not None and self.reader.crop:point=(point[0]-self.reader.crop.x(),point[1]-self.reader.crop.y())
+        # Capture checks scrolling before delivering image_ready. Supply the
+        # same frame's modal geometry there, without committing UI state early.
+        entry=self.shop_price_entry.peek(image,self.effective_shop_context(),hidden,pointer=point)
+        if entry is not None:hidden.append(entry)
         hidden.extend(self.observations.cursor_exclusions(point))
         hidden.extend(self.observations.native_exclusions(panel))
         writer_regions = getattr(self.reader,'writer_regions',None)
@@ -1600,9 +1517,25 @@ class LensWindow(QMainWindow):
             self.request_prices()
             self.render()
 
+    def retire_npc_shop(self,rectangle):
+        if rectangle is None or not self.shop_rows.area:return False
+        active=QRect(*(self.shop_rows.area[key] for key in ('x','y','width','height')))
+        if not rectangle.intersects(active):return False
+        self.shop_price_entry.clear();self.observations.retire_source()
+        self.shop_rows.reset();self.shop_browsing.reset()
+        return True
+
+    def on_npc_shop_changed(self,rectangle):
+        if self.retire_npc_shop(rectangle):
+            self.request_prices(refresh=False);self.draw_labels(time.time(),False);self.render()
+
     def observe_shop_price_entry(self,image,exclude=()):
         previous=self.shop_price_entry.rectangle
-        changed=self.shop_price_entry.observe(image,self.effective_shop_context(),exclude)
+        pointer=self.reader.pointer
+        if pointer is not None and self.reader.crop:pointer=(pointer[0]-self.reader.crop.x(),pointer[1]-self.reader.crop.y())
+        changed=self.shop_price_entry.observe(image,self.effective_shop_context(),exclude,pointer=pointer)
+        metrics=getattr(self.reader,'metrics',None)
+        if changed and metrics is not None:metrics.record('form.present' if self.shop_price_entry.rectangle is not None else 'form.closed')
         if previous is not None and self.shop_price_entry.rectangle is None:
             self.reader.request_rescan(preserve_shop_cache=True)
         return changed
@@ -1686,6 +1619,8 @@ class LensWindow(QMainWindow):
         exclusions=self.annotation_exclusions()
         if self.shop_price_entry.rectangle is not None:exclusions=(*exclusions,self.shop_price_entry.rectangle)
         latest=self.reader.image.copy(self.reader.crop) if self.reader.crop else self.reader.image
+        npc_area=result.get('_npc_shop_area')
+        npc_retired=self.retire_npc_shop(QRect(*npc_area)) if npc_area is not None else False
         read_pointer = result.get("pointerAtRead", self.reader.pointer)
         pointer = self.reader.pointer
         read_point = read_pointer
@@ -1831,7 +1766,7 @@ class LensWindow(QMainWindow):
         if (self.shop_description and self.shop_description_proof is not previous_description_proof
                 and isinstance(shop_tooltip.get('found'),dict)):
             self.observe_native_availability(result,image,latest,description=shop_tooltip['found'])
-        changed = entry_changed or entry_restored or bounds_changed or (shop_read is not None and shop_read.changed) or found != self.tooltip_result or self.shop_description!=previous_description
+        changed = npc_retired or entry_changed or entry_restored or bounds_changed or (shop_read is not None and shop_read.changed) or found != self.tooltip_result or self.shop_description!=previous_description
         self.tooltip_result = found
         quotes_changed=self.request_prices(refresh=False)
         self.update_price_status()

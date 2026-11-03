@@ -120,6 +120,7 @@ class TrackingCaptureTests(unittest.TestCase):
 
     def test_pickup_reader_runs_and_returns_while_primary_reader_remains_pending(self):
         reader=self.located_reader();reader.experience_enabled=True;reader.tracking_epoch=17
+        self.assertEqual(reader.process.processEnvironment().value('RTEN_NUM_THREADS'),'1')
         reader.active_request=SubmittedRequest('prices',reader.image,reader.pointer,reader.image_sequence,
             reader.generation,time.monotonic(),shop_epoch=reader.shop_browsing.epoch)
         results=[];reader.experience.connect(results.append)

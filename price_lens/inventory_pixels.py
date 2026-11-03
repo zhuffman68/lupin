@@ -76,17 +76,49 @@ class InventoryHeader:
 
 
 def same_cell(before,after,width,height,visible,scale):
-    """Exact exposed icon interior; only a gold-to-gold outer rim may animate."""
+    """Keep icon pixels exact while recognizing the native rim and its fringe.
+
+    The top of a newly highlighted cell has a gold scanline one pixel inside
+    its blended edge. Prove that scanline in both frames before allowing the
+    adjoining highlight pixels; a wider ignored border would hide icon changes.
+    """
     old=np.frombuffer(before,np.uint8).reshape(height,width,4)
     new=np.frombuffer(after,np.uint8).reshape(height,width,4)
     exposed=np.zeros((height,width),dtype=bool)
     for rect in visible:exposed[rect.top():rect.bottom()+1,rect.left():rect.right()+1]=True
-    rim=max(1,ceil(scale));core=exposed.copy()
-    core[:rim]=False;core[-rim:]=False;core[:,:rim]=False;core[:,-rim:]=False
-    if int(core.sum())<max(16,floor(16*scale*scale+.5)):return False
-    changed=np.any(old!=new,axis=2)&exposed
-    if np.any(changed&core):return False
     def gold(rgb):
         rgb=rgb[:,:,:3].astype(np.int32);r,g,b=rgb[:,:,0],rgb[:,:,1],rgb[:,:,2]
         return (r>=225)&(g>=100)&(r>=g)&(b<=80)&(g-b>=70)
-    return not np.any(changed&~(gold(old)&gold(new)&(old[:,:,3]==new[:,:,3])))
+    rim=max(1,ceil(scale));core=exposed.copy()
+    core[:rim]=False;core[-rim:]=False;core[:,:rim]=False;core[:,-rim:]=False
+    paired_gold=gold(old)&gold(new)
+    allowed=paired_gold&~core
+    # A native highlight can blend towards the pale cell edge or over the tip
+    # of the icon. These colours alone are not evidence: each column/row must
+    # also have its own exposed, aligned gold anchor in both captured frames.
+    def fringe(rgb):
+        rgb=rgb[:,:,:3].astype(np.int32);r,g,b=rgb[:,:,0],rgb[:,:,1],rgb[:,:,2]
+        pale=(rgb.min(2)>=220)&(rgb.max(2)-rgb.min(2)<=35)&(r+4>=g)&(g+4>=b)
+        return ((r>=24)&(g>=24)&(r+4>=g)&(g>=b+8))|pale
+    tones=fringe(old)&fringe(new)
+    minimum=max(8,ceil(8*scale))
+    depth=min(ceil(2*scale),width//4,height//4)
+    for axis in (0,1):
+        for reverse in (False,True):
+            for offset in range(depth):
+                position=(height if axis==0 else width)-1-offset if reverse else offset
+                line=paired_gold[position,:] if axis==0 else paired_gold[:,position]
+                shown=exposed[position,:] if axis==0 else exposed[:,position]
+                anchors=line&shown
+                if int(anchors.sum())<minimum or int(anchors.sum())*5<int(shown.sum())*4:continue
+                band=(slice(height-1-offset,height) if reverse else slice(0,offset+1)) if axis==0 else (
+                      slice(width-1-offset,width) if reverse else slice(0,offset+1))
+                if axis==0:
+                    qualified=anchors[None,:]&tones[band,:]
+                    allowed[band,:]|=qualified;core[band,:]&=~qualified
+                else:
+                    qualified=anchors[:,None]&tones[:,band]
+                    allowed[:,band]|=qualified;core[:,band]&=~qualified
+    if int(core.sum())<max(16,floor(16*scale*scale+.5)):return False
+    changed=np.any(old!=new,axis=2)&exposed
+    return not np.any(changed&~(allowed&(old[:,:,3]==new[:,:,3])))

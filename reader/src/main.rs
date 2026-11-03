@@ -20,6 +20,7 @@ mod shop_prices;
 mod shop_selection;
 mod shop_panes;
 mod shop_names;
+mod shop_cache;
 use game_area::{Locator, Rect};
 
 #[derive(Deserialize)]
@@ -51,6 +52,11 @@ struct Request {
     #[serde(default)]
     annotations: Vec<Rect>,
     shop_area: Option<minerva_core::ScreenRect>,
+    shop_epoch: Option<u64>,
+    capture_generation: Option<u64>,
+    shop_recovery: Option<bool>,
+    #[serde(default)]
+    progressive_shop: bool,
 }
 
 fn main() {
@@ -64,6 +70,7 @@ fn main() {
     let mut pickups = pickups::PickupLogReader::default();
     let mut price_recovery = shop_prices::PriceRecovery::default();
     let mut name_recovery = shop_names::NameRecovery::default();
+    let mut page_cache = shop_cache::PageCache::default();
     let stdin = io::stdin();
     let mut stdout = io::BufWriter::new(io::stdout());
     for line in stdin.lock().lines() {
@@ -165,9 +172,40 @@ fn main() {
                 pointer: request.pointer,
             };
             let shop_reader=reader.get_or_insert_with(PlayerShopReader::bundled);
-            let mut shop_reading=shop_panes::read(&capture,shop_reader,&mut price_recovery);
-            let recovered=name_recovery.apply(&capture,&mut shop_reading,request.shop_area);
+            let shop_started=Instant::now();
+            let scope=request.capture_generation.zip(request.shop_epoch);
+            let cached=page_cache.get(&capture,scope,request.shop_area);
+            let cache_hit=cached.is_some();
+            let (mut shop_reading,cached_components)=match cached {
+                Some((reading,components))=>(reading,Some(components)),
+                None=>(shop_panes::read(&capture,shop_reader,&mut price_recovery),None),
+            };
+            let shop_ms=shop_started.elapsed().as_secs_f64()*1000.0;
+            // Return already complete ordinary rows before costly missing-line
+            // recovery. Only explicit shop-only requests opt into this protocol;
+            // inventory reads and complete/cache-hit pages remain one reply.
+            if request.progressive_shop && !request.tooltip && !cache_hit && request.shop_area.is_some()
+                && request.shop_recovery.unwrap_or(true)
+                && shop_reading.shop.as_ref().is_some_and(|shop|
+                    shop.rows.iter().any(|row| !row.covered && row.name.is_some() && row.price.is_some())
+                    && shop.rows.iter().any(|row| row.covered || row.name.is_none() || row.price.is_none())) {
+                let mut partial=serde_json::to_value(&shop_reading)?;
+                partial["shopPartial"]=serde_json::json!(true);
+                partial["ocrMs"]=serde_json::json!(started.elapsed().as_secs_f64()*1000.0);
+                partial["gameArea"]=serde_json::to_value(location.as_ref().map(|l| l.area))?;
+                partial["gameGuards"]=serde_json::to_value(location.as_ref().map(|l| &l.guards))?;
+                partial["gameFooter"]=serde_json::to_value(location.as_ref().map(|l| l.footer))?;
+                partial["readerStages"]=serde_json::json!({"shopMs":shop_ms,"componentMs":0.0,"tooltipMs":0.0});
+                writeln!(stdout,"{partial}")?;
+                stdout.flush()?;
+            }
+            let components_started=Instant::now();
+            let recovered=cached_components.unwrap_or_else(||name_recovery.apply(&capture,&mut shop_reading,
+                request.shop_area.filter(|_|request.shop_recovery.unwrap_or(true))));
+            if !cache_hit {page_cache.store(&capture,scope,request.shop_area,&shop_reading,&recovered);}
+            let component_ms=components_started.elapsed().as_secs_f64()*1000.0;
             let mut value = serde_json::to_value(shop_reading)?;
+            value["shopCached"]=serde_json::json!(cache_hit);
             if let Some(rows)=value.get_mut("shop").and_then(|s|s.get_mut("rows"))
                 .and_then(serde_json::Value::as_array_mut) {
                 for recovered in recovered {
@@ -190,6 +228,7 @@ fn main() {
                     }
                 }
             }
+            let tooltip_started=Instant::now();
             if request.tooltip {
                 if let Some(pointer) = request.pointer {
                     let mut tooltip_capture = ItemCapture {
@@ -273,6 +312,8 @@ fn main() {
                     }
                 }
             }
+            value["readerStages"]=serde_json::json!({"shopMs":shop_ms,"componentMs":component_ms,
+                "tooltipMs":tooltip_started.elapsed().as_secs_f64()*1000.0});
             value["ocrMs"] = serde_json::json!(started.elapsed().as_secs_f64() * 1000.0);
             value["gameArea"] = serde_json::to_value(location.as_ref().map(|l| l.area))?;
             value["gameGuards"] = serde_json::to_value(location.as_ref().map(|l| &l.guards))?;

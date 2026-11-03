@@ -1,4 +1,198 @@
-# Verification — 2026-11-01
+# Verification — 2026-11-03
+
+## Lupin 1.0.4 release
+
+The [1.0.4 package verification report](https://github.com/zhuffman68/lupin/releases/download/v1.0.4/VERIFICATION-1.0.4.md)
+records final artifact hashes, install/upgrade/removal results and platform
+limits. The same release includes signed update metadata and build information
+binding its three native packages to the tagged source. The dated development
+checkpoints below record the source evidence collected before packaging; their
+preview PIDs and unreleased status describe those earlier checks.
+
+Release formats are Windows x64 Setup, Arch/Manjaro and Debian/Ubuntu packages.
+Portable Windows archives are retired. No package test sends game input or
+restarts the user's game/capture session. Physical Windows gameplay, production
+WebView2 and the remaining live add-item reproduction are distinct from fixture
+and isolated installer acceptance.
+
+The current design is documented in [ARCHITECTURE.md](ARCHITECTURE.md) and
+[Shop recognition and price ownership](docs/SHOP_RECOGNITION.md). Dated checks
+below record the behavior and limits of their particular source/release; older
+NPC-hover results are historical and do not override the current exclusion policy.
+
+## Tracking and reader performance — unreleased 1.0.4 source
+
+- **Current preview:** **Lupin — tracking and shop preview**, PID **1925988**,
+  uses the updated source and locally rebuilt native reader. The approved
+  sharing helper is still PID **846570**, start tick **5282269**. Its session
+  was preserved during SIGUSR1 handoff; no new sharing request was needed.
+  Settings were backed up first. The preview log is empty and tracking starts
+  stopped. The installed package/public release remain unchanged at 1.0.3.
+- **Tests:** the complete Python suite passes **1,285 tests, three skips,
+  161.818 s**; all **69 native unit tests** pass. The final 35 capture-admission,
+  scheduler, diagnostic and real-native cache/progressive-protocol checks pass
+  after the final source changes. The 165-test form/UI/annotation run includes
+  30 pointer positions over controls across five scales and existing overlap-only
+  fades, closure, interruption and stale-reply checks.
+- **Pickup admission:** all 145 saved lossless frames now pass current result
+  admission and the tracking panel with matching same-frame character proofs
+  while EXP confirmation remains pending. There are no gaps and the total
+  matches direct ledger replay. This harness supplies verified game readiness
+  and lacks the preceding 27-minute session; its 281 is not an independently
+  annotated ground-truth income claim. A separate committed anonymized arrival
+  fixture proves exact counting, including duplicate deliveries, through the
+  production admission/panel path. Late, foreign-session and foreign-capture
+  results are rejected; different name pixels retain the context hold.
+- **Shop timings:** saved native-only requests measured 21–39 ms for a known
+  unchanged full page, 582 ms for a new page and 3 ms for an identical cropped
+  page. A partly covered page returned three priced rows at 384 ms, then four
+  at 615 ms. The cold first opening still took 1,203 ms. Capture, source-proof
+  validation and compositor time are additional; these are individual loaded-
+  host measurements, not end-to-end or percentile guarantees. Native cache tests
+  verify name/price/rim changes, capture/viewport changes, crop origins and clipped
+  title exclusions. Both partial/final replies keep their original request/deadline.
+- **Live smoke:** the preserved share shows six correctly populated shop labels.
+  Numeric diagnostics confirm cache hits and approximately 93–160 ms recent
+  capture-to-reader delivery, with no OCR text in the diagnostic file. This is
+  delivery timing, not a measured compositor presentation time. No game input
+  was sent. Live training and the user's remaining add-item reproduction are
+  pending; physical Windows gameplay/capture was not retested in this pass.
+- Detailed design, implementation checkpoints and evidence limits are in
+  [TRACKING_AND_READER_PERFORMANCE.md](docs/TRACKING_AND_READER_PERFORMANCE.md).
+  Private scripts, backups, metrics and captures remain ignored under
+  `evidence/tracking-reader-improvements-20261102/`. Only the local native reader
+  was rebuilt for testing; no installer or release was built/published.
+
+## NPC/window preview — earlier checks for the unreleased patch
+
+- **NPC-only preview checkpoint:** **Lupin — NPC shop preview**, process 1827942, was running
+  from the updated source. The SIGUSR1 handoff preserves capture helper 846570
+  with the same start tick; its approved sharing session was not restarted.
+  The preview log is empty. User settings were backed up before reload.
+  The installed package and public release remain 1.0.3; the source changes are
+  recorded under unreleased 1.0.4 and have not been packaged or published.
+- **NPC tab/window repair:** the 19.541-second recording
+  `Lupin-2026-11-02_16-58-40.mkv` exposes the earlier detector's All-tab and
+  one-column assumptions. NPC ownership now comes from the whole connected
+  control/frame grid, acquired with bounded two-dimensional components from
+  either column. Reusable samples omit selected tabs and wallet digits.
+  Present/unknown/absent states retain exclusion through temporary uncertainty;
+  exposed contradictions release it. Initial acquisition still requires exposed
+  native controls and does not classify a blue table from item names alone.
+- All **10 sampled recording states** now acquire and retain NPC classification;
+  **20 left/right-column hint searches** pass. Two real native name-only replies
+  from the recording are excluded before becoming player observations. The
+  replay's median known-header check is **0.948 ms** on the loaded host; this is
+  a local diagnostic, not a portable performance guarantee. OBS compression
+  means this replay is distinct from raw-pixel/live acceptance.
+- **Source checks:** the full suite passes **1,267 tests, three skips,
+  214.482 s**, followed by **296 final capture/UI/native-fixture checks in
+  53.201 s** after the final inventory-only scan optimization. Coverage includes
+  all left/right tab combinations, empty/populated lists, unrelated orange
+  scenery, scale, cursor-covered controls, uncertainty/recovery/closure, delayed
+  replies, independent inventory overlapping NPC bounds, and immediate GUI/cache
+  retirement without another OCR reply. A raw inventory metadata flag cannot
+  bypass exclusion. Ordinary inventory-only results avoid a new full NPC search
+  but still validate their complete source/header/cell/title proof.
+- The full-suite pass also replaces one obsolete OCR-ascent assertion from the
+  earlier row-grid repair: the public fixture's native band starts one pixel
+  above the ordinary reader's inferred ascent. The test now verifies bounded
+  geometry and the complete current title proof while still rejecting the
+  blocked asking line. No item, amount or source-proof requirement was relaxed.
+  The shared component helper retains the add-item form's existing semantics
+  and adds a fragmentation work limit. No native binary or OCR model changed
+  for the NPC-controller repair. Private logs/replay scripts are in
+  `evidence/npc-window-fix-20261102/`; physical Windows gameplay and live user
+  acceptance remain separate. Installers and publication are still pending.
+- **Hover/scroll rows and NPC exclusion:** the 23.039-second recording
+  `Lupin-2026-11-02_09-59-29.mkv` exposed two distinct failures: omitted
+  lower rows beneath descriptions, and old-page labels while a new page was
+  already readable. Independent row dividers now correct the accumulated
+  vertical rounding. Fresh isolated reader processes recover Mokbi's complete
+  `700 for 199,999` asking line at both 8 and 16 seconds with the original
+  197-pixel table hint; all six correct current listings are read at 20 seconds.
+  This replay verifies recorded pixels, not live compositor timing.
+- A failed submitted row no longer rejects its independently current neighbours.
+  A partial ROI reply publishes its complete rows while requesting a full-frame
+  retry. Exact name/numeric components survive changes confined to a decorative
+  currency tail, while changed digits and incomplete endings still fail.
+  NPC buy/sell lists and their ordinary hover descriptions are excluded from
+  player pricing using native control/frame evidence. The captured Perion NPC
+  shop is excluded; generated empty-list/scaled controls and every public player
+  shop capture check classification and false positives. Separate inventory
+  descriptions retain source validation. Same-position recovery-cache tests
+  verify that NPC exclusion immediately clears previous player-shop labels and
+  does not repeatedly reset viewport epochs.
+- **Checks for these changes:** 380 isolated Python tests passed in 90.641 s,
+  followed by 146 capture/UI integration checks in 41.514 s after the final NPC
+  cache/paint adjustment. All 64 native reader tests pass. QA uses fresh private
+  Xvfb/D-Bus/HOME/XDG state; recording probes start fresh reader processes and
+  do not reuse the live app's cache. Only the local reader was compiled.
+  The earlier source preview was launched as **Lupin — Shop fixes preview**, preserving
+  sharing helper 846570 and its original start tick through SIGUSR1 handoff.
+  Package builds, physical Windows gameplay and live user acceptance remain
+  unverified for this change. Private scripts, frames and logs remain under
+  `evidence/shop-scroll-fix-20261102/` and are never packaged.
+- **Settings redesign:** General, Prices, Tracking, Translation and Updates
+  use compact cards, centered sliding tabs and a modeless dialog. Both
+  520 × 660 and 460 × 660 layouts fit without page scrolling; shorter windows
+  scroll within the selected page and retain the Done button. Rendered all
+  five pages at both widths and checked the 460 × 500 fallback.
+  **177 isolated Qt tests passed in 44.883 seconds**, covering bidirectional
+  translation controls, independent update/market timers, actual shortcut
+  change signals, offer/cancel layout, capture tools, reduced motion and
+  neighboring UI/update behavior. Opening Settings starts no reader, scan or
+  update check. Screenshots and test logs remain private under
+  `evidence/settings-redesign-20261102/`. Native Windows rendering has not been
+  tested for this redesign; no package or release was produced. The updated
+  Linux settings preview was inspected on General on the actual desktop.
+  Its approved capture helper remained running through the SIGUSR1 handoff;
+  the preview log has no errors. User acceptance remains pending.
+- Orange-border flicker was reproduced on **Mithril Pole Arm** with a player
+  shop open. A direct desktop screenshot sequence captured the visible price
+  card flashing/fading; the earlier sparse shared-frame observations were not
+  sufficient to describe it as continuously missing. No pointer or game input
+  was sent during this reproduction.
+- The local reader correctly identifies the item in **24/24 saved frames**.
+  Across eight reference captures, the composite Python source proofs accepted
+  only **54/192** comparisons before the repair. All rejections were in the
+  cell proof, not its name/header/frame. The native highlight includes a gold
+  scanline just inside the blended edge, including dark blends over the weapon
+  tip. Requiring aligned exposed native gold anchors now accepts **192/192**
+  comparisons, while keeping the exposed icon interior exact and requiring its
+  minimum pixel coverage. Generated negative checks reject changed icon ink,
+  foreign edge colours, missing/covered gold anchors and alpha changes, across
+  75%, 100%, 125%, 150% and 200% raster scales.
+- The 23.274-second OBS recording `Lupin-2026-11-02_00-21-32.mkv` shows the
+  add-item form moving across shop labels. Its old search rectangle misses some
+  positions, and labels can obscure the magenta column. The search now includes
+  a complete form beyond the price-label footprint. An already verified form
+  can relocate from exposed input fields, footer controls and both physical
+  right/bottom rails; contradictory visible controls still veto detection.
+  Two-dimensional colour components keep unrelated orange scenery separate.
+- Annotation rectangles can remain reported on capture paths which omit our
+  paint. Recovery there requires the **complete current native control grid**
+  and both physical rails; actual foreground paint cannot supply those cues.
+  Geometry memoization, fresh-read restoration after closure and selective
+  35% / 110 ms fades remain separate from shop-offer authority. Replay improves
+  form detections from **12 to 61** sampled frames. Frames with clipped or
+  insufficient exposed evidence remain unknown; no geometry is invented.
+- **Settings update attention:** a button-local pulse and internal shimmer
+  repeat while an update offer exists. Repeated status refreshes preserve its
+  loop; hidden/minimized/Reduce motion states stop the animation and retain a
+  static indication. Seven new Qt tests cover lifecycle, rendered frames,
+  real Settings wiring, and the absence of sibling paints/layout changes;
+  154 neighboring update/branding/UI checks also passed in isolation.
+- **Combined regression checks:** **228 tests passed** in **75.001 seconds**
+  across inventory pixels/association, native reader, capture integration,
+  price-form detection, annotations, UI context and update attention. The final
+  focused form suite additionally passes **15 tests** after the recovery-path
+  optimization. GUI QA used private Xvfb, D-Bus and user/XDG directories.
+- The source preview was launched with the existing approved sharing helper
+  retained. The installed package and public 1.0.3 release are unchanged;
+  these changes are recorded for **1.0.4 (unreleased)**. Live user acceptance of
+  the preview remains pending. Private records stay under
+  `evidence/orange-inventory-fix-20261102/` and are not packaged or published.
 
 ## 1.0.3 — published and verified
 

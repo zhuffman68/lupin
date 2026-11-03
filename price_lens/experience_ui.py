@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QFileDialog, QTableWidgetItem, QVBoxLayout, QWidge
 from .experience import ExperienceTracker, SessionHistory, Run, Reading, MAX_GAP, duration_text, clock_text
 from .mesos import PickupTracker
 from .tracking_identity import TrackingIdentity, proof_pixels
+from .reader_metrics import ReaderMetrics
 
 
 
@@ -26,6 +27,8 @@ class ExperiencePanel(QWidget):
         self.tracker = ExperienceTracker()
         self.mesos = PickupTracker()
         self.identity = TrackingIdentity()
+        self.metrics = ReaderMetrics()
+        self.pickup_issue = ''
         self.numeric_snapshot = None
         self.numeric_at = 0.0
         self.numeric_state = None
@@ -156,20 +159,19 @@ class ExperiencePanel(QWidget):
 
     def feed(self, result):
         if not self.enabled or not self.connected:
+            if result.get('pickupsRead'):self.metrics.record('pickup.panel_inactive')
             return
         epoch=result.get('trackingEpoch',self.tracking_epoch)
         at_ms=result.get('atMs',0)
         if (type(epoch) is not int or epoch!=self.tracking_epoch
-                or type(at_ms) is not int or at_ms<self.tracking_floor_ms):return
-        if result.get('pickupsRead') and 'pickupNameProof' in result and self.identity.reference:
-            proof=result['pickupNameProof'];pixels=proof_pixels(proof)
-            reference=self.identity.reference
-            if pixels is None or not self.identity.visual_match(reference,pixels,proof,reference.name)[0]:
-                # A same-position game can retain its locator anchors while
-                # showing another character. Check this job's name pixels
-                # without teaching a new identity or accepting old pickups.
-                self.tick_mesos();self.interrupt_context()
-                self.refresh();self.changed.emit();return
+                or type(at_ms) is not int or at_ms<self.tracking_floor_ms):
+            if result.get('pickupsRead'):self.metrics.record('pickup.panel_old_session')
+            return
+        # A pickup-only job has independent same-frame name proof. Numerical
+        # EXP confirmation must neither discard it nor mutate its arrival ledger.
+        if result.get('pickupsRead') and 'experience' not in result:
+            self.feed_pickups(result)
+            self.refresh();self.changed.emit();return
         raw = result.get("experience") or {}
         payload = self.identity.prepare(raw) if 'experience' in result else {}
         at = at_ms/1000
@@ -231,14 +233,60 @@ class ExperiencePanel(QWidget):
         if identity and previous and previous.identity_key:
             same_character=identity==previous.identity_key or accepted
         else:same_character=not previous or not character or character==previous.character or accepted
-        if (result.get('pickupsRead') and same_character and self.tracker.candidate is None
-                and not (previous and not self.identity_ready)):
-            self.tick_mesos()
-            self.mesos.ingest(result.get('pickups'), at)
+        if result.get('pickupsRead'):
+            self.feed_pickups(result,same_character=same_character)
         if accepted and self.connected and not self.tracker.run and self.tracker.current.character:
             self.begin_run()
         self.refresh()
         self.changed.emit()
+
+    def set_pickup_issue(self, issue):
+        if issue not in ('covered','late_frame','worker_timeout','worker_unavailable',
+                         'invalid_output','unreadable','checking_name','checking_character',''):
+            return
+        if issue==self.pickup_issue:return
+        self.pickup_issue=issue
+        if self.requested:
+            self.refresh_mesos(self.numeric_values(),False)
+            self.changed.emit()
+
+    def feed_pickups(self, result, *, same_character=True):
+        """Admit a pickup job without depending on EXP numerical candidates.
+
+        A missing name proof delays this job, while a positively different name
+        holds the session. Only EXP/context observations can confirm a switch or
+        release that hold. Neither condition learns identity from pickup text.
+        """
+        if self.user_paused:
+            self.metrics.record('pickup.panel_paused');return
+        if self.recognition_held:
+            self.metrics.record('pickup.panel_held');return
+        reference=self.identity.reference
+        matched=False
+        if reference and 'pickupNameProof' in result:
+            proof=result['pickupNameProof'];pixels=proof_pixels(proof)
+            if pixels is None:
+                self.metrics.record('pickup.name_missing')
+                self.pickup_issue='checking_name';return
+            matched=self.identity.visual_match(reference,pixels,proof,reference.name)[0]
+            if not matched:
+                self.metrics.record('pickup.name_changed')
+                self.tick_mesos();self.interrupt_context()
+                self.pickup_issue='checking_character';return
+        if not same_character or self.tracker.current and not self.identity_ready and not matched:
+            self.metrics.record('pickup.character_unconfirmed')
+            self.pickup_issue='checking_character';return
+        payload=result.get('pickups')
+        self.tick_mesos()
+        before=self.mesos.gain
+        self.mesos.ingest(payload,result['atMs']/1000)
+        self.metrics.record('pickup.accepted')
+        if self.mesos.gain>before:self.metrics.record('pickup.credited')
+        if isinstance(payload,dict) and payload.get('covered'):
+            self.pickup_issue='covered'
+        elif self.mesos.parse(payload) is None or (payload.get('state')=='unreadable' and not payload.get('lines')):
+            self.pickup_issue='unreadable'
+        else:self.pickup_issue=''
 
     def start(self):
         if not self.connected:return
@@ -250,6 +298,7 @@ class ExperiencePanel(QWidget):
             self.tracker.map_name='';self.tracker.map_candidate=None
             self.tracker.map_count=0;self.tracker.last_map_at=None;self.tracker.read_issue=''
             self.identity=TrackingIdentity();self.identity_ready=True;self.last_character=None
+            self.pickup_issue=''
             self.requested=True;self.user_paused=False;self.paused_window=None
             self.paused_meso_rate=None;self.reacquiring=True
             self.recognition_held=False
@@ -442,16 +491,30 @@ class ExperiencePanel(QWidget):
             status = 'Paused · recent pace held.'
         elif self.recognition_held:
             status = 'Paused · confirming the captured character.'
+        elif self.pickup_issue:
+            status = self.pickup_waiting()[0]
         elif pickups.fresh(now):
             status = 'Recent pace · watching pickups' + (f" · {values['meso_gaps']} gap(s)" if values['meso_gaps'] else '')
         elif pickups.candidate:
             status = 'Confirming pickup message…'
         elif pickups.last_seen is not None:
-            status = 'Pickup messages obscured · waiting for a clear view.'
+            status = 'Waiting for a fresh pickup reading…'
         else:
             status = 'Watching for pickup messages…'
         self.meso_status.setText(status)
         self.meso_status.setVisible(bool(status))
+
+    def pickup_waiting(self):
+        return {
+            'covered':('Pickup log covered · waiting for a clear view.','Log covered'),
+            'late_frame':('Pickup reading delayed · waiting for a fresh frame.','Reading delayed'),
+            'worker_timeout':('Pickup reader delayed · retrying.','Reader delayed'),
+            'worker_unavailable':('Pickup reader restarting…','Restarting reader'),
+            'invalid_output':('Pickup reader retrying…','Retrying reader'),
+            'unreadable':('Reading pickup messages…','Reading pickups'),
+            'checking_name':('Character name unreadable · pickups are held.','Checking name'),
+            'checking_character':('Confirming the captured character · pickups are held.','Checking character'),
+        }.get(self.pickup_issue,('Waiting for a fresh pickup reading…','Reading pickups'))
 
     def overlay_rows(self, now=None):
         now=time.monotonic() if now is None else now
@@ -480,14 +543,15 @@ class ExperiencePanel(QWidget):
         if self.display_mode=='both' and hour is not None:
             exp['secondary']=f"{prefix}{totals['exp']:+,.0f} EXP · {prefix}{hour/60:,.0f} EXP/min · {prefix}{hour:,.0f} EXP/hour"
         pickups=self.mesos;meso_rate=values['meso_rate']
-        meso_status=('Paused' if held else 'Watching pickup messages' if pickups.fresh(now) else 'Waiting for a clear pickup log')
+        waiting=self.pickup_waiting()
+        meso_status=('Paused' if held else waiting[0] if self.pickup_issue or not pickups.fresh(now) else 'Watching pickup messages')
         if pickups.gaps:meso_status+=f' · {pickups.gaps} gap(s)'
         total=f"{values['meso_gain']:+,}" if values['meso_observed'] else '—'
         last=values['last_pickup'];last_text=f'Last pickup: +{last:,}' if last is not None else 'Last pickup: —'
         meso=dict(key='meso-gain',kind='tracking',name='Meso gained',text=total,color='#b7d4a9',
             metrics=[('Picked up',total),('Per minute',f'{meso_rate:+,.0f}' if meso_rate is not None else '—'),
                      ('Per hour',f'{meso_rate*60:+,.0f}' if meso_rate is not None else '—')],footer=last_text,
-            status=meso_status,compact_note='Paused' if held else 'Log hidden' if not pickups.fresh(now) else '',
+            status=meso_status,compact_note='Paused' if held else waiting[1] if self.pickup_issue or not pickups.fresh(now) else '',
             basis='',clock=clock,progress='')
         return [exp,meso]
 

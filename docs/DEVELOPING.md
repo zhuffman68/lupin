@@ -54,13 +54,52 @@ converted weights stay in ignored `models/` and `.build-tools/` directories.
 
 Tests may drive Lupin's own UI, fixtures and an isolated desktop. Never send input
 to the game or interrupt an existing screen-sharing session. On a Linux desktop,
-isolate GUI/native-helper checks with Xvfb, not just Qt's offscreen plugin:
+isolate GUI/native-helper checks with Xvfb, a private D-Bus session and fresh
+HOME/XDG directories, not just Qt's offscreen plugin. The existing QA helpers
+create and safely clean up that environment:
 
 ```sh
-env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET xvfb-run -a env \
-  QT_QPA_PLATFORM=offscreen GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 \
-  QT_QUICK_BACKEND=software OMP_NUM_THREADS=2 RAYON_NUM_THREADS=2 \
-  nice -n 10 .venv/bin/python -B -m unittest discover -s tests -q
+nice -n 15 .venv/bin/python -B - <<'PY'
+import subprocess, sys
+from scripts.qa_common import create_private_root, private_environment, cleanup_private_root
+
+folder, token = create_private_root()
+status = None
+try:
+    result = subprocess.run([
+        "xvfb-run", "-a", "-s", "-screen 0 1920x1080x24 -nolisten tcp",
+        "dbus-run-session", "--", sys.executable, "-B", "-m", "unittest",
+        "discover", "-s", "tests", "-q",
+    ], env=private_environment(folder), check=False)
+    status = result.returncode
+finally:
+    cleanup_private_root(folder, token, child_status=status)
+raise SystemExit(status)
+PY
+```
+
+Use `-p test_npc_shop.py` with unittest discovery for a focused recognition run.
+The focused tracking/performance tests include `test_tracking_delivery.py`
+(capture admission through the panel and arrival ledger), `test_reader_metrics.py`,
+`test_shop_reader_delivery.py` (real native cache/partial protocol),
+`test_capture_requests.py`, and `test_shop_dialog.py`. Run them in the same private
+desktop. The local reader must be rebuilt when its protocol changes; this is
+distinct from building installers. Performance/acceptance notes live in
+[TRACKING_AND_READER_PERFORMANCE.md](TRACKING_AND_READER_PERFORMANCE.md).
+
+For a local source diagnostic, set `LUPIN_READER_DIAGNOSTICS` to a JSON path in an
+existing writable directory before launching Lupin. Every two seconds it writes
+an atomic private snapshot (0600 on POSIX) of bounded counters and numeric stage timings, including
+pickup delivery/rejection reasons and native shop cache hits. No OCR text,
+character names, chat or screenshots are included. Without this variable normal
+runs perform no diagnostics file I/O. Counter names describe processing stages:
+`pickup.accepted` counts admitted jobs, not individual pickup arrivals;
+`pickup.credited` counts batches that increased the ledger. Clear the variable
+after investigating. Never publish private captures or evidence scripts.
+
+Then run release-tool tests and the native compile check as appropriate:
+
+```sh
 python -B -m unittest discover -s scripts/tests -q
 cargo check --locked --manifest-path reader/Cargo.toml -j 2
 ```
@@ -70,6 +109,15 @@ The installed Windows `selftest-windows.bat` runs `python -m price_lens
 screen capture. Package tests, Wine checks and fixture tests do not establish
 physical Windows capture, shortcut or fullscreen acceptance. Record those limits
 in [VERIFICATION.md](../VERIFICATION.md).
+
+For shop and hover changes, follow [Shop recognition and price ownership](SHOP_RECOGNITION.md).
+It documents the player/NPC boundary, submitted/current-frame filtering,
+present/unknown/absent NPC states, independent inventory proofs, work limits and
+the relevant regression suites. Both NPC columns and every All/Buy Back and
+inventory-tab transition need coverage; an empty-list fixture with All selected
+does not establish that changing tabs works. OBS clips supply sequence evidence;
+use lossless/generated pixels for exact proof checks. Historical verification
+notes describe the behavior of their dated versions, not current requirements.
 
 ## Build and release tools
 

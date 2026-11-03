@@ -47,14 +47,42 @@ context rather than mutable current-frame flags. EXP-only work does not consume
 an unread shop sequence. `PixelReader.request_rescan()` requests newest-frame
 work without changing the deadline of an already running request.
 
+New shop/viewport work receives the next primary-reader slot while the previous
+EXP submission was less than 2.5 seconds ago; ordinary shop work yields after
+1.6 seconds. This is a scheduling bound, not an in-flight preemption guarantee. Only
+the newest pending image is retained. The primary reader limits Rayon/OMP to two
+threads and RTEN to one; the pickup worker remains independently single-threaded.
+
+`reader/src/shop_cache.rs` holds at most one complete page, bounded to one million
+pixels plus row/component metadata. Capture generation, viewport epoch and the
+explicit current table hint must agree; all table, picture and four-pixel rim
+pixels must match exactly. Full-frame and cropped requests can reuse the same
+absolute table. Current cursor coverage can veto a cached tier, old hover titles
+are removed, and clipped names use fresh recognition. This saves OCR, not source
+validation: Python still verifies every returned row against the latest pixels.
+`shop_area` carries known geometry even when `shop_recovery` disables unnecessary
+component work. Missing generations/epochs or incomplete pages cannot hit the
+cache. Changing a name, price, icon, rim, source or viewport forces recognition.
+
+Opt-in `progressive_shop` requests may receive one `shopPartial` JSON reply with
+complete ordinary rows before missing-line recovery finishes. Complete/cache-hit
+pages and inventory requests remain single replies. Both phases retain the same
+`SubmittedRequest`, epoch and original deadline; neither advances old-page
+authority or opens a second request. Late phases go through the same current
+source/NPC/viewport checks as ordinary results. Native `readerStages` reports
+numeric shop/component/tooltip timings separately from capture-to-result latency.
+
 The visible bottom status bar and static frame evidence locate Classic World. FPS and movable minimap placement are not anchors. Shop/tooltip pixel fingerprints avoid repeated OCR and preserve proven identities through modest movement and occlusion. Equipment names include gender/stat/tier evidence; ambiguous IDs remain unresolved.
 
-Only a missing, uncovered shop price triggers a retry. A cropped shop passes through the unchanged strict upstream reader at two resamplings. Recovery requires agreement on exact name, row position, quantity and the complete meso amount. Existing prices are never overwritten. An eight-patch pixel cache also remembers failures. The pinned Minerva revision and OCR model are unchanged; the worker uses two OCR threads.
+Only a missing, uncovered shop price triggers the price-resampling retry. A cropped shop passes through the unchanged strict upstream reader at two resamplings. Recovery requires agreement on exact name, row position, quantity and the complete meso amount. Existing prices are never overwritten. An eight-patch pixel cache also remembers failures. Ordinary list reading skips the optional description search unless the pointer's clipped/hidden title needs refinement or a scroll picture needs occlusion protection. The pinned Minerva revision and OCR model are unchanged.
 
 `reader/src/shop_names.rs` recovers independently readable native lines across
 unread slots on a verified table, including neighbors touched by a description.
 The request supplies only known table geometry; fresh compatible row positions
-establish its grid. An unrelated palette-compatible window, such as Sold Items,
+establish its grid. Broad native slot dividers refine each exposed row's top
+independently, so horizontal table-crop rounding does not accumulate into a
+vertical error at the bottom of the list. The thinner name/asking separator
+cannot establish a slot. An unrelated palette-compatible window, such as Sold Items,
 cannot veto independently proven current components on that table or supply its
 grid, rows or hover identity. Native blue/orange text needs visible ink and a complete
 ending before a cursor/pane interruption, with agreement at two resamplings.
@@ -62,6 +90,11 @@ An explicit native ellipsis may use its smaller natural margin only after both
 reads agree on the literal marker and the current pixels contain all three small
 aligned dots. Exact catalog-prefix rules still decide identity; arbitrary cut
 prefixes do not gain a match. Ordinary asking-line margins and number guards are unchanged.
+Complete current ordinary rows reuse their strict full-currency/font-width read
+to construct numeric text, then export independently checked current numeric
+shape/ending proofs. They do not run two redundant digit OCR passes. Missing
+amounts still require two agreeing independent reads. The 96-line component
+cache evicts one oldest entry at a time rather than clearing all current lines.
 Each recovered name has `nameArea`; an independently readable asking line has
 `priceArea` and must pass strict quantity, grouping and measured-width checks.
 Otherwise the row is `nameOnly`, with a null price and no inferred tier. The
@@ -164,8 +197,11 @@ sprite fringe. Enough pink selection must remain, and the caption, buttons and
 inactive tabs stay exact outside rounded header corners. Missing/changed tabs,
 erased letters and unrelated paint still reject the source. Older metadata
 retains its strict guards. The cell interior remains byte-exact outside the
-cursor; changed rim pixels may only remain native gold on both frames within
-one scaled pixel of the border. At least 16 scaled interior pixels must be
+cursor; changed outer rim pixels may remain native gold in both frames. An
+inset native gold scanline can additionally prove the adjoining blended edge,
+including a weapon tip crossing it. Both captures need aligned exposed gold
+anchors, and changes stay within two scaled edge pixels and native colour
+directions. This does not discard a two-pixel border wholesale. At least 16 scaled interior pixels must be
 exposed, so the decorative ring alone never supplies item identity.
 Tooltip corners require two current strokes in a three-sample lane at each end,
 plus a terminating cap and both complete side rails. A single background pixel
@@ -190,6 +226,10 @@ shop-only miss cannot clear a newer inventory card, and removing a stale shop
 hover cannot turn its description into an inventory reference. Shop-row retries
 do not prevent independent inventory processing. A lost container clears cached
 shop routing before reacquisition so its old rectangle cannot block inventory.
+Replies are accepted per row: a late or inconsistent slot cannot discard
+independently current neighbours. A partial ROI reply publishes complete rows
+while scheduling its full-frame retry. An independently complete component can
+survive a changed nonsemantic tail, but changed name or numeric ink still fails.
 
 `reader/src/shop_panes.rs` keeps the separate sold-items ledger out of listing
 selection. Rejection requires its native three-line purchase/summary grid and
@@ -198,7 +238,25 @@ remain recognizable when the totals are outside the viewport. It masks only
 the proven ledger in a copied shop-selection frame, with at most two retries;
 the original pixels remain available to inventory and generic descriptions.
 
-An empty detected blue table is not sufficient to suppress generic inventory tooltips: NPC buy/sell lists share that palette. Such rectangles remain available for fingerprints but do not establish pointer-in-player-shop context without rows. The next hover read uses the full frame, allowing an NPC sell-list item and its comparison panel through the ordinary item-name/catalog rules. Closing the reader marks it paused before draining its process, so a queued scan cannot access deleted Qt children.
+`npc_shop.py` classifies the complete NPC window from either column, using paired
+native controls, wallet rails, both header bevels, the divider and tab-strip
+structure. All/Buy Back and every right-hand tab may be empty or populated.
+`pixel_components.py` provides the bounded two-dimensional control detector
+shared with the add-item form. Reusable samples omit active tabs, portrait
+animation, item rows and wallet digits. Known contexts distinguish present,
+unknown and absent: uncertainty preserves exclusion, never player-list authority.
+
+Capture revalidates known bounds before publishing frames, filters submitted and
+current NPC-owned rows before player routing, and emits `npc_shop_changed` only
+for geometry/ownership changes. The UI immediately resets overlapping player
+recovery caches and repaints. NPC-owned descriptions are excluded after ordinary
+inventory proof validation; an overlapping independent inventory needs its actual
+source/header/slot/title proof, not a metadata flag. Capture-only NPC fingerprints
+never supply player context, market demand, history or watched encounters.
+The complete pipeline, state transitions, work limits and regression cases are
+documented in [Shop recognition and price ownership](docs/SHOP_RECOGNITION.md).
+Closing the reader marks it paused before draining its process, so a queued scan
+cannot access deleted Qt children.
 
 ## One full-market cache
 
@@ -381,6 +439,25 @@ Thumbnail downloads share a two-request queue, bounded memory/disk caches and ne
 ## Tracking and translation
 
 Tracking starts stopped. Explicit Start enables EXP sampling once a second and a bounded bottom-right pickup-log crop at up to five samples a second. Pickup OCR uses a separate invocation of the same native binary, restricted to one thread and one in-flight crop; it shares the approved capture and cannot queue a backlog behind shop OCR. Stop releases that worker even when display reading is paused. Timed-out, superseded, covered and wrong-generation replies are discarded.
+
+Pickup-only results enter `ExperiencePanel.feed_pickups` independently of EXP
+numeric candidates. The existing same-frame visual name proof binds them to the
+established character. A missing proof holds just that job and preserves bounded
+arrival continuity; positively different pixels trigger the existing context
+hold and EXP-based reconfirmation. Pickup jobs cannot teach a new identity or
+release a recognition hold. Legacy combined EXP/pickup fixtures retain explicit
+same-character checking. Capture's 1.5-second result-age bound, the worker's
+1.5-second service deadline and the ledger's 1.5-second observation continuity
+are separately enforced against their appropriate clocks; no limit was simply
+lengthened to accept unsafe history. Status text distinguishes actual known
+coverage from delayed/failed reads.
+
+`reader_metrics.py` shares bounded numeric counters and timings between capture
+and tracking: at most 64 event codes and 240 samples, with no names, OCR strings
+or screenshots. Normal runs do no diagnostics file I/O. The optional developer
+`LUPIN_READER_DIAGNOSTICS` path enables an atomic private JSON snapshot every two
+seconds. See [tracking and reader performance](docs/TRACKING_AND_READER_PERFORMANCE.md)
+for the implementation record and acceptance limits.
 
 The pickup reader supplies per-line geometry, kind and normalized visual evidence. Actual EXP, party-bonus and item-receipt messages anchor scrolling without adding currency. White glyphs fading over colored scenery use local blue-channel contrast; yellow EXP text is handled separately. Up to 256 normalized patterns are cached. Unreadable or partially recognized text is distinct from a proven empty log, and exhausting the OCR budget retains recognized rows.
 
@@ -652,8 +729,9 @@ omitted anchors/comparisons clear reused row state. This prevents a wider card
 from jumping above the whole inventory when a safe above-description lane exists.
 
 `shop_dialog.py` recognizes the shop's price-entry form from aligned magenta
-labels, native paper and independently exposed controls or frame evidence. Detection searches
-only a bounded neighbourhood of a verified shop and excludes our annotations.
+labels, native paper and independently exposed controls or frame evidence. Its
+bounded search includes the complete form beyond any maximum-width shop label,
+including the first and last list rows. Our annotations are normally excluded.
 An already measured form rechecks those controls directly when the cursor splits
 a label. Geometry is memoized per immutable capture and source/mask context;
 capture can obtain its exclusion before `image_ready` without consuming the GUI
@@ -675,6 +753,17 @@ left/bottom frame strokes, native paper and the three aligned magenta labels.
 Exposed contradictory controls still reject the form; owned paint cannot supply
 any cue. A measured form uses the same rule on later frames, avoiding a
 recognize/fade/forget loop while those masks remain present.
+When those labels instead cover the caption/magenta column of an already
+verified form, two-dimensional orange components locate its exposed footer
+controls. Three current input fields, a current footer control and independently
+exposed right/bottom rails must then prove its new position. Unrelated orange
+scenery cannot merge the control rows into one projection. The last-form hint
+ends after confirmed closure and cannot itself authorize any current geometry.
+Some screen-capture paths omit our drawing even though annotation rectangles
+remain reported. A complete current native grid (three magenta labels, three
+white fields, two orange controls) plus both physical rails can recover in that
+case. Actual opaque paint cannot supply those native cues. No such recovery
+relaxes item-title or asking-price proofs.
 
 Shop container guards sample the solid outer frame strokes, excluding the
 innermost bevel pixel that blends with sold-out/selected listing backgrounds.
@@ -710,7 +799,24 @@ delay or guessed item identity is used to hide cursor animation.
 
 ## Application updates
 
+`settings_ui.py` owns the reusable, modeless preferences dialog. General, Prices,
+Tracking, Translation and Updates use the same cards and `AnimatedTabs` as the
+main pages. Each page has an independent bounded viewport for short displays;
+the normal 520 × 660 dialog also fits at 460 pixels wide without scrolling.
+Preferences apply through the existing main-window callbacks. Translation timing
+and enable controls synchronize in both directions with blocked duplicate
+signals, without starting a scan or reloading models when Settings opens.
+Market-refresh timing and application-update timing remain separate. Opening
+capture tools hides the dialog first; no new capture or background work starts
+merely by opening preferences.
+
 `update_service.py` owns one background release/check/download job and the launch/Settings timer. `updates.py` validates exact GitHub assets, pinned OpenSSL Ed25519 signatures, sizes and hashes. `update_delta.py` reconstructs native artifacts with bounded 8 MiB prefix chunks. `update_ui.py` and the tray expose update controls without reflowing Prices. Native installation runs only after a verified download and explicit user action; Linux additionally authenticates through the fixed root-owned helper and re-verifies the payload before the GUI closes. Windows uses its per-user installer; old portable swap code remains compatibility-only. Capture compatibility is an explicit signed field; tracking starts stopped after restart. See [update architecture and release preparation](docs/UPDATES.md).
+
+`update_attention.py` owns the Settings button's repeating watched-item-style
+pulse and internal shimmer while an update offer exists. Animation invalidates
+only that button, preserves its loop across unchanged status refreshes, and
+stops while hidden/minimized or with Reduce motion. The update caption and gold
+rim remain as a static indication with reduced motion.
 
 `desktop_environment.py` owns a shared, narrow relaunch allowlist and same-session recovery of missing desktop authentication/schema fields. Only the unprivileged GUI/relaunch uses these values. `update_startup.py` is a Qt-free, bounded regular-file receipt protocol tied to the launched child's PID, exact release version and per-job token. `update_startup_ui.py` publishes readiness only from the GUI event loop after the versioned annotation handshake. Native helpers wait at most twenty seconds and report success only for a live, acknowledged child; the main GUI polls its matching result briefly without polling the network. `overlay.py` limits automatic recovery to two retries, preserves annotation state, revokes writer state on disconnect, exposes manual recovery and stores only fixed-code diagnostics.
 

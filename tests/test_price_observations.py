@@ -114,6 +114,25 @@ class PriceObservationTests(unittest.TestCase):
         self.assertTrue(self.state.shop_open)
         self.assertEqual([row['price']['mesos'] for row in self.state.rows],[100])
 
+    def test_one_rejected_slot_does_not_delay_fresh_neighbours_on_a_new_page(self):
+        self.native_pair()
+        # The first submitted row has a late pixel mismatch. The second is a
+        # genuinely new title and asking line, both exposed in the latest frame.
+        submitted=self.image.copy();latest=self.image.copy()
+        submitted.setPixelColor(220,176,QColor('white'))
+        for image in (submitted,latest):
+            painter=QPainter(image)
+            painter.fillRect(137,230,162,35,QColor('#cad5df'))
+            painter.fillRect(240,235,40,6,QColor('black'))
+            painter.fillRect(145,254,50,6,QColor('black'));painter.end()
+        self.state.catalog=Catalog({'items':[dict(id=1,name='Example Hat'),dict(id=2,name='New Hat')]})
+        self.shop['rows'][1].update(name='New Hat',price=dict(quantity=1,mesos=300))
+        read=self.observe(image=submitted,latest=latest)
+        self.assertTrue(read.retry)
+        self.assertTrue(read.viewport_changed)
+        self.assertEqual([(row['_item_id'],row['price']['mesos']) for row in self.state.rows],[(2,300)])
+        self.assertFalse(self.state.browsing.pending)
+
     def test_rejected_rows_do_not_clear_native_shop_description_routing(self):
         self.observe();self.state.shop_tooltip_from_shop=True
         changed=self.image.copy();changed.setPixelColor(220,176,QColor('white'))
@@ -537,6 +556,18 @@ class PriceObservationTests(unittest.TestCase):
         self.assertIsNotNone(self.state.component_proof(row,'price',image,suffix,
             exclude=(QRect(203,168,20,17),)))
         self.assertIsNotNone(self.state.component_proof(row,'price',suffix,suffix))
+
+    def test_changed_currency_tail_cannot_block_independently_current_name_and_amount(self):
+        row,image=self.semantic_asking();self.image=image;self.shop['rows']=[row]
+        point=(500,450)
+        for _ in range(2):
+            self.state.observe_shop(deepcopy(self.shop),image,image,pointer=point,read_point=point)
+        latest=image.copy();latest.setPixelColor(209,174,QColor('#cad5df'))
+        read=self.state.observe_shop(deepcopy(self.shop),image,latest,pointer=point,read_point=point)
+        self.assertFalse(read.retry)
+        current=next(row for row in self.state.rows if row.get('_item_id')==1)
+        self.assertEqual(current['price'],dict(quantity=1,mesos=9999))
+        self.assertFalse(current.get('reference_only'))
 
     def test_semantic_asking_rejects_partial_or_misplaced_numeric_geometry(self):
         row,image=self.semantic_asking()

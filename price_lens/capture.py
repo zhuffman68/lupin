@@ -18,6 +18,9 @@ from .tooltip_association import TooltipAssociation,association_state
 from .pickup_capture import PickupWorker
 from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
+from .reader_metrics import ReaderMetrics
+from .npc_shop import find_npc_shop,suppress_npc_rows,suppress_npc_prices
+from .shop_source import cursor_rectangle
 
 
 class PixelReader(QObject):
@@ -26,7 +29,9 @@ class PixelReader(QObject):
     image_ready = Signal(QImage)
     area_changed = Signal()
     experience = Signal(dict)
+    pickup_status = Signal(str)
     shop_viewport_changed = Signal()
+    npc_shop_changed = Signal(object)
 
     def __init__(self, root, parent=None):
         super().__init__(parent)
@@ -37,6 +42,13 @@ class PixelReader(QObject):
         self.image_sequence = 0
         self.submitted_sequence = -1
         self.latest_latency_ms = None
+        self.metrics = ReaderMetrics()
+        diagnostics=os.environ.get('LUPIN_READER_DIAGNOSTICS')
+        if diagnostics:
+            self.diagnostics_timer=QTimer(self)
+            self.diagnostics_timer.setInterval(2000)
+            self.diagnostics_timer.timeout.connect(lambda:self.metrics.write(diagnostics))
+            self.diagnostics_timer.start()
         self._experience_enabled = False
         self.pickups_enabled = True
         self.tracking_epoch = 0
@@ -49,6 +61,7 @@ class PixelReader(QObject):
         self.manual_game_footer = None
         self.prices_enabled = True
         self.last_experience = 0.0
+        self.last_price_epoch = None
         self.last_map_read = 0.0
         self.last_pickup = self.last_pickup_frame = 0.0
         self.exclude_regions = lambda: []
@@ -70,6 +83,8 @@ class PixelReader(QObject):
         self.tooltip_retry_at = 0.0
         self.roi_clean = True
         self.shop_context = None
+        self.npc_shop = None
+        self.npc_shop_state = 'absent'
         self.shop_context_provider = lambda:self.shop_context
         self.shop_name_recovery_needed = lambda pointer:True
         self.shop_browsing = ShopBrowsing(parent=self)
@@ -99,6 +114,7 @@ class PixelReader(QObject):
         env = QProcessEnvironment.systemEnvironment()
         env.insert("RAYON_NUM_THREADS", "2")
         env.insert("OMP_NUM_THREADS", "2")
+        env.insert("RTEN_NUM_THREADS", "1")
         self.process.setProcessEnvironment(env)
         self.process.readyReadStandardOutput.connect(self.on_output)
         self.process.readyReadStandardError.connect(self.on_stderr)
@@ -159,7 +175,14 @@ class PixelReader(QObject):
             annotations=tuple(tuple(rect[key] for key in ('x','y','width','height'))
                               for rect in payload.get('annotations',[])[:64]))
         self.active_request=self.submitted_request=request
-        if mode=='prices':self.last_pointer=request.pointer
+        metrics=getattr(self,'metrics',None)
+        if metrics is not None:metrics.record(mode.replace('-', '_')+'.submitted',
+                            age_ms=max(0,(started-getattr(self,'last_frame',started))*1000))
+        if mode=='prices':
+            self.last_pointer=request.pointer
+            self.last_price_epoch=request.shop_epoch
+            payload['shop_epoch']=request.shop_epoch
+            payload['capture_generation']=request.generation
         # EXP shares the transport but must not consume the pending price frame.
         if mode!='experience':self.submitted_sequence=request.sequence
         self.process.write((json.dumps(payload)+'\n').encode())
@@ -227,6 +250,9 @@ class PixelReader(QObject):
 
     def observe_shop_frame(self):
         """A new captured viewport invalidates old OCR before it can draw."""
+        if getattr(self,'npc_shop',None) is not None:
+            source=self.image.copy(self.crop) if self.crop else self.image
+            self.update_npc_shop(source,exclude=self.annotation_regions())
         context=self.current_shop_context()
         if not self.live_source or self.paused or not self.prices_enabled or context is None:
             return
@@ -237,6 +263,33 @@ class PixelReader(QObject):
                 tooltip=self.shop_tooltip_bounds, exclude=self.shop_exclusions(), pointer=pointer):
             self.shop_fingerprint = None
             self.shop_viewport_changed.emit()
+
+    def update_npc_shop(self,image,*,exclude=(),candidate=None):
+        """Revalidate stable controls; uncertain NPC ownership stays excluded.
+
+        Discovery belongs to submitted OCR results, not a full-frame scan on
+        every capture. This path only samples an already measured header.
+        """
+        before=self.npc_shop.rectangle if self.npc_shop is not None else None
+        npc=self.npc_shop
+        point=self.pointer
+        if point is not None and self.crop:point=(point[0]-self.crop.x(),point[1]-self.crop.y())
+        scale=(npc or candidate).anchor[2] if npc is not None or candidate is not None else 1
+        cursor=cursor_rectangle(point,scale)
+        exclude=(*exclude,*((cursor,) if cursor is not None else ()))
+        state=npc.state(image,exclude) if npc is not None else 'absent'
+        if state=='absent' and candidate is not None:
+            npc=candidate;state=npc.state(image,exclude)
+        if state=='absent':npc=None
+        self.npc_shop=npc;self.npc_shop_state=state
+        after=npc.rectangle if npc is not None else None
+        if after is not None and self.shop_context is not None and after.intersects(self.shop_context):
+            self.shop_context=None
+        if before!=after:
+            # The capture-only fingerprint must not outlive its NPC window.
+            self.shop_rect=self.shop_fingerprint=None
+            self.npc_shop_changed.emit(after)
+        return npc
 
     def current_shop_context(self):
         provider=getattr(self,'shop_context_provider',None)
@@ -306,6 +359,8 @@ class PixelReader(QObject):
             self.pickup_worker.invalidate()
         self.next_area_search = 0
         self.shop_rect = self.shop_fingerprint = self.shop_context = None
+        self.npc_shop = None
+        self.npc_shop_state = 'absent'
         self.shop_tooltip_bounds = None
         self.shop_browsing.reset()
         self.tooltip_rect = self.tooltip_fingerprint = None
@@ -405,6 +460,7 @@ class PixelReader(QObject):
         if pointer and self.crop:
             pointer = (pointer[0] - self.crop.x(), pointer[1] - self.crop.y())
         context=self.current_shop_context()
+        npc=getattr(self,'npc_shop',None)
         in_shop = pointer_in_shop(pointer, context)
         hover_check = self.tooltip_enabled and pointer is not None and not in_shop
         if self.auto_active:
@@ -424,7 +480,7 @@ class PixelReader(QObject):
             # Native pane closure/source changes request their own rescan.
             # An unchanged stationary shop need not repeat description OCR
             # five times a second merely because the pointer remains inside it.
-            shop_hover_due = in_shop and self.pointer != self.last_pointer
+            shop_hover_due = (in_shop or bool(npc and npc.contains(pointer))) and self.pointer != self.last_pointer
             if (not force_rescan and fingerprint == self.shop_fingerprint and not shop_hover_due and (not hover_check or tooltip_same)
                     and (not self.auto_active or now-self.last_locator_check<1.0)):
                 self.submitted_sequence = self.image_sequence
@@ -436,7 +492,12 @@ class PixelReader(QObject):
             return
         if not force_rescan and self.shop_rect is None and time.monotonic() - self.pending_since < 0.2:
             return
-        if exp_due and now-self.last_experience>=1.6:
+        # Give a newly opened/scrolled page one prompt slot, with an absolute
+        # EXP-service bound. There is still only one primary in-flight request.
+        browsing=getattr(self,'shop_browsing',None)
+        fresh_shop=(force_rescan or self.shop_rect is None or browsing is not None
+                    and browsing.epoch!=getattr(self,'last_price_epoch',None))
+        if exp_due and now-self.last_experience>=1.6 and (not fresh_shop or now-self.last_experience>=2.5):
             self.scan_experience(now)
             return
         origin = {"x": 0, "y": 0}
@@ -465,7 +526,9 @@ class PixelReader(QObject):
                    "width": image.width(), "height": image.height()}
         needs_name=getattr(self,'shop_name_recovery_needed',lambda point:True)
         request['shop_area']=(dict(zip(('x','y','width','height'),context.getRect()))
-                              if context is not None and needs_name(pointer) else None)
+                               if context is not None else None)
+        request['shop_recovery']=bool(context is not None and needs_name(pointer))
+        request['progressive_shop']=bool(context is not None and not hover_check)
         crop_origin=self.crop.topLeft() if self.crop else QPoint()
         source_region=self.crop.intersected(self.image.rect()) if self.crop else self.image.rect()
         request['exclude']=[dict(zip(('x','y','width','height'),rect.intersected(source_region).translated(-crop_origin).getRect()))
@@ -535,6 +598,8 @@ class PixelReader(QObject):
         if game is None or not self.tracking_ready or not self.pickups_enabled:return
         area=self.pickup_area(game).intersected(self.image.rect())
         if any(area.intersects(region) for region in self.exclude_regions()):
+            self.metrics.record('pickup.covered')
+            self.pickup_status.emit('covered')
             self.last_pickup=now;self.last_pickup_frame=self.last_frame
             self.pickup_covered_at=int(self.last_frame*1000)
             if self.pickup_worker is not None:self.pickup_worker.invalidate()
@@ -548,17 +613,27 @@ class PixelReader(QObject):
         if self.pickup_worker is None:
             self.pickup_worker=PickupWorker(self.root,self.temp.name,self)
             self.pickup_worker.result.connect(self.on_pickup_result)
+            self.pickup_worker.issue.connect(self.on_pickup_issue)
         identity_proof=name_proof(self.image,self.tracking_identity_area,QPoint())
         if self.pickup_worker.submit(image,self.last_frame,self.generation,self.tracking_epoch,identity_proof):
+            self.metrics.record('pickup.submitted',age_ms=max(0,(now-self.last_frame)*1000))
             self.last_pickup=now;self.last_pickup_frame=self.last_frame
 
+    def on_pickup_issue(self, reason):
+        self.metrics.record('pickup.'+reason)
+        self.pickup_status.emit(reason)
+
     def on_pickup_result(self,result):
-        if (self.tracking_ready and self.experience_enabled and self.pickups_enabled
-                and result.get('captureGeneration')==self.generation
-                and result.get('trackingEpoch')==self.tracking_epoch
-                and result.get('atMs',0)>self.pickup_covered_at
-                and 0<=time.monotonic()*1000-result.get('atMs',0)<1500):
-            self.experience.emit(result)
+        age=time.monotonic()*1000-result.get('atMs',0)
+        if not (self.tracking_ready and self.experience_enabled and self.pickups_enabled):reason='inactive'
+        elif result.get('captureGeneration')!=self.generation:reason='old_capture'
+        elif result.get('trackingEpoch')!=self.tracking_epoch:reason='old_session'
+        elif result.get('atMs',0)<=self.pickup_covered_at:reason='covered_frame'
+        elif not 0<=age<1500:reason='late_frame'
+        else:reason='delivered'
+        self.metrics.record('pickup.'+reason,age_ms=age)
+        if reason=='delivered':self.experience.emit(result)
+        elif reason=='late_frame':self.pickup_status.emit(reason)
 
     def accept_tracking_location(self,result,request):
         origin=QPoint(*request.analysis_origin)
@@ -592,8 +667,18 @@ class PixelReader(QObject):
             request=self.active_request
             self.active_request=None
             if request is None:continue
+            metrics=getattr(self,'metrics',None)
             try:
                 result = json.loads(line)
+                partial=request.mode=='prices' and result.get('shopPartial') is True
+                if partial:self.active_request=request
+                if metrics is not None:metrics.record(request.mode.replace('-', '_')+('.partial' if partial else '.returned'),
+                    duration_ms=(time.monotonic()-request.started_at)*1000)
+                if metrics is not None and request.mode=='prices':
+                    metrics.record('prices.capture_age',age_ms=time.monotonic()*1000-result.get('atMs',0))
+                    if result.get('shopCached') is True:metrics.record('prices.cache_hit')
+                    for key,event in (('shopMs','prices.native_shop'),('componentMs','prices.native_components'),('tooltipMs','prices.native_tooltip')):
+                        metrics.record(event,duration_ms=(result.get('readerStages') or {}).get(key))
                 if self.paused or request.generation != self.generation:
                     continue
                 if result.get("error"):
@@ -632,6 +717,33 @@ class PixelReader(QObject):
                         if changed:
                             self.area_changed.emit()
                     if request.mode=='location':continue
+                    # Classify from the immutable submission before publishing
+                    # rows, including replies submitted under an older epoch.
+                    source=request.source_image();current=self.image.copy(self.crop) if self.crop else self.image
+                    masks=tuple(QRect(*rect) for rect in request.annotations)
+                    native_area=(result.get('shop') or {}).get('area') or {}
+                    near=(QRect(*(native_area[key] for key in ('x','y','width','height')))
+                        if all(type(native_area.get(key)) is int for key in ('x','y','width','height')) else None)
+                    read_point=request.pointer;current_point=self.pointer
+                    if request.crop:
+                        if read_point is not None:read_point=(read_point[0]-request.crop[0],read_point[1]-request.crop[1])
+                        if current_point is not None:current_point=(current_point[0]-request.crop[0],current_point[1]-request.crop[1])
+                    source_npc=self.npc_shop
+                    cursor=cursor_rectangle(read_point,source_npc.anchor[2] if source_npc is not None else
+                        max(.5,min(3,near.width()/199)) if near is not None else 1)
+                    masks=(*masks,*((cursor,) if cursor is not None else ()))
+                    if source_npc is None or source_npc.state(source,masks)=='absent':
+                        generic=result.get('tooltip')
+                        # An inventory-only reply must still prove its header,
+                        # cell and title below. With no shop rows to classify,
+                        # its flag need not trigger another full-frame search.
+                        possible=near is not None or (isinstance(generic,dict) and generic.get('found')
+                            and association_state(result.get('tooltipAssociation'))!='inventory-primary')
+                        source_npc=find_npc_shop(source,near=near,exclude=masks) if possible else None
+                    current_npc=self.update_npc_shop(current,exclude=self.annotation_regions(),candidate=source_npc)
+                    raw_shop_hover=bool(result.get('hover'))
+                    result=suppress_npc_rows(suppress_npc_rows(result,source_npc),current_npc)
+                    if current_npc is not None:result['_npc_shop_area']=current_npc.rectangle.getRect()
                     stale_shop = request.shop_epoch != self.shop_browsing.epoch
                     result['shopViewportEpoch'] = request.shop_epoch
                     result['_submitted_request']=request
@@ -640,7 +752,7 @@ class PixelReader(QObject):
                         # proved inventory cell/title in this same submission.
                         # Retire only shop authority; the newest page's caches
                         # must not be replaced or cleared by this late reply.
-                        shop_hover=bool(result.get('hover'))
+                        shop_hover=raw_shop_hover
                         result.update(_shop_stale=True,shop=None,hover=None)
                         self.request_rescan(preserve_shop_cache=True)
                         if shop_hover and association_state(result.get('tooltipAssociation'))=='normal':
@@ -660,19 +772,18 @@ class PixelReader(QObject):
                         if request.using_roi and area and not clean:
                             # A slightly moved shop can still be found inside the old
                             # crop while the tail of each price is clipped. Read the
-                            # full current frame before publishing incomplete rows.
-                            self.shop_rect = self.shop_fingerprint = None
+                            # full current frame next. Independently complete rows
+                            # can publish now; one incomplete neighbour cannot
+                            # freeze every old label until that retry completes.
                             self.request_rescan()
-                            continue
                         self.roi_clean = bool(clean)
-                        if request.using_roi and area is None and (not self.auto_active or self.game_area):
+                        if request.using_roi and area is None and self.npc_shop is None and (not self.auto_active or self.game_area):
                             # A moved/closed shop triggers an immediate full search
                             # in the same captured frame, not another polling delay.
                             self.request_rescan()
                         self.shop_rect = QRect(area["x"], area["y"], area["width"], area["height"]) if area else None
-                        # NPC buy/sell tables can share the player's shop palette
-                        # without any readable player listings. That rectangle
-                        # alone must not suppress the independent tooltip reader.
+                        # Only accepted player rows establish hover routing.
+                        # The separate NPC rectangle below is capture-only.
                         if self.shop_rect and rows:
                             if self.shop_context is None or abs(self.shop_context.x() - self.shop_rect.x()) > 4 or not self.shop_context.intersects(self.shop_rect):
                                 self.shop_context = self.shop_rect
@@ -680,6 +791,11 @@ class PixelReader(QObject):
                                 self.shop_context = self.shop_context.united(self.shop_rect)
                         else:
                             self.shop_context = None
+                        if self.shop_rect is None and self.npc_shop is not None:
+                            # Cache only the NPC lists, away from character/NPC
+                            # animations. This is a capture optimization, never
+                            # a player-shop routing context or a price source.
+                            self.shop_rect=self.npc_shop.lists
                         if self.shop_rect:
                             source = request.source_image()
                             # Compare later frames with the frame actually recognised.
@@ -702,6 +818,12 @@ class PixelReader(QObject):
                             exclude=tuple(QRect(*rect) for rect in request.annotations))
                         if proof is None or not proof.contains_pointer(read_point) or not proof.matches(
                                 current,current_point,exclude=self.annotation_regions()):state='rejected'
+                    if state=='rejected':result['tooltipAssociation']={'state':'rejected'}
+                    for npc,point in ((source_npc,read_point),(current_npc,current_point)):
+                        result=suppress_npc_prices(result,npc,point,inventory=proof if state=='inventory-primary' else None)
+                    tooltip=result.get('tooltip') or {}
+                    found=tooltip.get('found') if isinstance(tooltip,dict) else None
+                    state=association_state(result.get('tooltipAssociation'))
                     if state=='rejected':
                         result['tooltipAssociation']={'state':'rejected'}
                         result['tooltip']={**(tooltip if isinstance(tooltip,dict) else {}),'found':None}
@@ -743,6 +865,7 @@ class PixelReader(QObject):
 
     def close(self, keep_stream=False):
         self.paused=True
+        if hasattr(self,'diagnostics_timer'):self.diagnostics_timer.stop()
         self.timer.stop()
         self.screenshot_timer.stop()
         if self.pickup_worker is not None:

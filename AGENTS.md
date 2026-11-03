@@ -65,8 +65,11 @@ proofs to achieve this. Inventory source cells and interior header/frame guards
 remain independently verified. With an explicit native sourceTab, recognize
 only the selected-tab white pulse using the shared bounded colour-direction
 fit; retain exact caption/buttons/inactive-tab pixels and visible pink selection.
-Only changed native-gold rim pixels may animate within the scaled outermost
-cell pixel; exposed icon interiors must match exactly with a scaled 16-pixel
+Changed native-gold rim pixels may animate within the scaled outermost cell
+pixel. A second inset scanline and its blended fringe are allowed only with
+enough exposed, aligned gold anchors in both frames and bounded native colour
+directions; never ignore a wider border wholesale. Exposed icon interiors must
+match exactly with a scaled 16-pixel
 minimum even on a byte-identical cursor frame. Older metadata retains strict
 guards. Fully covered
 cells remain unknown rather than alternating authority with cursor animation.
@@ -158,7 +161,11 @@ Late replies cannot mutate held observations. Form evidence excludes Lupin's
 own labels and supports partially covered fields without treating those labels
 as native controls. Fully covered inputs/buttons may remain unknown only with
 independent exposed caption ink, connected frame strokes, paper and all three
-magenta labels. Visible contradictory controls reject the form. Inventory labels
+magenta labels. A previously verified form may relocate from exposed native
+fields, footer controls and its right/bottom rails when our labels hide the
+magenta column. Capture paths which omit our paint may recover only from the
+complete current native grid plus both physical rails; metadata rectangles alone
+are never evidence of a form. Visible contradictory controls reject the form. Inventory labels
 and ordinary shop descriptions never dim. Inventory cards prefer directly above
 the verified hovered description, using side/below fallbacks when necessary;
 never anchor them to the inventory or equipped comparison. Reset pointer offsets
@@ -167,3 +174,48 @@ when description geometry changes and clear omitted anchor metadata.
 On-screen item cards have a GUI-only 2 second grace period before retirement to session history. Current observations alone supply overlays and offer verification. Animate the active-card canvas independently of history, including the first history header/gap; quote and age updates must not restart structural motion. Keep at most 100 unique session entries and animate/repaint only visible rows. Stable shop annotation keys use the verified page, canonical item and list-local slot. Held shop presentation stays separate from current offers and requires the same verified page/slot/item and a fresh exact-ID market reference. Nearest-name/fuzzy pricing remains deferred; native retries may omit a decorative marker only on a proven marker-bearing title path.
 
 GitHub Releases is the sole distribution and update destination. GitHub application updates use the public stable release feed, pinned Ed25519 signatures and exact artifact hashes. Check on launch and the configured timer; never install without Download & install. Linux authentication goes through the fixed root-owned polkit helper and native package manager. Never bypass authentication or patch managed install files in place. Source checkouts do not automatically check/install. Keep release signing keys outside the repository and all packages. Patch decoding uses bounded chunks, with verified full-download fallback. Publication and repository visibility still require user authorization. Exact source/panel/guard proofs remain mandatory; no fuzzy name matching is added.
+
+An available application update gives Settings a repeating pulse/shimmer, confined
+to that button. Stop its animation while hidden/minimized or with Reduce motion;
+retain a static update indication. Repeated status updates must not restart it.
+
+NPC buy, Buy Back and sell lists never supply market prices, including their native hover
+descriptions. Classify them from independent current controls and frame/tab
+structure, not potion names, blue row colours or missing asking prices. Keep
+ordinary inventory/equipped pricing independent. A cached NPC list rectangle is
+for capture scheduling only, never player-shop routing or recent-item history.
+Accept current shop rows independently while retrying a failed neighbour. Slot
+geometry can refine its vertical position from native dividers; this must never
+weaken title, numeric-ending, exact-ID or current-source proofs.
+NPC control acquisition must cover the entire connected window from either
+column. Reusable control samples exclude selected tabs, wallet digits, item rows
+and portraits. Present/unknown/absent states keep uncertain known bounds excluded
+until current exposed controls release them; an OCR metadata flag cannot bypass
+this policy. Independent overlapping inventory needs its validated ordinary
+header, source cell and title. Keep capture's source/current-frame filtering and
+the UI's immediate overlapping-cache retirement in sync. The detailed current
+contract is docs/SHOP_RECOGNITION.md; update it with changes to this pipeline.
+
+Pickup-only admission remains independent of EXP numerical candidates. Bind
+each job to its captured character proof: a missing proof holds that job, while
+positively different pixels hold the session for EXP/context reconfirmation.
+Do not reset arrival continuity on an ordinary temporary OCR failure or extend
+freshness/timeouts to guess missed pickups. Keep numeric diagnostics bounded and
+text-free; optional LUPIN_READER_DIAGNOSTICS export is developer-only.
+
+The native complete-page cache requires capture_generation, shop_epoch, a
+current shop_area and exact table/icon/rim pixels. It must never bypass Python's
+latest-frame source/NPC/offer checks or retain a stale hover title. Keep geometry
+available when shop_recovery is disabled. progressive_shop permits at most one
+shopPartial reply before the final result, with one immutable request and its
+original deadline; never enqueue another request between phases. Ordinary
+complete native rows may export numeric proofs from their existing strict read;
+missing components still need two agreeing independent OCR readings. Keep
+scroll-tier picture protection and clipped-title refinement when skipping
+unnecessary description recognition.
+
+Only an already verified add-item form may treat the bounded current cursor as
+unknown control pixels, with independent current native controls/frame evidence.
+Cursor masks cannot bootstrap a new form, excuse contradictory exposed controls,
+or retain a form after its native structure disappears. See
+docs/TRACKING_AND_READER_PERFORMANCE.md for the current evidence and test limits.

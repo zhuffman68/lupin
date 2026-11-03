@@ -6,7 +6,7 @@
 //! cell and following grid cell, then retry without that pane. Names alone never
 //! establish a ledger or exclude ordinary shop listings.
 use crate::shop_prices::PriceRecovery;
-use minerva_core::{Frame, PlayerShopReader, ScreenRect, ShopCapture, ShopReading};
+use minerva_core::{Frame, PlayerShopReader, ScreenPoint, ScreenRect, ShopCapture, ShopReading};
 
 fn pixel(frame: &Frame, x: u32, y: u32) -> [u8; 3] {
     let at = ((y * frame.width + x) * 4) as usize;
@@ -131,6 +131,14 @@ pub fn read(
     reader: &mut PlayerShopReader,
     prices: &mut PriceRecovery,
 ) -> ShopReading {
+    // The pinned reader also searches/OCRs a description on every list hover.
+    // Read the listing once first, using its existing per-line pixel cache.
+    // Only request hover evidence when it can resolve a clipped/hidden title
+    // or is needed to protect the scroll-tier picture from an occluding pane.
+    let pointer = capture.pointer;
+    let mut list_capture = capture.clone();
+    list_capture.pointer = None;
+    let capture = &list_capture;
     let mut reading = reader.read(capture);
     let mut filtered = None;
     // There is normally one ledger; bound retry work for arbitrary captures.
@@ -138,6 +146,7 @@ pub fn read(
         let source = filtered.as_ref().unwrap_or(capture);
         let Some(area) = ledger_area(source, &reading) else {
             prices.apply(source, &mut reading, reader);
+            attach_hover(source, pointer, &mut reading, reader);
             return reading;
         };
         let source = filtered.get_or_insert_with(|| capture.clone());
@@ -150,14 +159,63 @@ pub fn read(
         reading.hover = None;
     } else {
         prices.apply(source, &mut reading, reader);
+        attach_hover(source, pointer, &mut reading, reader);
     }
     reading
+}
+
+fn needs_hover(reading: &ShopReading, pointer: Option<ScreenPoint>) -> bool {
+    let (Some(shop), Some(pointer)) = (&reading.shop, pointer) else { return false; };
+    let top = shop.rows.iter().map(|row| row.area.y).fold(shop.area.y, i32::min);
+    let bottom = shop.rows.iter().map(|row| row.area.bottom()).fold(shop.area.bottom(), i64::max);
+    if pointer.x < shop.area.x || i64::from(pointer.x) >= shop.area.right()
+        || pointer.y < top || i64::from(pointer.y) >= bottom { return false; }
+    shop.rows.iter().any(|row| row.tier.is_some()
+        || row.area.y <= pointer.y && i64::from(pointer.y) < row.area.bottom()
+            && row.name.as_ref().is_none_or(|name| name.ends_with("...") || name.ends_with('…')))
+}
+
+fn attach_hover(capture: &ShopCapture, pointer: Option<ScreenPoint>, reading: &mut ShopReading,
+                reader: &mut PlayerShopReader) {
+    if !needs_hover(reading, pointer) { return; }
+    let mut hovered = capture.clone();
+    hovered.pointer = pointer;
+    let current = reader.read(&hovered);
+    let (Some(shop), Some(other)) = (&mut reading.shop, &current.shop) else { return; };
+    if shop.area != other.area { return; }
+    // Keep the ordinary/recovered list. The optional pass supplies only hover
+    // evidence and vetoes tiers when its pointer/pane hides the picture.
+    for row in &mut shop.rows {
+        if row.tier.is_some() && !other.rows.iter().any(|old| old.area == row.area
+            && old.name == row.name && old.price == row.price && old.tier == row.tier) {
+            row.tier = None;
+        }
+    }
+    reading.hover = current.hover;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use minerva_core::{ScreenPoint, ShopList, ShopRow};
+
+    #[test]
+    fn complete_names_skip_hover_ocr_but_clipped_names_and_scroll_pictures_keep_it() {
+        let (_, mut reading) = example(1);
+        let row = &mut reading.shop.as_mut().unwrap().rows[0];
+        row.name = Some("Example sword".into());
+        let pointer = ScreenPoint { x: row.area.x + 10, y: row.area.y + 8 };
+        assert!(!needs_hover(&reading, Some(pointer)));
+        reading.shop.as_mut().unwrap().rows[0].name = Some("Example s...".into());
+        assert!(needs_hover(&reading, Some(pointer)));
+        assert!(!needs_hover(&reading, Some(ScreenPoint { x: 0, y: 0 })));
+        assert!(!needs_hover(&reading, None));
+        reading.shop.as_mut().unwrap().rows[0].name = None;
+        assert!(needs_hover(&reading, Some(pointer)));
+        reading.shop.as_mut().unwrap().rows[0].name = Some("Example scroll".into());
+        reading.shop.as_mut().unwrap().rows[0].tier = Some(minerva_core::ScrollTier::Greater);
+        assert!(needs_hover(&reading, Some(pointer)));
+    }
 
     fn example(scale: u32) -> (ShopCapture, ShopReading) {
         let (width, height) = (260 * scale, 290 * scale);

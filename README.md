@@ -16,7 +16,7 @@ Check market prices, track your training, translate Korean, and explore Classic 
 
 ## Prices
 
-Compare player-shop listings with color-coded market references beside each item. Hover inventory or equipped items to check their prices, or search by name directly in Lupin.
+Compare player-shop listings with color-coded market references beside each item. Hover inventory or equipped items to check their prices, or search by name directly in Lupin. NPC shop lists are excluded from market overlays.
 
 Star items to watch for them while browsing shops. Recently seen items stay in the Prices tab, with thumbnails and their last seen asking prices. Saved market prices remain available between refreshes.
 

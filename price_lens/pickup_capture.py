@@ -12,6 +12,7 @@ from .platform_paths import reader_binary
 
 class PickupWorker(QObject):
     result = Signal(dict)
+    issue = Signal(str)
     MAX_RESULT_BYTES = 128 * 1024
     TIMEOUT = 1.5
 
@@ -71,6 +72,7 @@ class PickupWorker(QObject):
     def on_output(self):
         self.buffer += bytes(self.process.readAllStandardOutput())
         if len(self.buffer) > self.MAX_RESULT_BYTES:
+            self.issue.emit('invalid_output')
             self.context = None
             self.process.kill()
             self.buffer = b""
@@ -87,8 +89,10 @@ class PickupWorker(QObject):
                 if (not isinstance(result, dict) or result.get("error")
                         or result.get("pickupsRead") is not True
                         or result.get("atMs") != context[2]):
+                    self.issue.emit('invalid_output')
                     continue
             except (ValueError, TypeError):
+                self.issue.emit('invalid_output')
                 continue
             self.timings.append((time.monotonic() - self.started_at) * 1000)
             result["captureGeneration"] = context[0]
@@ -98,6 +102,7 @@ class PickupWorker(QObject):
 
     def check_timeout(self):
         if self.pending and time.monotonic() - self.started_at > self.TIMEOUT:
+            self.issue.emit('worker_timeout')
             self.context = None
             self.process.kill()
 
@@ -106,6 +111,7 @@ class PickupWorker(QObject):
         self.process.readAllStandardError()
 
     def on_error(self, _error):
+        if not self.closed:self.issue.emit('worker_unavailable')
         self.context = None
         if self.process.state() == QProcess.ProcessState.NotRunning:
             self.pending = False

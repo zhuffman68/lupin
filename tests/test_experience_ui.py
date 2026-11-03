@@ -300,14 +300,52 @@ class ExperienceUiTests(unittest.TestCase):
                         'experience':{**payload(2500),'nameProof':proof()}})
         self.assertFalse(panel.recognition_held);self.assertEqual(panel.mesos.gain,600)
 
-    def test_missing_pickup_name_proof_holds_when_a_visual_identity_is_established(self):
+    def test_missing_pickup_name_proof_holds_only_the_job_and_retains_continuity(self):
         from test_tracking_identity import proof
         panel=self.panel;panel.set_connected(True);panel.start()
         panel.feed({'atMs':int(self.now*1000),'experience':{**payload(),'nameProof':proof()}})
+        epoch=panel.tracking_epoch;reference=panel.identity.reference
+        self.pickup();self.pickup(29)
         self.now+=.2
         panel.feed({'atMs':int(self.now*1000),'pickupsRead':True,'pickupNameProof':None,
                     'pickups':{'valid':True,'lines':[]}})
-        self.assertTrue(panel.recognition_held);self.assertFalse(panel.mesos.observed)
+        self.assertFalse(panel.recognition_held);self.assertEqual(panel.tracking_epoch,epoch)
+        self.assertIs(panel.identity.reference,reference)
+        self.assertEqual(panel.pickup_issue,'checking_name')
+        self.pickup(29)
+        self.assertEqual(panel.mesos.gain,29)
+        self.assertEqual(panel.metrics.counts['pickup.name_missing'],1)
+
+    def test_pickups_continue_during_exp_numeric_confirmation_for_verified_character(self):
+        from test_tracking_identity import proof
+        from test_meso_tracking import log
+        panel=self.panel;panel.set_connected(True);panel.start()
+        panel.feed({'atMs':int(self.now*1000),'experience':{**payload(),'nameProof':proof()}})
+        self.now+=.2
+        panel.feed({'atMs':int(self.now*1000),'experience':{**payload(100,20000,30),'nameProof':proof()}})
+        self.assertIsNotNone(panel.tracker.candidate)
+        current=panel.tracker.current;epoch=panel.tracking_epoch
+        for rows in ((),(50,),(50,),(50,50),(50,50)):
+            self.now+=.2
+            panel.feed({'atMs':int(self.now*1000),'trackingEpoch':epoch,'pickupsRead':True,
+                        'pickupNameProof':proof(),'pickups':log(*rows)})
+        self.assertEqual(panel.mesos.gain,100)
+        self.assertIs(panel.tracker.current,current)
+        self.assertIsNotNone(panel.tracker.candidate)
+        self.assertFalse(panel.recognition_held)
+        self.assertEqual(panel.metrics.counts['pickup.accepted'],5)
+
+    def test_pickup_waiting_distinguishes_real_cover_from_delayed_reading(self):
+        panel=self.panel;panel.set_connected(True);panel.start()
+        for issue,text,note in (('covered','covered','Log covered'),
+                                ('late_frame','delayed','Reading delayed'),
+                                ('unreadable','Reading pickup','Reading pickups')):
+            panel.set_pickup_issue(issue)
+            self.assertIn(text,panel.meso_status.text())
+            self.assertEqual(panel.overlay_rows()[1]['compact_note'],note)
+        self.pickup()
+        self.assertEqual(panel.pickup_issue,'')
+        self.assertNotIn('covered',panel.meso_status.text())
 
     def test_stop_then_start_on_another_character_discards_only_the_old_session_binding(self):
         from test_tracking_identity import proof

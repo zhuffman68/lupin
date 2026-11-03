@@ -44,18 +44,21 @@ class UpdatePanel(QWidget):
         if not settings:self.status.setStyleSheet('font-size:23px;font-weight:700;color:#f0d9b0')
         self.detail=QLabel();self.detail.setTextFormat(Qt.TextFormat.PlainText);self.detail.setWordWrap(True);self.detail.setStyleSheet('color:#a6b1bf;font-size:11px');layout.addWidget(self.detail)
         if settings:
+            self.status.setStyleSheet('font-size:14px;font-weight:650;color:#e4bd7b')
             self.launch=QCheckBox('Check for updates on launch');self.launch.setChecked(service.settings.value('update-on-launch',True,type=bool))
             def launch_changed(value):
                 service.settings.setValue('update-on-launch',value);service.configure()
             self.launch.toggled.connect(launch_changed);layout.addWidget(self.launch)
-            row=QHBoxLayout();row.addWidget(QLabel('Check every'));row.addStretch()
+            row=QHBoxLayout();row.setSpacing(12)
             self.interval=QSpinBox();self.interval.setRange(15,10080);self.interval.setSuffix(' min');self.interval.setMinimumWidth(105)
             value=service.settings.value('update-interval-minutes',360,type=int);self.interval.setValue(value if value else 360)
-            self.periodic=QCheckBox('While Lupin is open');self.periodic.setChecked(bool(value));self.interval.setEnabled(bool(value))
+            self.periodic=QCheckBox('Check every');self.periodic.setToolTip('Check for application updates while Lupin is open.')
+            self.periodic.setChecked(bool(value));self.interval.setEnabled(bool(value))
+            self.interval.setAlignment(Qt.AlignmentFlag.AlignRight)
             def configure(*_):
                 self.interval.setEnabled(self.periodic.isChecked());service.settings.setValue('update-interval-minutes',self.interval.value() if self.periodic.isChecked() else 0);service.configure()
             self.interval.valueChanged.connect(configure);self.periodic.toggled.connect(configure)
-            row.addWidget(self.interval);layout.addLayout(row);layout.addWidget(self.periodic)
+            row.addWidget(self.periodic,1);row.addWidget(self.interval);layout.addLayout(row)
         self.progress=QProgressBar();self.progress.setRange(0,100);layout.addWidget(self.progress)
         if not settings:self.progress.setFixedHeight(6);self.progress.setTextVisible(False)
         self.actions=QHBoxLayout();self.actions.setSpacing(8)
@@ -64,12 +67,17 @@ class UpdatePanel(QWidget):
         self.cancel=QPushButton('Cancel');self.cancel.clicked.connect(service.cancel)
         self.notes=QPushButton('Release notes');self.notes.setObjectName('ghost');self.notes.clicked.connect(lambda:QDesktopServices.openUrl(QUrl(RELEASES)))
         if settings:
-            for button in (self.check,self.install,self.cancel,self.notes):self.actions.addWidget(button)
+            self.actions.addWidget(self.check);self.actions.addWidget(self.cancel)
+            self.actions.addStretch();self.actions.addWidget(self.notes)
         else:
             self.actions.addWidget(self.notes);self.actions.addStretch()
             for button in (self.check,self.cancel,self.install):
                 button.setMinimumHeight(34);self.actions.addWidget(button)
-        layout.addLayout(self.actions);service.changed.connect(self.refresh);self.refresh()
+        layout.addLayout(self.actions)
+        if settings:
+            layout.addWidget(self.install)
+            for control in (self.check,self.install,self.cancel,self.notes):control.setAutoDefault(False)
+        service.changed.connect(self.refresh);self.refresh()
 
     def refresh(self):
         s=self.service;offer=s.offer;new=offer['manifest']['version'] if offer else ''

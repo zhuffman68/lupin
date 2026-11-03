@@ -392,8 +392,7 @@ class PriceObservations:
         self.occlusion_trail.clear()
 
     def observe_shop(self,shop,image,latest,*,pointer=None,read_point=None,panel=None,exclude=(),source_exclude=()):
-        previous=self.rows;viewport_changed=False
-        frame_exclude=tuple(exclude)
+        previous=self.rows;viewport_changed=False;rejected_rows=False
         scale=((shop or {}).get('area') or self.shop_rows.area or {}).get('width',199)/199
         cursors=self.cursor_exclusions(pointer)
         panels=self.native_exclusions(panel)
@@ -437,7 +436,7 @@ class PriceObservations:
             for index,(row,state) in enumerate(zip(raw,states)):
                 clipped=row.pop('_shop_clipped',False)
                 semantic='priceValueArea' in row or 'priceText' in row
-                if (row.get('name') and not row.get('covered') and state!='changed'
+                if (row.get('name') and not row.get('covered') and (state!='changed' or clipped or semantic)
                         and (clipped or semantic or state in ('occluded','unknown'))):
                     repaired=self.component_row(row,image,latest,pointer=pointer,read_point=read_point,
                         exclude=source_exclude,panel=panel)
@@ -446,19 +445,17 @@ class PriceObservations:
                         states[index]=proof_state(row.get('_identity_source'),latest,pointer=pointer,exclude=source_exclude)
                     elif clipped or semantic:
                         raw[index]={'area':row['area'],'name':None,'price':None,'covered':True}
-                        states[index]='occluded'
+                        states[index]='changed' if state=='changed' else 'occluded'
                 row.pop('_shop_read_area',None)
-            if 'changed' in states:
-                # Reject this late/inconsistent OCR result independently of
-                # accepted rows that still match the newest captured pixels.
-                # A bad submission cannot blank a still-verified shop page.
-                if self.rows:
-                    frame=self.validate_frame(latest,pointer=pointer,exclude=frame_exclude,
-                        source_exclusions=lambda panel:source_exclude)
-                    return ShopRead(shop,changed=frame.changed,retry=True)
-                return ShopRead(shop,retry=True)
+            # A cursor/late capture can invalidate one slot while its neighbours
+            # independently prove the new page. Reject that slot, not the whole
+            # reply: otherwise a single mismatch can freeze the previous page
+            # until another pointer movement. Existing rows still need current
+            # proofs below; an untrusted slot never supplies identity or amount.
+            rejected_rows='changed' in states
             raw=[row if state=='same' or row.get('covered') else
-                 {'area':row['area'],'name':None,'price':None,'covered':True} for row,state in zip(raw,states)]
+                 {'area':row['area'],'name':None,'price':None,'covered':True}
+                 for row,state in zip(raw,states) if state!='changed']
             if self.container_matches(latest,panel,exclude):
                 # Canonicalize before capturing browsing templates, not only
                 # before merging rows. Otherwise 1px OCR rounding accumulates
@@ -508,7 +505,7 @@ class PriceObservations:
         # immediately; an unchanged-shop fingerprint would otherwise postpone
         # it until the periodic locator pass. This transition occurs once per
         # newly proved container and never accepts an unverified component.
-        retry=bool(not had_container and self.shop_open
+        retry=rejected_rows or bool(not had_container and self.shop_open
             and native_priced_rows>sum(bool(row.get('name') and row.get('price')) for row in rows)
             and self.container_matches(latest,panel,exclude))
         return ShopRead(shop,changed=rows!=previous,viewport_changed=viewport_changed,retry=retry)

@@ -43,6 +43,13 @@ class CaptureRequestTests(unittest.TestCase):
         self.assertEqual((payload['width'],payload['height']),(800,600))
         self.assertFalse(reader.submit.call_args.kwargs['using_roi'])
 
+    def test_complete_shop_keeps_geometry_for_cache_without_requesting_recovery(self):
+        reader,area=self.scanning_reader();reader.shop_name_recovery_needed=lambda pointer:False
+        with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
+        request=reader.submit.call_args.args[0]
+        self.assertEqual(request['shop_area'],dict(zip(('x','y','width','height'),area.getRect())))
+        self.assertFalse(request['shop_recovery'])
+
     def test_unchanged_stationary_shop_does_not_repeat_hover_ocr_on_a_timer(self):
         reader,area=self.scanning_reader()
         reader.shop_fingerprint=PixelReader.fingerprint(reader.image,area)
@@ -56,6 +63,19 @@ class CaptureRequestTests(unittest.TestCase):
             reader.shop_fingerprint=b'previous page'
             with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
             reader.submit.assert_called_once()
+
+    def test_new_shop_page_gets_one_prompt_slot_without_starving_due_exp(self):
+        for age,epoch,expected in ((2.0,2,'prices'),(2.0,1,'experience'),(2.5,2,'experience')):
+            with self.subTest(age=age,epoch=epoch):
+                reader,_=self.scanning_reader()
+                reader.experience_enabled=True;reader.pickups_enabled=False;reader.tracking_ready=True
+                reader.live_source=True;reader.last_experience=100-age;reader.scan_experience=Mock()
+                reader.shop_browsing=SimpleNamespace(epoch=epoch);reader.last_price_epoch=1
+                with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
+                if expected=='prices':
+                    reader.submit.assert_called_once();reader.scan_experience.assert_not_called()
+                    self.assertTrue(reader.submit.call_args.args[0]['progressive_shop'])
+                else:reader.scan_experience.assert_called_once_with(100);reader.submit.assert_not_called()
 
     def test_stationary_tooltip_uses_its_native_title_proof_instead_of_repeating_ocr_for_background(self):
         from PySide6.QtGui import QPainter
