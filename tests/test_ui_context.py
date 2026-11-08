@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QRect, Qt, QTimer, Signal,QPoint
-from PySide6.QtGui import QColor, QImage, QKeySequence, QMouseEvent
+from PySide6.QtGui import QColor, QImage, QKeySequence, QMouseEvent,QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QKeySequenceEdit, QLabel, QPushButton
 
@@ -790,6 +790,17 @@ class ContextUiTests(unittest.TestCase):
         self.assertIsNotNone(w.tooltip_context)
         self.assertEqual(w.rows,[])
 
+    def test_early_inventory_reply_does_not_retire_or_reread_shop_observations(self):
+        w=self.window;reading=self.primary_inventory_reading()
+        saved=[dict(name='Example Hat',price=dict(quantity=1,mesos=100),
+            area=dict(x=340,y=220,width=180,height=40))]
+        w.rows=saved;w.shop_open=True
+        reading.update(_shop_deferred=True)
+        with patch.object(w.observations,'observe_shop',side_effect=AssertionError('Deferred shop must be untouched')):
+            w.on_reading(reading)
+        self.assertIs(w.rows,saved);self.assertTrue(w.shop_open)
+        self.assertEqual(w.tooltip_result['name'],'Example Hat')
+
     def test_an_old_shop_popup_cannot_be_relabelled_as_inventory_after_scrolling(self):
         w=self.window;reading=self.reading(True)
         reading['shopViewportEpoch']=w.shop_browsing.epoch-1
@@ -868,10 +879,12 @@ class ContextUiTests(unittest.TestCase):
         w.reader.image=QImage(round(geometry.width()*dpr),round(geometry.height()*dpr),QImage.Format.Format_RGBA8888)
         w.reader.image.fill(QColor('navy'));w.reader.last_frame=time.monotonic()
         w.reader.auto_active=False;w.reader.crop=QRect(100,50,500,500)
+        w.reader.manual_game_footer=QRect(100,510,500,40)
         w.reader.shop_context=QRect(30,40,200,160);w.shop_open=True
         w.chat.watching=True
         with patch.object(w.chat,'request') as request:
             w.submit_chat_frame()
+            self.assertEqual(request.call_args.kwargs['hud'],w.reader.manual_game_footer)
             self.assertEqual(request.call_args.kwargs['contexts'],[
                 {'role':'store','box':[130,90,200,160],'verified':True}])
             w.shop_open=False;w.submit_chat_frame()
@@ -879,6 +892,27 @@ class ContextUiTests(unittest.TestCase):
             w.shop_open=True;w.reader.shop_context=QRect(450,450,200,160);w.submit_chat_frame()
             self.assertEqual(request.call_args.kwargs['contexts'],[
                 {'role':'store','box':[550,500,50,50],'verified':True}])
+
+    def test_chat_and_pickups_exclude_only_current_visible_control_panel_paint(self):
+        w=self.window;w.resize(506,914);w.show();self.app.processEvents()
+        screen=w.screens[w.screen_index].geometry()
+        image=QImage(screen.width(),screen.height(),QImage.Format.Format_RGB888);image.fill(QColor('navy'))
+        w.reader.image=image;w.reader.auto_active=False;w.reader.crop=image.rect()
+        w.chat.watching=True
+        with patch.object(w,'mapToGlobal',return_value=QPoint(0,0)),\
+             patch('price_lens.owned_capture.time.monotonic',return_value=1):
+            self.assertEqual(w.owned_capture_exclusions(),[])
+        x,y=screen.width()-w.width()-20,40
+        painter=QPainter(image);painter.drawImage(x,y,w.grab().toImage());painter.end()
+        expected=QRect(x,y,w.width(),w.height()).intersected(image.rect())
+        with patch.object(w,'mapToGlobal',return_value=QPoint(0,0)),\
+             patch('price_lens.owned_capture.time.monotonic',return_value=2.1),\
+             patch.object(w.chat,'request') as request:
+            w.reader.image=image;w.reader.last_frame=2.1
+            w.submit_chat_frame()
+            self.assertIn(list(expected.getRect()),request.call_args.args[2])
+            self.assertNotIn([0,0,w.width(),w.height()],request.call_args.args[2])
+            self.assertIn(expected,w.pickup_capture_exclusions())
 
     def test_automatic_game_area_is_enabled_by_default(self):
         self.assertTrue(self.window.auto_area_check.isChecked())

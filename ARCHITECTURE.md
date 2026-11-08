@@ -102,6 +102,15 @@ fallback neither reads description text nor guesses a hidden name or number.
 The glyph cache holds at most 96 successes/misses and work is limited to 24 slots;
 it adds no weights or runtime dependencies.
 
+Name proof rectangles omit only the ink-free outer divider padding retained by
+OCR. Complete first-reply components may establish their own fixed table-rim
+proof from submitted and latest pixels; they do not need another recognition
+pass merely to populate the table guard cache. Changed or wholly hidden rims,
+incomplete names/numbers and ambiguous exact identities still fail.
+Near-black ordinary-name pixels below RGB 24 allow one extra quantization unit
+at the native palette boundary and are counted as ink. This cannot hide changed
+source pixels or shorten the blank ending. Numeric/asking proofs stay strict.
+
 Asking recovery reads the complete quantity, "for" and canonical grouped amount;
 the currency word supplies no authority. Both OCR resamplings must agree.
 `priceArea` and `priceValueArea` cover the same numeric glyphs and an independently
@@ -216,8 +225,29 @@ its submitted rectangles and each latest frame with the current rectangles;
 fully hidden rims/corners and changed native title/source/header evidence still
 fail. These geometry masks do not excuse source-cell or header pixel changes.
 Stationary tooltips reuse the proof instead of repeating OCR for scenery changes.
+Repeated validation of that immutable proof uses a four-entry decision cache
+keyed by image revision, pointer and exclusions. A new/edited capture or changed
+mask/source position cannot reuse an earlier decision. Frame sampling tests
+exclusion intersections at the requested rim lanes rather than creating masks
+for the full display on each check.
 An ordinary unbound popup must also stay near the submitted pointer's source;
 far-away clicked/pinned descriptions retain their separately verified path.
+
+`reader/src/tooltip_reader.rs` runs inventory recognition before shop work.
+Opt-in `progressive_tooltip` requests may publish one independently proved
+inventory result (`tooltipPartial`, `shopDeferred`) before their final shop
+result. Capture preserves the same immutable request and deadline; the early
+phase cannot replace shop routing or observations. UI admission skips shop
+mutation for this phase while checking inventory/NPC ownership normally. Shop
+and inventory partial modes are mutually exclusive. Alternate title readings
+retain their ambiguity/role checks and a 32-entry exact-crop recognition cache.
+Small cyan cores are bounded geometry proposals only after full-marker discovery
+fails. They need the same complete current frame/source proof and authorize OCR
+only in its independently measured title lane. They do not authorize contrast
+repair or stripping a decorative prefix. A pointer inside the native description
+cannot fall back to pricing the inventory cell beneath it. Cap discovery can
+continue past an incomplete earlier candidate, with at most eight caps per rail
+hypothesis and the existing rail/corner/body checks.
 
 Shop viewport epochs authorize shop rows, independently of current inventory
 proofs. Capture discards stale shop/hover fields, preserves newer shop caches and
@@ -430,6 +460,12 @@ Clicked item-link descriptions may be located beyond the pointer's usual search 
 
 Search controls sit above one shared content area. Selected-item and on-screen/ready views use the same origin. A missing on-screen item gets a 2 second GUI grace period before its card retires to history; this does not extend an overlay's lifetime or verify an old offer. A replacement item can take over the active area without a ready/history detour. Active-card changes and recent-row movement have independent transitions, so history is not faded through a blank frame with the active card. Empty status rows are hidden. New market generations synchronize retained price cards even while capture is paused. Search is part of Prices and takes space priority while active. Clearing it animates shop cards back into view. Shop cards retain their widget instances and layout positions during quote/age updates. Adding a hovered item does not change shop-card identities. Search, shop and inventory cards share an exact-ID watch star and thumbnails. The removed Details expander has no runtime path.
 
+`market_status_ui.py` retains separate rolling labels for the market-status
+lines beneath search. Age ticks update digit runs without fading the static
+captions or reapplying their stylesheet. Long diagnostics retain normal wrapping;
+hidden/minimized widgets and Reduce motion stop animation work. This presentation
+does not change publication/check ages, expiry or refresh scheduling.
+
 Watched items start collapsed. Expanding shows a compact list with thumbnails and cached references, capped at three visible rows. Its contents stay at a stable full height while a clipping viewport slides, avoiding repeated list reflow. Header/empty-space clicks toggle the panel; items, stars and the scrollbar retain their actions. Rounded selection covers the full row.
 
 Only an item click opens its larger card and takes space priority. Expanding alone retains the normal item/ready view. Deselecting clears that card while retaining the watched view. Collapsing clears the selection and returns to shop cards. Watching/unwatching changes saved exact IDs, not market demand. In-game watched labels shimmer twice inside a steady border and retain a star. Reduced motion uses a steady marker.
@@ -483,7 +519,7 @@ The detected-map header omits a redundant street prefix and shortens overflowing
 
 The Korean reader scans the detected full game area for a short configurable window, independent of cursor proximity. New scans supersede old work. Matching source pixels retain cards through modest movement; linger and no-result timers are bounded. The Korean original is retained and unstated price/percentage units are not invented.
 
-Bubble and generic text candidates alternate within the bounded worker budget.
+Bubble, native-history and generic text candidates share the bounded worker budget.
 Colored generic ink is normalized before recognition; verified source roles use
 geometry, explicit speaker/system prefixes or a current captured shop rectangle.
 A bounded event ledger merges an exact same-speaker bubble/chat arrival within
@@ -497,9 +533,44 @@ merged. Scanning and finishing use one phase state in both the GUI and overlay.
 and their speaker headers can provide a verified first result before full-window
 detection. At most two priority results leave room for new text; the ordinary
 bubble/colored-text queues continue. A 128-entry exact-pixel cache includes English
-and empty reads. Frame geometry changes clear source bindings. Connected-component
+and empty reads. History uses exact current foreground glyph bitmaps for cache
+and progress identity, so translucent scenery does not restart every row. Unknown
+or dense palettes retain their raw pixels. Primary recognition retains captured
+antialiasing and the bitmap is only a bounded retry; a confident English row
+needs no further header work. Generic and bubble cache inputs remain unchanged.
+Frame geometry changes clear source bindings. Connected-component
 run edges are extracted once per mask instead of allocating a new padded row for
 every scan line.
+
+`chat_history.py` proposes complete attached-history rows using a paired native
+scrollbar, continuous rails and the HUD-relative baseline grid. The submitted
+`hud` rectangle is a clipped search hint, never a chat/speaker proof. One new
+history row can emit before generic full-window detection, and detected panels
+are excluded from that generic queue. Foreground cores bound pale native text
+over translucent scenery; bright coloured links remain in the row and bright
+channel backgrounds keep their contrast mask. Untouched short rows take early
+turns, while attempted unfinished reads rotate behind other candidates instead
+of monopolizing every frame. Timestamp/channel prefixes are parsed
+before the body reaches translation or event deduplication. CTC character spans
+bound removal of a proven native channel capsule to the header. Accepted history
+headers permit separate message-body reads; salvaging a weak complete row still
+requires confident sender glyphs. Sender and body keep separate pixel anchors.
+Contrast cannot replace an intact header with a malformed timestamp, and broken
+timestamp metadata never reaches translation. Body admission retains the
+original 90% threshold and cancellation is checked between model operations.
+No global username substitution or guessed numeric unit is introduced. Skipping
+a required retry at the frame deadline does not cache a permanent empty read.
+
+`owned_capture.py` locates only Lupin's own control panel/native composer paint
+inside the existing shared frame. Qt top-level coordinates are hints because
+Wayland may return an unknown `(0, 0)` origin. Two separated opaque edge
+descriptors must match current pixels before their client rectangle can exclude
+chat/pickup OCR. The current widget is rendered once before fractional scaling;
+its wordmark/Hotkeys controls or composer title/hint supply the descriptors.
+Cached/reported positions are reverified, full searches have a bounded candidate
+count and failed searches are paced at one second. Missing/ambiguous paint adds
+no exclusion. Weak widget state retains positions only; snapshots stay in RAM.
+There is no OS window enumeration or game-window/process access.
 
 OCR retains at most four single-syllable alternatives from uncertain model
 emissions. An alternative may complete an anchored, known party-request phrase
@@ -656,12 +727,33 @@ quest requirements/reward links and reverse item sources, keeping choice/class
 pools distinct. Returning from a source restores the previous tab, entry and
 subpage. Quests use NPC portraits; Maps use published symbols and minimaps.
 
-`reference_geometry.py` has one cancellable worker for the selected map, positive
-and negative caches, content-addressed native-image checks and multiple portal
-anchors. A palette/terrain projection check rejects incompatible minimap crops.
-No full render is retained; native decoding, if required by the plugin, is capped
-at eight million pixels. Markers appear only for verified projections. An API
-spawn count is a count of exported placements, not live population or timing.
+`ReferenceStore.quest_followups` combines explicit next-step IDs with reverse
+completed-quest requirements across released entries. It excludes active/unstarted
+requirements, self-links and unavailable records, deduplicating direct/reverse
+matches. Chain names are presentation labels, not ordering evidence. Quest cards
+retain their existing follow-up list and refresh that section when the reference
+graph changes, without rebuilding an otherwise unchanged selected card.
+
+`reference_geometry.py` has one cancellable worker for the selected map and
+positive/negative caches. Its daily portal index is paired with the current map
+render manifest. Direct portal identities must match the exported name, type and
+destination fields; coordinates come from that viewer index and its matching,
+content-addressed WebP. Scripted, ambiguous or changed destinations are omitted.
+Monster positions separately require multiple consistent alignment anchors.
+A palette/terrain projection check rejects incompatible minimap crops. When
+needed, a bounded thumbnail of the verified render supplies the preview instead.
+No full render remains on disk; unscaled decoding is capped at eight million
+pixels for projection checks and sixteen million for preview creation. Preview
+files are at most 512 pixels per edge / 1 MiB each, limited to 64 files / 16 MiB.
+
+`reference_maps.py` paints only visible markers and supports pointer-centered
+wheel zoom, Fit / + / −, bounded drag panning and separate portal/spawn layers.
+Portal tooltips name exact released destinations; clicks use the ordinary
+Database navigation and Back restores zoom, pan, layers and the previous subpage.
+Same-map portals are distinguished from external exits. Unknown destinations are
+never opened as released entries. Map controls handle only Lupin widget events;
+they do not observe or send game input. An API spawn count remains a count of
+exported placements, not live population or timing.
 
 Reader title contrast now shares colored-ink handling across marker and centered
 headers. Exact upgrade-suffix validation also applies to independent second reads;

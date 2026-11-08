@@ -41,8 +41,9 @@ def formatted(value):
 
 
 def heading(layout,title):
-    row=QHBoxLayout();row.setSpacing(9);row.addWidget(text(title,11,'#e2c69b',True))
+    row=QHBoxLayout();row.setSpacing(9);caption=text(title,11,'#e2c69b',True);row.addWidget(caption)
     line=QFrame();line.setFixedHeight(1);line.setStyleSheet('background:#334154;border:0');row.addWidget(line,1);layout.addLayout(row)
+    return caption
 
 
 def stats(layout,values,*,columns=2,compact=False):
@@ -115,6 +116,14 @@ class EntryDetails(QFrame):
             self.animations.currentIndexChanged.connect(self.change_animation)
         if entry.kind=='maps':
             self.map_preview=MapPreview(self.media,row);self.map_preview.chosen.connect(lambda mid:self.panel.open(('monsters',mid)))
+            self.map_preview.spawns_button.setChecked(False)
+            self.map_preview.map_chosen.connect(lambda mid:self.panel.open(('maps',mid)))
+            self.map_destinations={}
+            for point in row.get('portals',[]):
+                identity=point.get('dest_map_id')
+                if type(identity) is not int or identity in self.map_destinations:continue
+                record=relationship(self.store,'maps',identity)
+                if record and record['target']:self.map_destinations[identity]=record
             layout.addWidget(self.map_preview)
         self.tabs=AnimatedTabs()
         self.tabs.animation.setDuration(220)
@@ -135,7 +144,7 @@ class EntryDetails(QFrame):
         body.addStretch()
         self.tabs.tabBar().setVisible(self.tabs.count()>1)
         self.tabs.currentChanged.connect(lambda *_:self.media_changed.emit())
-        self.refresh_drops();self.update_market()
+        self.refresh_drops();self.update_market();self.refresh_followups()
 
     def add_list(self,layout,*,drop_tiles=False):
         listing=ReferenceList(self.media,drop_tiles=drop_tiles);listing.chosen.connect(self.navigate);listing.viewport_changed.connect(self.media_changed.emit)
@@ -232,10 +241,9 @@ class EntryDetails(QFrame):
                 record=relationship(self.store,'maps',identity,'Quest giver location')
                 if record and record['target']:maps.append(record)
         if maps:heading(layout,'Location');self.add_list(layout).populate(maps)
-        next_id=row.get('next_quest_id')
-        if next_id:
-            record=relationship(self.store,'quests',next_id,'Next quest')
-            if record and record['target']:self.add_list(layout).populate([record])
+        self.followup_section=QWidget();following_layout=QVBoxLayout(self.followup_section);following_layout.setContentsMargins(0,0,0,0);following_layout.setSpacing(7)
+        self.followup_heading=heading(following_layout,'Next quest');self.followup_list=self.add_list(following_layout)
+        layout.addWidget(self.followup_section);self.followup_section.hide()
         requirements,_,body=page();self.tabs.addTab(requirements,'Requirements');records=[];other=[]
         for index,requirement in enumerate(row.get('requirements',[])):
             kind={'mob':'monsters','item':'items','quest':'quests','skill':'skills'}.get(requirement.get('type'))
@@ -283,7 +291,17 @@ class EntryDetails(QFrame):
             if record and record['target']:records.append(record)
         if records:self.add_list(body).populate(records)
         else:body.addWidget(text('No verified connections recorded.',11,'#a6b4c7'))
-        self.map_note=text('',10,'#96a6bb');body.addWidget(self.map_note)
+
+    def refresh_followups(self):
+        if self.entry.kind!='quests':return
+        followups=[]
+        for entry,following in self.store.quest_followups(self.entry.id):
+            caption='Next in chain' if self.row.get('chain') and self.row.get('chain')==following.get('chain') else 'Follow-up quest'
+            if entry.level is not None:caption+=f' · Lv. {entry.level}+'
+            followups.append(dict(key=entry.key,target=entry.key,name=entry.name,subtitle=caption,icon=entry.icon))
+        if self.followup_list.records==followups:return
+        self.followup_heading.setText('Next quest' if len(followups)==1 else 'Follow-up quests')
+        self.followup_list.populate(followups);self.followup_section.setVisible(bool(followups));self.media_changed.emit()
 
     def skill(self,layout):
         row=self.row;description=re.sub(r'^\[Master Level:\s*\d+\]\s*','',row.get('description') or '')
@@ -400,7 +418,7 @@ class EntryDetails(QFrame):
 
     def image_ready(self,url):
         if self.summary_card and url==self.entry.icon:self.thumbnail.set_image(self.media.image(url))
-        if self.map_preview:self.map_preview.update()
+        if self.map_preview:self.map_preview.clamp_pan();self.map_preview.update()
         for listing in self.lists:listing.image_ready(url)
 
     def set_active(self,active):
@@ -413,10 +431,12 @@ class EntryDetails(QFrame):
 
     def state(self):
         return {'tab':self.tabs.currentIndex(),'scrolls':[self.tabs.widget(i).verticalScrollBar().value() for i in range(self.tabs.count())],
-                'lists':[listing.verticalScrollBar().value() for listing in self.lists], 'rank':self.rank_slider.value() if self.rank_slider else None}
+                'lists':[listing.verticalScrollBar().value() for listing in self.lists], 'rank':self.rank_slider.value() if self.rank_slider else None,
+                'map_view':self.map_preview.view_state() if self.map_preview else None}
 
     def restore(self,state):
         self.tabs.setCurrentIndex(min(state.get('tab',0),self.tabs.count()-1))
+        if self.map_preview:self.map_preview.restore_view(state.get('map_view'))
         if self.rank_slider and state.get('rank'):self.rank_slider.setValue(state['rank'])
         for index,value in enumerate(state.get('scrolls',[])[:self.tabs.count()]):self.tabs.widget(index).verticalScrollBar().setValue(value)
         def restore_lists():

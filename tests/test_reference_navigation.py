@@ -53,6 +53,16 @@ class NavigationTests(unittest.TestCase):
         listing.activate_row(listing.item(0));self.assertEqual(p.selected.key,('maps',100));p.go_back()
         self.assertEqual(p.selected.key,('monsters',13));self.assertEqual(p.detail.tabs.currentIndex(),1)
 
+    def test_followup_quest_is_clickable_and_back_returns_to_the_previous_step(self):
+        docs=documents();docs['quests.json'][0]['chain']='Cursed Dolls'
+        docs['quests.json'].append(dict(id=10003,name='Collecting 70 Cursed Dolls',region='Ellinia',chain='Cursed Dolls',npc_id=103,
+            level_min=36,requirements=[dict(type='quest',id=10002,state=2)]))
+        self.service.store.replace(*generation(docs));allow_fixture(self.service.store);p=self.panel;p.open(('quests',10002))
+        listing=next(listing for listing in p.detail.lists if any(row['target']==('quests',10003) for row in listing.records))
+        self.assertIn('Next in chain',listing.records[0]['subtitle']);self.assertTrue(listing.records[0]['icon'])
+        listing.activate_row(listing.item(0));self.assertEqual(p.selected.key,('quests',10003))
+        p.go_back();self.assertEqual(p.selected.key,('quests',10002));self.assertEqual(p.detail.tabs.currentIndex(),0)
+
     def test_kind_list_restores_its_sort_and_scroll(self):
         docs=documents();docs['monsters.json'] += [dict(id=100+n,name=f'Monster {n}',level=n) for n in range(90)]
         self.service.store.replace(*generation(docs));allow_fixture(self.service.store);p=self.panel;p.choose_kind('monsters')
@@ -60,6 +70,14 @@ class NavigationTests(unittest.TestCase):
         p.results.verticalScrollBar().setValue(300);before=p.results.verticalScrollBar().value();self.assertGreater(before,0)
         p.choose_kind('items');p.choose_kind('monsters');self.app.processEvents()
         self.assertEqual(p.sort_group.checkedAction().data(),'level-desc');self.assertEqual(p.results.verticalScrollBar().value(),before)
+
+    def test_followup_graph_refresh_reuses_the_current_quest_card(self):
+        p=self.panel;p.open(('quests',10002));detail=p.detail;self.assertTrue(detail.followup_section.isHidden())
+        docs=documents();docs['quests.json'].append(dict(id=10003,name='Next released quest',region='Ellinia',npc_id=103,
+            requirements=[dict(type='quest',id=10002,state=2)]))
+        self.service.store.replace(*generation(docs));allow_fixture(self.service.store);p.reloaded()
+        self.assertIs(p.detail,detail);self.assertFalse(detail.followup_section.isHidden())
+        self.assertEqual(detail.followup_list.records[0]['target'],('quests',10003))
 
 
 class CategoryEvidenceTests(unittest.TestCase):
@@ -93,6 +111,6 @@ class MapCropTests(unittest.TestCase):
         view.show();self.app.processEvents();view.grab()
         bounds=view.source_bounds(image);self.assertLess(bounds.width(),image.width());self.assertLess(bounds.height(),image.height())
         self.assertEqual(len(view.markers),1);center,identity=view.markers[0]
-        self.assertLess((center-QPointF(view.width()/2,view.height()/2)).manhattanLength(),5)
+        self.assertLess((center-view.viewport_rect().center()).manhattanLength(),5)
         self.assertEqual(view.target_at(center),13)
         view.set_geometry(None);view.grab();self.assertEqual(view.markers,[]);view.close()

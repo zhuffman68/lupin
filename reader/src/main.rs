@@ -1,7 +1,7 @@
 //! Pixel-only bridge: accepts captured RGBA or PNG paths; no game resources.
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use minerva_core::{
-    Frame, ItemCapture, ItemTooltipReader, PlayerShopReader, ScreenPoint, ShopCapture,
+    Frame, PlayerShopReader, ScreenPoint, ShopCapture,
 };
 use serde::Deserialize;
 use std::io::{self, BufRead, Write};
@@ -11,6 +11,7 @@ mod game_area;
 mod text;
 mod pickups;
 mod tooltip_text;
+mod tooltip_reader;
 mod tooltip_surface;
 mod tooltip_association;
 mod inventory_pixels;
@@ -57,14 +58,13 @@ struct Request {
     shop_recovery: Option<bool>,
     #[serde(default)]
     progressive_shop: bool,
+    #[serde(default)]
+    progressive_tooltip: bool,
 }
 
 fn main() {
     let mut reader = None;
-    let mut tooltip_reader = None;
-    let mut centered_titles = centered_tooltip::CenteredTitles::default();
-    let mut primary_titles = tooltip_text::PrimaryTitles::default();
-    let mut tooltip_association = tooltip_association::Selector::default();
+    let mut tooltip_reader = tooltip_reader::TooltipReader::default();
     let mut locator = Locator::new();
     let mut experience = None;
     let mut pickups = pickups::PickupLogReader::default();
@@ -171,6 +171,31 @@ fn main() {
                 origin,
                 pointer: request.pointer,
             };
+            let tooltip_started=Instant::now();
+            let scale_hint=location.as_ref().and_then(|l|l.guards.get(1)).map(|r|r.width as f32/36.0);
+            let tooltip_value=if request.tooltip {
+                if let Some(pointer)=request.pointer {
+                    tooltip_reader.read(&capture,pointer,request.tooltip_retry,&request.annotations,scale_hint)?
+                } else {serde_json::json!({})}
+            } else {serde_json::json!({})};
+            let tooltip_ms=tooltip_started.elapsed().as_secs_f64()*1000.0;
+            // An independently bound inventory title can finish before shop
+            // repair; its frame, epoch and original deadline remain immutable.
+            if request.progressive_tooltip && request.tooltip
+                && tooltip_value["tooltipAssociation"]["state"]=="inventory-primary"
+                && tooltip_value["tooltip"]["found"]["name"].is_string() {
+                let mut partial=tooltip_value.clone();
+                partial["atMs"]=serde_json::json!(request.at_ms);
+                partial["tooltipPartial"]=serde_json::json!(true);
+                partial["shopDeferred"]=serde_json::json!(true);
+                partial["ocrMs"]=serde_json::json!(started.elapsed().as_secs_f64()*1000.0);
+                partial["gameArea"]=serde_json::to_value(location.as_ref().map(|l|l.area))?;
+                partial["gameGuards"]=serde_json::to_value(location.as_ref().map(|l|&l.guards))?;
+                partial["gameFooter"]=serde_json::to_value(location.as_ref().map(|l|l.footer))?;
+                partial["readerStages"]=serde_json::json!({"shopMs":0.0,"componentMs":0.0,"tooltipMs":tooltip_ms});
+                writeln!(stdout,"{partial}")?;
+                stdout.flush()?;
+            }
             let shop_reader=reader.get_or_insert_with(PlayerShopReader::bundled);
             let shop_started=Instant::now();
             let scope=request.capture_generation.zip(request.shop_epoch);
@@ -228,92 +253,11 @@ fn main() {
                     }
                 }
             }
-            let tooltip_started=Instant::now();
-            if request.tooltip {
-                if let Some(pointer) = request.pointer {
-                    let mut tooltip_capture = ItemCapture {
-                        frame: capture.frame,
-                        origin: capture.origin,
-                        pointer,
-                    };
-                    let (prepared,markers)=tooltip_surface::prepare(&tooltip_capture.frame);
-                    let scale_hint=location.as_ref().and_then(|l|l.guards.get(1)).map(|r|r.width as f32/36.0);
-                    let owned=annotation_rectangles(&tooltip_capture.frame,tooltip_capture.origin,&request.annotations);
-                    let association=tooltip_association.select_with_exclusions(&tooltip_capture,&markers,scale_hint,&owned);
-                    // Geometry/source guards always use raw capture pixels.
-                    // Contrast repair belongs only to title recognition.
-                    let mut raw_frame=prepared.map(|frame|std::mem::replace(&mut tooltip_capture.frame,frame));
-                    if !owned.is_empty() {
-                        if raw_frame.is_none() {raw_frame=Some(Frame{width:tooltip_capture.frame.width,
-                            height:tooltip_capture.frame.height,at_ms:tooltip_capture.frame.at_ms,
-                            rgba:tooltip_capture.frame.rgba.clone()})}
-                        // Geometry used raw pixels with explicit unknown regions.
-                        // OCR must never read Lupin's own item names as game text.
-                        mask_regions(&mut tooltip_capture.frame,tooltip_capture.origin,&request.annotations,64);
-                    }
-                    let primary_header=association.primary_header.map(|header|minerva_core::ScreenRect{
-                        x:tooltip_capture.origin.x+header.x as i32,y:tooltip_capture.origin.y+header.y as i32,
-                        width:header.w,height:header.h});
-                    value["tooltipAssociation"]=association.metadata;
-                    if association.rejected {
-                        value["tooltip"]=serde_json::json!("none");
-                    } else {
-                    if let Some(rect)=association.panel {
-                        let mut rgba=Vec::with_capacity((rect.w*rect.h*4) as usize);
-                        for y in rect.y..rect.y+rect.h {
-                            let start=((y*tooltip_capture.frame.width+rect.x)*4) as usize;
-                            rgba.extend_from_slice(&tooltip_capture.frame.rgba[start..start+(rect.w*4) as usize]);
-                        }
-                        tooltip_capture.frame=Frame{width:rect.w,height:rect.h,rgba,at_ms:tooltip_capture.frame.at_ms};
-                        tooltip_capture.origin.x+=rect.x as i32;
-                        tooltip_capture.origin.y+=rect.y as i32;
-                        // This is only an internal captured-pixel probe, like
-                        // the existing popup reader. The OS pointer is never
-                        // moved; source/slot metadata retains its real proof.
-                        tooltip_capture.pointer=ScreenPoint{x:tooltip_capture.origin.x+(rect.w.min(32)/2) as i32,y:tooltip_capture.origin.y+(rect.h.min(40)/2) as i32};
-                    }
-                    let tooltip_reader=tooltip_reader.get_or_insert_with(ItemTooltipReader::bundled);
-                    let mut marker_title=primary_header.is_none();
-                    if let Some(header)=primary_header {
-                        value["tooltip"]=match primary_titles.read(&tooltip_capture,header) {
-                            Some(title)=>serde_json::to_value(title)?,
-                            None=>serde_json::json!("none"),
-                        };
-                    } else {
-                    let reading = tooltip_reader.read(&tooltip_capture);
-                    value["tooltip"] = serde_json::to_value(reading.tooltip)?;
-                    if !value["tooltip"]["found"]["name"].is_string() {
-                        let popup=if let Some(title)=centered_titles.read(&tooltip_capture) {
-                            marker_title=false;
-                            Some(title)
-                        } else {
-                            tooltip_text::popup(tooltip_reader,&mut tooltip_capture)
-                        };
-                        if let Some(popup)=popup {
-                            value["tooltip"]=serde_json::to_value(popup)?;
-                            value["tooltip"]["found"]["pinned"]=serde_json::json!(true);
-                        }
-                    }
-                    }
-                    if request.tooltip_retry {
-                        let found=&value["tooltip"]["found"];
-                        if found.is_object() {
-                            let candidates=tooltip_text::alternatives(&tooltip_capture.frame,tooltip_capture.origin,found,marker_title);
-                            value["tooltip"]["found"]["alternatives"]=serde_json::json!(candidates);
-                        }
-                        value["tooltipRetried"]=serde_json::json!(true);
-                    }
-                    if association.panel.is_none() {
-                        value["tooltipPanel"]=tooltip_frame::export_for_title(
-                            raw_frame.as_ref().unwrap_or(&tooltip_capture.frame),tooltip_capture.origin,
-                            &value["tooltip"]["found"]["area"],scale_hint.unwrap_or(1.0))
-                            .unwrap_or(serde_json::Value::Null);
-                    }
-                    }
-                }
+            if let Some(tooltip)=tooltip_value.as_object() {
+                value.as_object_mut().unwrap().extend(tooltip.clone());
             }
             value["readerStages"]=serde_json::json!({"shopMs":shop_ms,"componentMs":component_ms,
-                "tooltipMs":tooltip_started.elapsed().as_secs_f64()*1000.0});
+                "tooltipMs":tooltip_ms});
             value["ocrMs"] = serde_json::json!(started.elapsed().as_secs_f64() * 1000.0);
             value["gameArea"] = serde_json::to_value(location.as_ref().map(|l| l.area))?;
             value["gameGuards"] = serde_json::to_value(location.as_ref().map(|l| &l.guards))?;

@@ -5,6 +5,7 @@ import time
 import unittest
 from dataclasses import replace
 from unittest.mock import PropertyMock,patch
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor,QImage
 
 from PySide6.QtWidgets import QApplication
@@ -59,6 +60,49 @@ class ShopViewportCaptureTests(unittest.TestCase):
     def test_scroll_between_partial_and_final_rejects_the_old_final(self):
         self.deliver(shopPartial=True)
         self.assertEqual(len(self.readings),1)
+        self.reader.shop_browsing.reset()
+        self.deliver()
+        self.assertIsNone(self.reader.active_request)
+        self.assertEqual(len(self.readings),1)
+
+    def inventory_partial(self):
+        from test_tooltip_association import TooltipAssociationTests
+        fixture=TooltipAssociationTests();fixture.setUp()
+        self.reader.image=fixture.image;self.reader.pointer=(340,190)
+        request=replace(self.reader.active_request,frame=fixture.image,pointer=(340,190))
+        self.reader.active_request=self.reader.submitted_request=request
+        self.reader.shop_rect=self.reader.shop_context=QRect(20,30,199,260)
+        return dict(tooltipPartial=True,shopDeferred=True,
+            tooltip=dict(found={**fixture.found,'name':'Example Hat'}),tooltipAssociation=fixture.value)
+
+    def test_early_inventory_keeps_shop_routing_and_the_original_request_until_final(self):
+        fields=self.inventory_partial();request=self.reader.active_request
+        area=QRect(self.reader.shop_context)
+        self.deliver(**fields)
+        self.assertIs(self.reader.active_request,request)
+        self.assertEqual(self.reader.shop_context,area);self.assertEqual(self.reader.shop_rect,area)
+        self.assertTrue(self.readings[-1]['_shop_deferred'])
+        self.assertEqual(self.readings[-1]['tooltip']['found']['name'],'Example Hat')
+        self.assertEqual(self.reader.active_request.deadline_at,request.deadline_at)
+        self.deliver(tooltip=fields['tooltip'],tooltipAssociation=fields['tooltipAssociation'])
+        self.assertIsNone(self.reader.active_request)
+
+    def test_inventory_phase_cannot_price_a_new_cell_or_borrow_shop_authority(self):
+        fields=self.inventory_partial();area=QRect(self.reader.shop_context)
+        self.reader.pointer=(390,190)
+        self.deliver(**fields)
+        self.assertIsNone(self.readings[-1]['tooltip']['found'])
+        self.assertEqual(self.reader.shop_context,area)
+        self.deliver(tooltipPartial=True,shopDeferred=True,tooltipAssociation={'state':'normal'})
+        self.assertEqual(len(self.readings),1)
+        self.assertIsNotNone(self.reader.active_request)
+
+    def test_inventory_phase_remains_independent_of_a_scrolled_shop_epoch(self):
+        fields=self.inventory_partial();self.reader.shop_browsing.reset()
+        self.deliver(**fields)
+        self.assertTrue(self.readings[-1]['_shop_stale'])
+        self.assertEqual(self.readings[-1]['tooltip']['found']['name'],'Example Hat')
+        self.assertIsNotNone(self.reader.active_request)
         self.reader.shop_browsing.reset()
         self.deliver()
         self.assertIsNone(self.reader.active_request)

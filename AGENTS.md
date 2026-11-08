@@ -214,6 +214,16 @@ missing components still need two agreeing independent OCR readings. Keep
 scroll-tier picture protection and clipped-title refinement when skipping
 unnecessary description recognition.
 
+progressive_tooltip may instead publish one tooltipPartial/shopDeferred reply
+from a positively verified inventory-primary source before shop repair. It must
+not clear or replace shop routing/observations. Keep both phases on the original
+request/deadline; shop-only and inventory partial modes are mutually exclusive.
+Every phase retains submitted/current source proofs, epoch and NPC filtering.
+Qt captured images are owned immutable snapshots. Bound repeated proof decisions
+by image cacheKey, pointer and all exclusion rectangles; never reuse a decision
+for a new/edited image or changed masks. Recognition-crop caches do not supply
+current source authority.
+
 Only an already verified add-item form may treat the bounded current cursor as
 unknown control pixels, with independent current native controls/frame evidence.
 Cursor masks cannot bootstrap a new form, excuse contradictory exposed controls,

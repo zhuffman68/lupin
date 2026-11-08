@@ -10,6 +10,10 @@ pub(crate) struct Dot {
     pub y1: u32,
 }
 
+impl Dot {
+    pub fn complete(self)->bool {self.x1-self.x0>=4 && self.y1-self.y0>=4}
+}
+
 pub(crate) fn rgb(frame: &Frame, x: u32, y: u32) -> [u8; 3] {
     let at = ((y * frame.width + x) * 4) as usize;
     [frame.rgba[at], frame.rgba[at + 1], frame.rgba[at + 2]]
@@ -131,6 +135,10 @@ fn rim_score(frame: &Frame, x: u32, top: u32, bottom: u32) -> f32 {
 }
 
 pub(crate) fn dots_in(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> Vec<Dot> {
+    marker_components(width,height,pixel,false)
+}
+
+fn marker_components(width:u32,height:u32,pixel:impl Fn(u32,u32)->[u8;3],partial:bool)->Vec<Dot> {
     let count = (width * height) as usize;
     let mut mask: Vec<u8> = (0..count)
         .map(|i| u8::from(cyan(pixel(i as u32 % width, i as u32 / width))))
@@ -174,8 +182,8 @@ pub(crate) fn dots_in(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 
             }
         }
         let (w, h) = (dot.x1 - dot.x0, dot.y1 - dot.y0);
-        if (4..=11).contains(&w)
-            && (4..=11).contains(&h)
+        if ((4..=11).contains(&w) && (4..=11).contains(&h)
+                || partial && (2..=11).contains(&w) && (3..=11).contains(&h) && pixels>=6)
             && w.abs_diff(h) <= 3
             && pixels * 2 >= w * h
         {
@@ -186,7 +194,7 @@ pub(crate) fn dots_in(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 
 }
 
 fn dots(frame: &Frame) -> Vec<Dot> {
-    dots_in(frame.width, frame.height, |x, y| rgb(frame, x, y))
+    marker_components(frame.width, frame.height, |x, y| rgb(frame, x, y),true)
 }
 
 /// Minerva's verified name bounds include the cyan bullet, whereas its primary
@@ -209,6 +217,9 @@ pub fn prepare(frame: &Frame) -> (Option<Frame>, Vec<Dot>) {
     let mut prepared = None;
     let markers=dots(frame);
     for &dot in &markers {
+        // Small cyan cores are geometry proposals only. They never authorize
+        // contrast repair or removal of a title's leading decoration.
+        if !dot.complete() {continue}
         if dot.x0 < 5 || dot.y0 < 2 {
             continue;
         }

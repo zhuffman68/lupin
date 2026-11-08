@@ -5,6 +5,29 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## 1.0.5
+
+See [the patch record](PATCH_1.0.5.md) for installation and verification details.
+
+- Shop prices can use a complete first read immediately, including when a
+  description touches unused space beside a listing.
+- Inventory prices can appear before shop repair finishes. Repeated tooltip
+  checks and alternate readings reuse unchanged pixels to reduce delay and CPU
+  work, while changed items, scrolling and NPC shops retain their checks.
+- Database maps show verified portals with destination names and links to other
+  released maps. A separate Spawns toggle keeps portal views uncluttered.
+- Map previews support zoom controls, mouse-wheel zoom and drag panning. Back
+  restores the previous map view, and Fit resets it.
+- Quest cards link to follow-up steps, including Rowen's Cursed Dolls chain,
+  using completed-quest requirements as well as explicit next-step links.
+- Korean reading detects complete chat-history rows without including scenery
+  behind the text. Lupin beside the game and moving chat backgrounds no longer
+  restart or mask those reads. Difficult rows yield to other messages;
+  timestamps and channel badges stay out of translations, and interrupted reads
+  can retry.
+- Market-status ages roll their changing numbers while the surrounding text
+  stays steady, including when the source has not published newer prices.
+
 ## 1.0.4
 
 See [the patch record](PATCH_1.0.4.md) for downloads, installation and verification.

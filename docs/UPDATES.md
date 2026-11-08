@@ -133,7 +133,7 @@ Release-note bodies also include the centered donation footer used by the
 README and [change notes](CHANGELOG.md): heading, PayPal Donate button and
 drinking monkey beneath it. Keep the same absolute artwork URLs and spacing
 elements. The compact in-app summary omits the footer and HTML. The current
-[1.0.4 patch record](PATCH_1.0.4.md) contains the ready-to-copy footer; it does not
+[1.0.5 patch record](PATCH_1.0.5.md) contains the ready-to-copy footer; it does not
 authorize building or publication.
 
 ## Acceptance boundaries

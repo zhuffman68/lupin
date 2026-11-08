@@ -136,3 +136,40 @@ starts stopped for an explicit new session. An authorized read-only frame shows
 six populated player-shop labels; live diagnostics record cache hits and recent
 capture-to-reader delivery around 93–160 ms. This is a smoke check, not live
 acceptance of pickup totals or the reported add-item edge case.
+
+## Shop/inventory validation — 2026-11-04 source checkpoint
+
+The audit reproduced complete native prices being withheld by the later
+controller, including an avoidable first-container follow-up. Complete rows can
+now establish the same submitted/current fixed-rim proof on their first reply.
+Name evidence omits unused divider padding; a one-unit near-black quantization
+envelope treats such pixels as ink without relaxing numeric proofs or exact
+source comparisons. The saved four-price hover case now accepts all four on the
+first reply, with no retry. Public native/observation integration checks five
+literal listings and amounts, including the initial numeric metadata contract.
+
+Inventory work runs before shop recognition/recovery. An opt-in early reply
+requires a positively bound inventory source and keeps the original request,
+deadline and pending worker until its final shop reply. Deferred shop data
+cannot clear existing routing/observations. No extra OCR worker/model or network
+lookup is introduced. Alternate OCR holds at most 32 exact title crops; source
+authority is always fresh and competing variants retain their rejection rules.
+
+Proof validation no longer allocates three full-display masks for small rim
+queries. It tests the same excluded seven-pixel sampling lanes geometrically
+and reuses at most four decisions per immutable proof/image revision/pointer/
+mask combination. Pixel edits, new frames or changed pointers/masks require
+revalidation. A paired one-frame measurement drops fresh validation from
+21.762 to 11.056 ms and repeated checks from 20.938 to 0.014 ms. One cold native
+inventory result becomes available at 147.20 ms before shop completion at
+394.33 ms. These are isolated samples, not live compositor/CPU guarantees.
+
+All 26 saved inventory cases now traverse the actual scheduler, native IPC,
+capture filtering and GUI with a visually annotated oracle and no success
+filter. Twenty positive cases and six deliberate rejections match with no
+wrong-item annotation commands. The positive median is 185.6 ms, maximum
+608.4 ms; three cases exceed 500 ms. Recognition fixtures retain original OBS
+compression and painted labels. Fake market/media/annotation sinks keep this
+separate from physical capture/overlay acceptance. The full suite passes 1,351
+tests with three skips; 73 native tests pass. See [VERIFICATION.md](../VERIFICATION.md)
+for evidence paths, remaining live/platform checks and publication status.

@@ -12,13 +12,13 @@ class ComposerWidget(QWidget):
     def __init__(self,composer,shortcut='F8',configure=None,parent=None):
         super().__init__(parent);self.composer=composer
         layout=QVBoxLayout(self);layout.setContentsMargins(0,12,0,0);layout.setSpacing(12)
-        title=QHBoxLayout();title.addWidget(MotionLabel('Write in Korean'),1)
+        title=QHBoxLayout();self.title=MotionLabel('Write in Korean');title.addWidget(self.title,1)
         self.shortcut=QPushButton('Shortcut: '+shortcut);self.shortcut.setObjectName('quiet')
         self.shortcut.setAutoDefault(False)
         if configure:self.shortcut.clicked.connect(configure)
         else:self.shortcut.hide()
         title.addWidget(self.shortcut);layout.addLayout(title)
-        hint=MotionLabel('Type English. Enter translates and copies the Korean message.');hint.setWordWrap(True)
+        hint=MotionLabel('Type English. Enter translates and copies the Korean message.');hint.setWordWrap(True);self.hint=hint
         hint.setStyleSheet('color:#a6b1bf;font-size:11px');layout.addWidget(hint)
         self.input=QLineEdit();self.input.setMaxLength(LIMIT);self.input.setClearButtonEnabled(True)
         self.input.setPlaceholderText('WTS Work Gloves 250k ea, pmo')

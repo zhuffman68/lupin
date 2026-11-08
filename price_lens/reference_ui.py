@@ -316,7 +316,8 @@ class DatabasePanel(QWidget):
         if not self._entry or not self.selected or self.selected.key!=('maps',identity):return
         proof=self.service.geometry.cached(self._entry.row)
         names={entry.id:entry.name for entry,count in self.store.map_monsters(identity)}
-        self._entry.map_preview.set_geometry(proof,names)
+        preview=self.service.geometry.preview(self._entry.row) if proof and proof.get('preview') else None
+        self._entry.map_preview.set_geometry(proof,names,self._entry.map_destinations,preview)
 
     def pause_sprite(self):
         if self._entry:self._entry.pause()
@@ -336,7 +337,7 @@ class DatabasePanel(QWidget):
             if not record or not self.store.available(*self.selected.key):self.selected=None;self.search()
             elif record[1]!=self._entry.row:
                 state=self._entry.state();key=self.selected.key;self.selected=None;self.open(key,False,0);self._entry.restore(state)
-            else:self._entry.refresh_drops();self._entry.update_market()
+            else:self._entry.refresh_drops();self._entry.update_market();self._entry.refresh_followups()
         else:self.search()
         self.update_status()
         if not self.active:QTimer.singleShot(0,self.warm_landing)

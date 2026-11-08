@@ -398,6 +398,23 @@ class ReferenceStore:
                 ORDER BY e.level,e.name COLLATE NOCASE""",(item_id,)).fetchall()
         return [self.entry('quests',identity) for identity, in rows]
 
+    def quest_followups(self,identity):
+        """Released quests explicitly following or requiring completion of this one."""
+        current=self.entry('quests',identity)
+        if current is None or not self.available('quests',identity):return []
+        following=current[1].get('next_quest_id')
+        following=following if type(following) is int else None
+        with self.connect() as db:
+            rows=db.execute("""SELECT e.id FROM entities e WHERE e.kind='quests' AND e.id!=?
+                AND EXISTS(SELECT 1 FROM availability a WHERE a.kind=e.kind AND a.id=e.id AND a.name=e.name)
+                AND COALESCE(json_extract(e.body,'$.region'),'')!='Forgotten Hollow'
+                AND (e.id=? OR EXISTS(SELECT 1 FROM json_each(e.body,'$.requirements') r
+                    WHERE json_extract(r.value,'$.type')='quest' AND json_extract(r.value,'$.id')=?
+                    AND json_extract(r.value,'$.state')=2))
+                ORDER BY CASE WHEN e.id=? THEN 0 ELSE 1 END,e.level,e.name COLLATE NOCASE""",
+                (identity,following,identity,following)).fetchall()
+        return [self.entry('quests',target) for target, in rows]
+
     def save_drops(self,rows,at=None,guard=lambda:None):
         if not isinstance(rows,list) or len(rows)>10000:raise ValueError('Too many drop records')
         guard()

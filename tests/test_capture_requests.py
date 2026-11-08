@@ -50,6 +50,14 @@ class CaptureRequestTests(unittest.TestCase):
         self.assertEqual(request['shop_area'],dict(zip(('x','y','width','height'),area.getRect())))
         self.assertFalse(request['shop_recovery'])
 
+    def test_inventory_hover_requests_an_early_source_bound_reply_without_shop_interleaving(self):
+        reader,_=self.scanning_reader();reader.pointer=(500,450)
+        with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
+        payload=reader.submit.call_args.args[0]
+        self.assertTrue(payload['tooltip']);self.assertTrue(payload['progressive_tooltip'])
+        self.assertFalse(payload['progressive_shop'])
+        self.assertFalse(reader.submit.call_args.kwargs['using_roi'])
+
     def test_unchanged_stationary_shop_does_not_repeat_hover_ocr_on_a_timer(self):
         reader,area=self.scanning_reader()
         reader.shop_fingerprint=PixelReader.fingerprint(reader.image,area)

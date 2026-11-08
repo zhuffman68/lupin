@@ -35,6 +35,7 @@ player asking prices or observed sales.
 | `reader/src/shop_panes.rs` | Reject the native three-line Sold Items ledger before player-list selection. |
 | `reader/src/shop_names.rs` | Recover complete current name/asking components on a hinted native table; the hint never establishes an item or price. |
 | `reader/src/shop_cache.rs` | Reuse one complete page only with the same capture/viewport and byte-exact current table, pictures and rim; omit old hover titles. |
+| `reader/src/tooltip_reader.rs` | Bind and read an inventory title before optional shop work; publish an opt-in independent inventory phase. |
 | `price_lens/pixel_components.py` | Connect native colour runs in two dimensions with a work limit. Shared by NPC controls and the add-item form. |
 | `price_lens/npc_shop.py` | Acquire NPC-window evidence, revalidate its stable controls, and enforce row/description ownership. |
 | `price_lens/capture.py` | Bind recognition to immutable submitted frames, track current NPC state, filter replies, validate inventory source proofs, and schedule capture/reader work. |
@@ -45,10 +46,45 @@ player asking prices or observed sales.
 Shop-only requests can publish complete ordinary rows before missing-line
 recovery finishes. The partial and final replies share one immutable submitted
 frame, generation, epoch and deadline, and both pass the filters below.
+With `progressive_tooltip`, a positively source-bound `inventory-primary` title
+may instead publish a `tooltipPartial` reply before the shop reader runs. Its
+`shopDeferred` marker means that the shop has not been read yet; it cannot close,
+replace or clear the existing shop. Python validates its submitted/current
+inventory evidence and NPC ownership normally. The final result completes the
+same request; no second request is enqueued between phases. Ordinary or rejected
+shop descriptions cannot use this early inventory path.
 Cached native results receive the new capture timestamp but do not establish
 current offers by themselves: Python still checks all current source/amount
 proofs. See [the performance record](TRACKING_AND_READER_PERFORMANCE.md) for
 cache limits, scheduling and numerical diagnostics.
+
+Complete component rows can establish their fixed table-rim proof from the
+same submitted image, checked against the latest image, on their first reply.
+This does not borrow an earlier page or bypass name, numeric or identity checks.
+An unknown, covered or contradicted initial rim cannot establish this path.
+The native reader exports name proof bounds without ink-free divider padding;
+Python still rejects foreign pixels within the complete name and blank ending.
+Ordinary near-black name ink has one additional 8-bit unit of palette
+quantization tolerance, only below RGB 24. Those pixels count as ink, never
+blank space. Exact current pixels, complete endings and cursor masks remain
+required; asking amounts retain the original palette and numeric rules.
+
+Inventory validation keeps at most four decisions per immutable proof, keyed by
+Qt image revision, pointer coordinates and the complete exclusion rectangles.
+Edited/new captures and changed pointer/masks require a new decision. Native
+rim sampling intersects only its queried pixel lanes with exclusions, avoiding
+full-display mask allocations. Neither optimization skips current-frame proofs.
+Alternate title OCR caches at most 32 exact captured crops, including misses;
+these are recognition results only, never cached source or item authority.
+
+A faint cyan core may propose a panel only when ordinary complete markers fail
+to locate one. The source header/slot, complete cap/corners, full-height rails,
+dark body and bright title must all remain present. Recognition then uses that
+independently framed title lane; a partial marker never authorizes contrast
+repair or removal of leading characters. A pointer inside a description cannot
+turn a covered inventory cell into its source or reopen generic-title fallback.
+Cap discovery checks a bounded set of alternatives when an earlier horizontal
+stroke fails the complete-frame checks.
 
 The add-item form is independent presentation state. Only overlapping shop
 labels fade, while observations/history remain intact. A previously verified

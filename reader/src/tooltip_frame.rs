@@ -120,14 +120,14 @@ pub(crate) fn panel_with_exclusions(frame: &Frame,dot: Dot,s: f32,marker: bool,e
             let total=xs.clone().count();if total<10 {continue}
             // Owner tags can add header lines. Dark scenery can erase part of
             // a translucent cap; closed corners and both side rails still bind it.
-            let cap=(dot.y0.saturating_sub((96.0*s).ceil() as u32)
+            let caps=(dot.y0.saturating_sub((96.0*s).ceil() as u32)
                 ..dot.y0.saturating_sub((5.0*s).floor() as u32))
-                .find(|&y| {
+                .filter(|&y| {
                     let known:Vec<_>=xs.clone().filter_map(|x|known_edge(frame,x,y,s,true,exclude)).collect();
                     known.len()>=10 && known.iter().filter(|&&hit|hit).count()*2>=known.len()
                         &&closed_cap(frame,left,right,y,s,exclude)
                 });
-            if let Some(top)=cap {
+            for top in caps.take(8) {
                 if let Some(panel)=finish_panel(frame,dot,s,left,right,top,true,marker,exclude) {return Some(panel)}
             }
         }

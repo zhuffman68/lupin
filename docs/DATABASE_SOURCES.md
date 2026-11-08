@@ -115,19 +115,47 @@ Random reward weights are divided within their own class/choice group; duplicate
 flat export rows are omitted. These client references are not measured server
 drop probabilities.
 
-Maps use the published minimap and symbol URLs. Monster counts mean exported
-spawn points, not a live population or a respawn timer. Full-render positions
-cannot simply be scaled onto every minimap: their crops can differ. The optional
-marker path requires two consistent canonical portal anchors, a matching
-content-addressed native WebP, and matching minimap palette/terrain projection.
-Uncertain maps keep the minimap and monster list without guessed dots. Both
-checked real examples (East Entrance to Mushroom Town and Henesys Hunting Ground I)
-failed the final projection check, so their markers stay hidden.
+Quest follow-ups combine an explicit `next_quest_id` with reverse prerequisite
+links from other released quests requiring this quest's completed state (`2`).
+Duplicate links are removed; unavailable entries, unstarted/active requirements
+and self-links are excluded. A shared chain name alone never establishes order.
+The Overview card shows named, illustrated links and level requirements, with
+Back returning to the previous quest. Reference updates refresh these links in
+place even when the currently selected quest's own row has not changed. Rowen's
+50 → 70 → 100 → 150 → 200 Cursed Dolls links were checked against the local
+Classic World export; those steps rely on reverse completion requirements.
 
-Alignment is loaded only for the selected map and cached separately. Images are
-not retained by this worker; a plugin that needs native decoding is capped at
-eight million pixels (32 MiB of RGBA pixels) for this one-time background check.
-Failures are cached and matching last-good geometry is retained on network errors.
+Maps use the published minimap and symbol URLs. The compact preview supports
+wheel zoom, + / − / Fit controls, dragging to pan and double-click to fit. Portal
+markers show destination names on hover; clicking a released destination opens
+its map entry, and Back restores the previous map's zoom, pan, layers and subpage.
+Portals are shown by default. The optional Spawns layer shows exported monster
+placements, not live populations or respawn timing.
+
+Portal coordinates come from the provider's current map viewer index. Each
+portal must match the exported name, type, destination map and destination portal;
+the current render manifest must also name the exact content-addressed WebP.
+Hidden direct portals are included. Scripted/unknown destinations and ambiguous
+records are not guessed. Unconfirmed destination entries are not clickable;
+green markers indicate travel within the same map. Monster placements separately
+require two consistent canonical alignment anchors.
+
+Full-render positions cannot simply be scaled onto every minimap: their crops
+can differ. The original minimap receives markers only after matching palette
+and terrain projection. Otherwise, a small thumbnail of the verified full render
+supplies the coordinate-correct map preview. Henesys, Henesys Hunting Ground I and
+Monkey Swamp I were checked with this fallback. Unsupported images keep the
+original minimap and Connections list without guessed marker positions.
+
+Alignment and portal/render indexes are loaded only for the selected map and
+cached separately. Positive geometry lasts a day; failures last 30 minutes.
+No full render remains on disk. A plugin needing native decoding is capped at
+eight million pixels for projection checks and sixteen million pixels (64 MiB
+RGBA) for the thumbnail fallback, in one background worker. Thumbnails are at most
+512 pixels on either edge and 1 MiB encoded; the cache retains at most 64 images
+and 16 MiB, with only the selected preview held in memory. Matching last-good
+geometry is retained on network errors; cancellation cannot publish a late result
+to another selected map.
 
 ## Resolving skill discrepancies
 

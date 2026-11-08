@@ -209,6 +209,14 @@ class PriceObservations:
                     choices.append((int(background.sum()),gain,native,selected))
             if not choices:return None
             _,gain,native,selected=max(choices,key=lambda value:value[0])
+            if kind=='name' and not selected:
+                # Near-black font pixels can acquire a one-unit chroma error
+                # at the native palette boundary. Count that tiny envelope as
+                # ink, never background; the ending, cursor veto and exact
+                # submitted/latest pixels still apply. Numeric proofs keep the
+                # original strict palette and shape policy.
+                base=np.array((202,213,223))
+                native|=(rgb.max(axis=2)<=24)&(np.max(np.abs(rgb-gain[:,:,None]*base),axis=2)<=9)
             if selected:
                 normalized=selected_component_pixels(rgb,scale)
                 if normalized is None:return None
@@ -286,10 +294,16 @@ class PriceObservations:
             return capture_proof(latest,source,scale=scale)
         except (KeyError,TypeError,ValueError,OverflowError):return None
 
-    def component_row(self,row,image,latest,*,pointer=None,read_point=None,exclude=(),panel=None):
+    def component_row(self,row,image,latest,*,pointer=None,read_point=None,exclude=(),panel=None,guards=()):
         """Recover fresh component authority, never a previous offer or title."""
-        if not (self.shop_open and self.container_matches(image,panel,exclude)
-                and self.container_matches(latest,panel,exclude)):return None
+        container=bool(self.shop_open and self.container_matches(image,panel,exclude)
+                       and self.container_matches(latest,panel,exclude))
+        if not container:
+            # A first current read can prove its own fixed rims. It need not
+            # discard complete components and repeat OCR just to save those
+            # same guards. No earlier item/page/asking amount enters this path.
+            if not guards or not all(ShopRows.guard_matches(frame,rect,proof,exclude)
+                    for frame in (image,latest) for rect,proof in guards):return None
         name=self.component_proof(row,'name',image,latest,pointer=pointer,read_point=read_point,exclude=exclude)
         if name is None:return None
         price=(self.component_proof(row,'price',image,latest,pointer=pointer,read_point=read_point,exclude=exclude)
@@ -402,6 +416,8 @@ class PriceObservations:
         had_container=self.container_matches(image,panel,exclude)
         native_priced_rows=sum(bool(row.get('name') and row.get('price') and not row.get('covered'))
                               for row in ((shop or {}).get('rows') or []) if isinstance(row,dict))
+        guards=(ShopRows.capture_guards(shop['area'],image,exclude)
+                if not had_container and native_priced_rows and isinstance((shop or {}).get('area'),dict) else ())
         if isinstance(shop,dict):
             # A native pane can truncate the OCR table at its visible edge.
             # Independent guards and the old row pixels retain the full list;
@@ -439,7 +455,7 @@ class PriceObservations:
                 if (row.get('name') and not row.get('covered') and (state!='changed' or clipped or semantic)
                         and (clipped or semantic or state in ('occluded','unknown'))):
                     repaired=self.component_row(row,image,latest,pointer=pointer,read_point=read_point,
-                        exclude=source_exclude,panel=panel)
+                        exclude=source_exclude,panel=panel,guards=guards)
                     if repaired is not None:
                         raw[index]=row=repaired
                         states[index]=proof_state(row.get('_identity_source'),latest,pointer=pointer,exclude=source_exclude)
@@ -500,11 +516,10 @@ class PriceObservations:
         self.shop_open=self.shop_rows.active
         if not self.shop_open and self.browsing.area is not None:self.browsing.reset()
         self.rows=rows;self.refresh_identity_candidates()
-        # A first read can establish the table guards while its independently
-        # recovered components still require that guard proof. Do the follow-up
-        # immediately; an unchanged-shop fingerprint would otherwise postpone
-        # it until the periodic locator pass. This transition occurs once per
-        # newly proved container and never accepts an unverified component.
+        # If the first read still loses a component to changed/unknown current
+        # pixels, request fresh evidence now rather than waiting for the locator.
+        # Complete current rows already establish their own guards above and do
+        # not need this follow-up solely to populate the container cache.
         retry=rejected_rows or bool(not had_container and self.shop_open
             and native_priced_rows>sum(bool(row.get('name') and row.get('price')) for row in rows)
             and self.container_matches(latest,panel,exclude))

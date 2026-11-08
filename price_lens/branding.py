@@ -74,7 +74,8 @@ class Brand(QWidget):
         layout=QHBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(8)
         self.sprite=Sprite(root/"price_lens/resources/lupin.gif",self)
         layout.addWidget(self.sprite)
-        layout.addWidget(Wordmark(root/"price_lens/resources/wordmark.svg",self))
+        self.wordmark=Wordmark(root/"price_lens/resources/wordmark.svg",self)
+        layout.addWidget(self.wordmark)
         layout.addStretch()
         if parent:parent.installEventFilter(self)
 

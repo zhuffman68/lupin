@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
@@ -105,7 +106,9 @@ class SalesLedgerReaderTests(unittest.TestCase):
         # actual native band. One-pixel rounding must not become an OCR origin
         # requirement. Verify the complete current title proof instead.
         self.assertLessEqual(abs(recovered['nameArea']['y']-first['y']),2)
-        self.assertEqual(recovered['nameArea']['y'],recovered['area']['y'])
+        band=QRect(*(recovered['area'][k] for k in ('x','y','width','height')))
+        title=QRect(*(recovered['nameArea'][k] for k in ('x','y','width','height')))
+        self.assertTrue(band.contains(title),'The title proof omits only unused divider padding')
         self.assertIsNotNone(PriceObservations.component_proof(recovered,'name',image,image,
             pointer=(first['x']+120,first['y']+9)))
         self.assertIsNone(PriceObservations.component_proof(recovered,'price',image,image))

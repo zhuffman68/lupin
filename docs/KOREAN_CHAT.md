@@ -8,6 +8,41 @@ Enable **Korean translation** under Read Korean, or press **Super/Win+F11** to e
 
 Each activation scans the full detected Classic World window for four seconds by default, without requiring the pointer near a message. The scan alternates visible speech bubbles with high-confidence text-line candidates, including colored chat, shop text and megaphones. Source roles require structural or explicit prefix/context evidence; unidentified prose stays ordinary text. It has one worker and no overlapping frame jobs. Pressing the shortcut again restarts the scan window, cancels older work between model operations and rejects late results. Scan time is adjustable from 1 to 10 seconds. The GUI and overlay distinguish scanning from finishing an outstanding translation.
 
+Attached chat history has a separate row detector. The captured HUD supplies a
+bounded search area; paired native scrollbar buttons, continuous rails and text
+baselines must still be visible. It proposes complete rows across white text and
+colored megaphone/trade backgrounds. Pale native text over a darkened scene uses
+foreground cores to bound the line, retaining bright item links without
+including distant scenery. Bright channel rows use their local contrast.
+Unread history rows get a turn before the full-window generic detector. Short
+reads go first among untouched rows; deferred reads rotate behind other rows,
+so a difficult English banner cannot repeatedly block the remaining messages.
+Unsupported or obscured panels retain the generic scan path.
+
+Recognized `[HH:MM]` / `[HH:MM:SS]` timestamps and explicit channel labels are
+separated from the player name and message. A timestamp alone never becomes a
+speaker. A native channel badge can be removed from the OCR preparation only
+inside the measured header before its message colon, with pale frame and red
+badge pixels present. Timestamp-free cleanup additionally needs a detected
+history row. This neither aliases usernames nor changes the source message.
+Clear history messages can receive a separate body read after an accepted
+header; rescuing a weak whole-row read additionally requires confident measured
+speaker characters. The message still needs the existing 90% confidence. Sender
+and body retain separate pixel anchors. A higher-scoring contrast variant cannot
+replace an intact header with a broken one. Malformed timestamps are never
+translated as message text; unprefixed continuation text remains eligible.
+Unfinished header/body contrast work is deferred instead of being cached as a
+permanent empty result. Completed English and negative reads remain bounded and
+cached. Cancellation is checked between model operations.
+
+History cache/progress keys use the current foreground glyph bitmap instead of
+scenery showing through the translucent panel. Changed letters/numbers still
+invalidate the entry; unknown, empty or dense masks retain their original
+pixels. Primary OCR keeps the original antialiasing, with the foreground bitmap
+available as a bounded retry. A confident English row can finish without
+spending more model calls on its header. Cached text always receives the current
+row's position; this changes neither arrival deduplication nor source tracking.
+
 Fresh or changed candidate pixels take priority, followed by the least recently
 examined text regions. This bounded progress survives another shortcut press;
 there is no positional scan cursor to reset to the first bubble. Idle/fast passes
@@ -24,6 +59,10 @@ still reuse their existing card and the underlying arrival ledger is unchanged.
 
 A short, bounded event ledger coalesces matching speaker/message text arriving in both a bubble and chat. It prefers the visible bubble anchor, retains both source locations for visibility checks and keeps a single history entry. A verified partial crop of the same bubble can upgrade to its complete reading atomically. Different speakers and separately established repeat messages remain independent; there is no global fuzzy name/text merge.
 
+Removing timestamps and badge metadata lets the history copy use the same
+speaker/message identity as its speech bubble. Ambiguous or differently read
+names are not guessed into a match.
+
 Rescanning a still-visible message keeps its existing event. Meaningful text and
 the speaker header are matched separately from repeated `@` emphasis or extra
 bubble padding. Nearby movement can be recovered within a bounded 112-pixel
@@ -32,6 +71,14 @@ results from the same speaker share a compact recent-results card with a repeat
 count; the underlying verified arrivals remain separate.
 
 The source is the existing approved shared frame, cropped to the detected game area or an explicitly chosen reading area. No second capture session, game process access, input hook, window inspection, network translation, telemetry or automatic reply is used. Translation never uploads or saves screenshots or chat to disk. Bounded in-memory caches remember repeated text/crops until the worker exits. Price requests and their scheduler are independent.
+
+The control panel and native writer fallback are excluded only where two of
+Lupin's own painted controls match the current shared image. Wayland can report
+an unknown top-level position as `(0, 0)`; that coordinate alone cannot mask the
+chat history. The bounded locator verifies a cached/reported position first,
+paces failed searches and returns no mask when the surface is absent or
+ambiguous. It inspects only our rendered UI and the approved shared pixels.
+The same verified regions protect pickup reading from Lupin's own text.
 
 ## Meaning and numbers
 
@@ -61,7 +108,8 @@ The feature is off until enabled. One CPU-only worker preloads the existing PP-O
 
 New scans first check a small set of recently confirmed text bodies against the
 new frame, then continue scanning the entire game area. Unchanged English and
-empty candidates are cached by exact pixels. No stale reading is reused merely
+empty candidates are cached by exact pixels (the current foreground bitmap for
+detected history rows). No stale reading is reused merely
 because it occupied the same location. These caches are bounded and disappear
 when the worker exits.
 

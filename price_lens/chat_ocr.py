@@ -14,7 +14,7 @@ def pixels(image):
     return np.frombuffer(bytes(image.constBits()), np.uint8).reshape(image.height(), image.bytesPerLine())[:, :image.width()*3].reshape(image.height(),image.width(),3)
 
 
-def components(mask):
+def components(mask,*,min_run=2):
     parents, boxes, areas, previous = [], [], [], []
     def find(i):
         while parents[i]!=i:
@@ -28,7 +28,7 @@ def components(mask):
     for y,count in enumerate(counts):
         edges=xs[position:position+count].tolist();position+=count;runs=[];j=0
         for x,right in zip(edges[::2],edges[1::2]):
-            if right-x<2:continue
+            if right-x<min_run:continue
             while j<len(previous) and previous[j][1]<=x:j+=1
             ids=[];k=j
             while k<len(previous) and previous[k][0]<right:
@@ -193,7 +193,12 @@ class Recognizer:
         if decoration and decoration.start()>0 and decoration.start()<len(emissions):
             left=emissions[decoration.start()-1];next_=emissions[decoration.start()]
             right=min(native_width,max(1,round((left+next_)/2/len(best)*native_width)+2))
-        self.details[key]={'alternatives':alternatives,'content_right':right,
+        glyphs=[];position=0
+        for index,(symbol,step,score) in enumerate(zip(text,emissions,confidence)):
+            left=0 if index==0 else round((emissions[index-1]+step)/2/len(best)*native_width)
+            end=native_width if index+1==len(emissions) else round((step+emissions[index+1])/2/len(best)*native_width)
+            glyphs.append((position,position+len(symbol),left,end,score));position+=len(symbol)
+        self.details[key]={'alternatives':alternatives,'content_right':right,'glyphs':tuple(glyphs),
                            'meaningful':bool(re.search(r'[A-Za-z0-9가-힣ㄱ-ㅣ]',result[0]))}
         self.cache[key]=result
         while len(self.cache)>256:

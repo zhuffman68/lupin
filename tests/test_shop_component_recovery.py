@@ -68,7 +68,7 @@ class ShopComponentRecoveryTests(unittest.TestCase):
         self.assertEqual(len(recovered), 5)
         self.assertTrue(all(row.get('priceArea') and not row.get('nameOnly') for row in recovered))
 
-    def test_new_component_page_requests_its_followup_without_waiting_for_locator(self):
+    def test_new_component_page_is_accepted_without_a_followup_read(self):
         result=self.read(self.image,shop_area=self.table)
         self.assertTrue(any(row.get('priceText') for row in result['shop']['rows']))
         catalog=Catalog({'items':[dict(id=index+1,name=row['name'])
@@ -76,7 +76,9 @@ class ShopComponentRecoveryTests(unittest.TestCase):
         observations=PriceObservations(catalog=catalog)
         observations.browsing=ShopBrowsing(identity=observations.shop_identity)
         first=observations.observe_shop(result['shop'],self.image,self.image)
-        self.assertTrue(first.retry,'New frame proof must queue the component follow-up now')
+        self.assertFalse(first.retry,'Complete current components establish their own frame proof')
+        self.assertEqual([dict(name=row['name'],**row['price']) for row in observations.rows
+            if row.get('name') and row.get('price')],self.expected)
         second=observations.observe_shop(result['shop'],self.image,self.image)
         self.assertFalse(second.retry,'A stationary verified shop must not spin on retries')
         self.assertEqual([dict(name=row['name'],**row['price']) for row in observations.rows
@@ -212,7 +214,13 @@ class ShopComponentRecoveryTests(unittest.TestCase):
         self.assertEqual(self.listings(result), self.expected)
         recovered = [row for row in result['shop']['rows'] if row.get('nameArea')]
         self.assertEqual(len(recovered), 5)
-        self.assertTrue(all(row['nameArea']['height'] == 34 for row in recovered))
+        for row in recovered:
+            name=QRect(*(row['nameArea'][k] for k in ('x','y','width','height')))
+            band=QRect(*(row['area'][k] for k in ('x','y','width','height')))
+            self.assertTrue(band.adjusted(-2,-2,2,2).contains(name))
+            self.assertTrue(20<=name.height()<=34)
+            self.assertLess(name.bottom(),row['priceArea']['y'])
+            self.assertIsNotNone(PriceObservations.component_proof(row,'name',image,image))
 
     def test_native_orange_component_keeps_full_name_and_strict_amount(self):
         image = self.image.copy()
@@ -379,7 +387,9 @@ class ShopComponentRecoveryTests(unittest.TestCase):
         result = self.read(image, shop_area=self.table)
         self.assertEqual(self.listings(result), self.expected[2:])
         first = next(row for row in result['shop']['rows'] if row.get('name') == 'Scimitar')
-        self.assertEqual(first['nameArea']['y'], 92)
+        self.assertEqual(first['area']['y'],92)
+        self.assertTrue(92<=first['nameArea']['y']<=95)
+        self.assertIsNotNone(PriceObservations.component_proof(first,'name',image,image))
 
     def test_clean_current_hint_rows_emit_numeric_proof_on_first_read(self):
         result = self.read(self.image, shop_area=self.table, pointer=dict(x=225, y=5))

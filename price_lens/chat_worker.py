@@ -61,16 +61,17 @@ def source_role(box,text,is_bubble,contexts=(),game_size=None):
     if re.search(r'(?:님의|님께서).*?(?:메시지|확성기|메가폰)',text):return 'banner',True
     # A conventional explicit speaker prefix is retained as evidence. Anonymous
     # store/banner prose never acquires a guessed player identity.
-    sender=re.match(r'^\[?([A-Za-z0-9_\uac00-\ud7a3]{2,16})\]?\s*:\s*\S',text)
-    if (sender and sender[1].casefold() not in ('판매','구매','모집','공지','알림','내용','sell','buy','notice')
-            and game_size and box[0]<game_size[0]*.8 and box[1]>=game_size[1]*.5):return 'chat',True
+    from .chat_history import parse_prefix
+    sender=parse_prefix(text)
+    if (sender
+            and game_size and box[0]<game_size[0]*.8 and (box[1]>=game_size[1]*.5 or sender.timestamp)):return 'chat',True
     return 'text',False
 
 
-def scan(image, recognizer, translator, emit, budget=.75, cancelled=lambda:False, exclude=(),contexts=(),memory=None):
+def scan(image, recognizer, translator, emit, budget=.75, cancelled=lambda:False, exclude=(),contexts=(),memory=None,hud=None):
     from .chat_scan import scan_frame
     return scan_frame(image,recognizer,translator,emit,source_role,budget=budget,cancelled=cancelled,
-                      exclude=exclude,contexts=contexts,memory=memory)
+                      exclude=exclude,contexts=contexts,memory=memory,hud=hud)
 
 
 def send(message):
@@ -130,7 +131,7 @@ def main():
         identity=request['id']
         result=scan(image,recognizer,translator,lambda row:send({'id':identity,'row':row}),
                     cancelled=lambda:identity<state['minimum'],exclude=request.get('exclude',[])[:64],
-                    contexts=request.get('contexts',[])[:8],memory=memory)
+                    contexts=request.get('contexts',[])[:8],memory=memory,hud=request.get('hud'))
         send({'id':identity,'done':result})
     return 0
 

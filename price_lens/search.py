@@ -15,6 +15,7 @@ from .search_field import SearchField
 from .reference_details import EntryDetails
 from .market_lookup import market_lookup_reason
 from .widget_lifetime import retire_widget
+from .market_status_ui import MarketStatus
 
 
 class PriceSearch(QWidget):
@@ -56,7 +57,7 @@ class PriceSearch(QWidget):
         self.query = SearchField("Search an item or scroll…")
         self.query.setAccessibleName("Search Classic World items")
         layout.addWidget(self.query)
-        self.market_status=text_label('', 'color:#9eacbf;font-size:11px',True)
+        self.market_status=MarketStatus(self)
         self.market_status.setContentsMargins(0,12,0,0)
         self.market_status.hide();layout.addWidget(self.market_status)
         # Count, matches and their spacing leave together. The fixed child
@@ -132,11 +133,7 @@ class PriceSearch(QWidget):
         self.update_watch_controls()
 
     def set_market_status(self,message,error=False):
-        if self.market_status.text()==message:return
-        if not message:fade_away(self.market_status)
-        self.market_status.setText(message)
-        self.market_status.setStyleSheet('color:'+('#e4bd7b' if error else '#9eacbf')+';font-size:11px')
-        self.market_status.setVisible(bool(message))
+        self.market_status.set_status(message,error)
 
     def update_watch_controls(self):
         self.watch_button.set_item(self.selected)

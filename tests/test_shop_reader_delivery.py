@@ -10,6 +10,9 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage, QPainter
 
 from price_lens.platform_paths import reader_binary
+from price_lens.domain import Catalog
+from price_lens.price_observations import PriceObservations
+from price_lens.shop_browsing import ShopBrowsing
 
 ROOT=Path(__file__).resolve().parents[1]
 BINARY=reader_binary(ROOT)
@@ -17,6 +20,19 @@ BINARY=reader_binary(ROOT)
 
 @unittest.skipUnless(BINARY.is_file(),'Build the local screen reader first')
 class ShopReaderDeliveryTests(unittest.TestCase):
+    def test_complete_native_components_reach_observations_on_the_first_reply(self):
+        expected=[('Fish Spear',13999),('Nakamaki',10999),('Scimitar',12999),
+                  ('White Chaos Robe',11999),('Brown Jester',5999)]
+        result=self.read([{'image':self.image,'shop_area':self.table}])[0][-1]
+        rows=result['shop']['rows']
+        self.assertEqual([(r['name'],r['price']['mesos']) for r in rows],expected)
+        self.assertTrue(all('priceText' in r for r in rows),'Exercise the current numeric metadata contract')
+        state=PriceObservations(catalog=Catalog({'items':[dict(id=i+1,name=name) for i,(name,_) in enumerate(expected)]}))
+        state.browsing=ShopBrowsing(identity=state.shop_identity)
+        read=state.observe_shop(result['shop'],self.image,self.image)
+        self.assertFalse(read.retry)
+        self.assertEqual([(r['name'],r['price']['mesos']) for r in state.rows],expected)
+
     @classmethod
     def setUpClass(cls):
         source=QImage(str(ROOT/'vendor/minerva/samples/player-shop/ideal-ratio-weapons-and-a-robe.png'))

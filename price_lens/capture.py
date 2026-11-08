@@ -529,6 +529,7 @@ class PixelReader(QObject):
                                if context is not None else None)
         request['shop_recovery']=bool(context is not None and needs_name(pointer))
         request['progressive_shop']=bool(context is not None and not hover_check)
+        request['progressive_tooltip']=bool(hover_check)
         crop_origin=self.crop.topLeft() if self.crop else QPoint()
         source_region=self.crop.intersected(self.image.rect()) if self.crop else self.image.rect()
         request['exclude']=[dict(zip(('x','y','width','height'),rect.intersected(source_region).translated(-crop_origin).getRect()))
@@ -670,8 +671,18 @@ class PixelReader(QObject):
             metrics=getattr(self,'metrics',None)
             try:
                 result = json.loads(line)
-                partial=request.mode=='prices' and result.get('shopPartial') is True
+                tooltip_partial=request.mode=='prices' and result.get('tooltipPartial') is True
+                partial=request.mode=='prices' and (result.get('shopPartial') is True or tooltip_partial)
                 if partial:self.active_request=request
+                if tooltip_partial:
+                    # A deferred shop is not a closed shop. Only the native
+                    # inventory path may use this phase; malformed/ordinary
+                    # shop descriptions cannot acquire hover authority.
+                    if (result.get('shopDeferred') is not True or result.get('shopPartial') is True
+                            or association_state(result.get('tooltipAssociation'))!='inventory-primary'):
+                        if metrics is not None:metrics.record('prices.partial_rejected')
+                        continue
+                    result.update(shop=None,hover=None,_shop_deferred=True)
                 if metrics is not None:metrics.record(request.mode.replace('-', '_')+('.partial' if partial else '.returned'),
                     duration_ms=(time.monotonic()-request.started_at)*1000)
                 if metrics is not None and request.mode=='prices':
@@ -765,7 +776,7 @@ class PixelReader(QObject):
                             # A shop-only miss must not retire an independent
                             # tooltip already established from newer pixels.
                             continue
-                    else:
+                    elif not tooltip_partial:
                         area = (result.get("shop") or {}).get("area")
                         rows = (result.get("shop") or {}).get("rows") or []
                         clean = all(row.get("covered") or row.get("name") and (row.get("price") or row.get('nameOnly')) for row in rows)

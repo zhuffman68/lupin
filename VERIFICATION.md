@@ -1,4 +1,200 @@
-# Verification — 2026-11-03
+# Verification — 2026-11-08
+
+## 1.0.5 release qualification
+
+The [release verification report](https://github.com/zhuffman68/lupin/releases/download/v1.0.5/VERIFICATION-1.0.5.md)
+records the package builds, installed suites, upgrades, signatures and published
+artifact hashes. The source checkpoints below describe their own recorded test
+conditions; fixture timings do not include desktop capture or compositor delay.
+Native Windows gameplay and production WebView2 acceptance require a Windows
+test and are not established by Wine.
+
+## Shop and inventory reading — 2026-11-04 source checkpoint
+
+- The complete Python suite runs **1,354 tests: 1,351 pass, three skip,
+  197.611 s**. The skips cover two Windows-native operations and an opt-in X11
+  shortcut test. **73 native Rust tests pass**. QA uses private Xvfb/D-Bus,
+  HOME/XDG state, software rendering and bounded low-priority workers.
+- The real native reader's five public shop listings now pass observation
+  validation on their first complete reply. A saved hover frame separately
+  improves from four native prices / two initially accepted to **four / four,
+  with no retry**, using a controlled identity catalog for that source-proof
+  comparison. No reference-price accuracy claim is inferred from the fixture.
+- All **26 saved inventory cases** run through the actual `PixelReader`, native
+  subprocess/IPC, source admission and GUI. None is filtered on successful
+  recognition. A visual oracle covers 20 item cases and six rejection cases;
+  all match, with no wrong-item annotation commands. Case 11 deliberately uses
+  the older fixture's pointer inside its description rather than at the item
+  above it, so it is an explicit rejection test. Market/media/annotation sinks
+  are fake; no desktop capture, game input or actual compositor timing is used.
+- First-correct annotation commands in those 20 positive cases have a median
+  **185.6 ms**, maximum **608.4 ms**. Three exceed 500 ms, including a title
+  needing alternate OCR. This is not a universal half-second latency promise.
+- Paired old/new validation on the same saved frame drops the median fresh
+  proof check from **21.762 to 11.056 ms**, and repeated same-frame checks from
+  **20.938 to 0.014 ms**. One native cold request publishes its inventory phase
+  at **147.20 ms**, before the final shop result at **394.33 ms**. These samples
+  exclude OS capture/compositor latency and sustained resource measurement.
+- Current-frame, pointer, masks, hidden/changed rims, exact identity, numeric
+  endings, stale viewport replies, NPC exclusion, add-item forms and scaled
+  source/title proofs remain covered. Faint cyan cores provide geometry only;
+  near-black name quantization cannot relax asking-price validation. The early
+  inventory phase cannot clear shop routing or extend its request deadline.
+- Source evidence is ignored under `evidence/price-pipeline-20261104/`, including
+  `full-suite-final.log`, `native-verified.log`, `replay.json`, `performance.json`
+  and `shop-proof.json`. At this checkpoint only the local reader was rebuilt;
+  release qualification is recorded separately above. Physical Windows gameplay
+  and a fresh live hover/scroll stress test were unverified.
+- The **Lupin — shop and inventory preview** was opened. Its existing sharing helper
+  retained the same PID/start identity; IPC acknowledged the new preview and live
+  frames arrive. The preview initially inherited a position over the native
+  status bar. Moving only Lupin beside the game restores identification; no
+  game window/input or persistent desktop setting was changed. No shop/item
+  description was open, so this was a capture/locator smoke check only.
+
+## Live chat integration — 2026-11-03 source checkpoint
+
+- **228 checks pass (45.835 s)** on a private Xvfb/D-Bus desktop with temporary
+  HOME/XDG paths. This includes chat, translation/composer behavior, the complete
+  main-window context suite and nine own-paint cases: unknown/real zero origins,
+  moved or absent windows, duplicate/missing anchors, 1.5× capture scaling,
+  selected-display offsets and clipping. A main-window integration test checks
+  that chat and pickup reading receive the same verified client rectangle.
+- The user's live report exposed a gap in the earlier screenshot-only test. The
+  correct source preview/worker were running, but Wayland reported Lupin's own
+  top-level origin as `(0, 0)`. That produced a false exclusion over the chat
+  history: ten requests proposed zero history rows with exclusions, versus 150
+  proposals without them. A two-control paint proof now locates Lupin in the
+  shared image; the live trace confirms its actual right-side rectangle leaves
+  the history rows available. Native composer exclusions use the same policy.
+- A further RAM-only sample from the existing sharing helper showed changed
+  source/background pixels but unchanged foreground glyph bitmaps. History
+  cache/progress keys now follow that bitmap; primary OCR retains the original
+  antialiasing. A binary-only primary read was rejected during testing because
+  it lost one timestamp-free fixture. Both existing native-glyph fixtures again
+  recover all four named messages, with timestamps enabled/disabled, in
+  approximately **1.14 / 1.13 s**.
+- The real controller/worker replay now obtains game bounds and HUD coordinates
+  from the native locator, rather than supplying hand-chosen hints. With
+  simulated changing backgrounds around the screenshot's unchanged native
+  letters, it returns one properly separated translated history entry in the
+  normal four-second scan; latest first accepted result was **1.19 s** after
+  scanning began. Source hashes are in
+  `evidence/screenissue1-20261103/moving-replay.json`.
+- The latest live sample contained only English history rows. The user chose to
+  test the Korean line later, so live acceptance of that line remains pending.
+  No game input was sent, no new sharing session was opened and no live image
+  or transcript was saved. Bounded metadata is in
+  `evidence/chat-live-20261103/{live-metadata-before-fix.json,live-metadata.json,shared-row-results.json}`.
+  This source has not been packaged or published.
+- The updated **Lupin — chat and status preview** is open with the same sharing
+  helper. The UI acknowledges activation and its startup log is empty. No scan
+  was started after the user chose to test later. Current metadata is in
+  `evidence/chat-live-20261103/preview-{launch,verification}.json`; the preceding
+  cache-failure trace is retained as `live-metadata-before-cache-fix.json`.
+
+## Chat history and quest follow-ups — earlier source checkpoint
+
+- **201 checks pass (14.754 s):** 126 Database/reference checks, 60 chat checks,
+  14 translation-layout checks and the main-window HUD/context transport check.
+  The private Xvfb/D-Bus run uses temporary HOME/XDG paths. Coverage includes
+  timestamp parsing, mixed white/colored rows, native scrollbar evidence,
+  synthetic 0.75× / 1.5× UI layouts, header-only badge preparation, separate
+  high-confidence body reads, deferred retry caching and bubble/history dedup.
+  New regressions cover translucent scenery/coloured links, progress past an
+  unfinished row, intact versus malformed headers, separate sender/body anchors,
+  continuation text and cancellation between model operations.
+- A single frame from the existing approved share showed the old generic
+  detector selecting badge fragments instead of complete history rows. The
+  dedicated detector recovered all four visible rows; badge preparation raised
+  complete-row OCR confidence to approximately 0.94–0.96. Those live rows were
+  English, so this proves layout/header recovery rather than live Korean
+  translation acceptance. No game input was sent or additional sharing requested.
+- A separate **simulated scene** combines native Korean glyphs and chat controls
+  with generated names/background text. The unmodified baseline found zero
+  target messages. The revised code recovered all four named messages with
+  timestamps enabled and disabled, translating the body as bonus/rush text.
+  The current native-glyph fixtures recovered all four named messages in
+  **1.18 / 1.07 s**. These exclude capture/presentation and vary with load.
+  One generated timestamp-free name, Player0, was read as Playero; character
+  aliases are not added.
+- The user's real `screenissue1.png` reproduces a missed Korean row in the old
+  four-second scan. Its text crop incorrectly extended to **426 pixels** through
+  translucent scenery; the revised foreground bound is **235 pixels**. The real
+  controller and worker now return one correctly separated sender/message and
+  one translated history entry within the unchanged four-second window. Latest
+  first accepted result was **1.09 s** after scanning began, following **0.76 s**
+  of model loading. No timestamp/name enters the translation. The older eight-
+  second replay only found the line after about 5.56 s and translated malformed
+  header metadata. Screenshot replay is not fresh live moving-chat acceptance;
+  physical Windows interaction is also unverified.
+- Rowen's released steps **50 → 70 → 100 → 150 → 200 Cursed Dolls** resolve via
+  completed-prerequisite links. Tests cover branching/deduplication, exclusion
+  of unavailable and active/unstarted requirements, thumbnail links, Back and
+  in-place follow-up updates without rebuilding the selected quest card.
+- Evidence is `evidence/chat-history-20261103/{tests.log,replay.log,replay-results.json}`.
+  Current regressions and screenshot replay are in
+  `evidence/screenissue1-20261103/{tests.log,findings.json,fixed-replay.json,previous-fixtures-results.json}`.
+  Replay metadata records source hashes without message text. These changes have
+  not been packaged or published; OCR/translation models and native binaries are
+  unchanged.
+- **Lupin — chat and status preview** was launched from current source. The
+  installed UI handed off through its SIGUSR1 handler; the existing sharing
+  helper remained running. The new UI acknowledged activation and has no logged
+  traceback. Launch/IPC metadata is in
+  `evidence/screenissue1-20261103/preview-{launch,verification}.json`. No live
+  Korean message was generated or game input sent during this handoff.
+
+## Market-status motion and investigations — unreleased source
+
+- **47 focused checks pass (1.244 s):** per-line market age rolls, stable caption
+  pixels/geometry during motion, unit changes, long diagnostic wrapping,
+  warning colours, hidden/reduced-motion behavior, refresh scheduling, search and
+  shared number motion. Evidence: `evidence/market-status-motion-20261103/tests.log`.
+  The retained status rows replace the old multiline whole-label fade; price
+  validity and network scheduling are unchanged.
+- A read-only native-helper check at approximately **19:02 local** downloaded
+  **2,264,959 bytes** in **3.985 s**, validating **1,934 items / 1,422 priced**.
+  The live cache had independently refreshed successfully at **19:01:18**. Both served the same
+  source publication from **17:15:56**, already older than the one-hour validity
+  limit. This is an old upstream publication, not a failed download. The saved
+  October 30 error is historical. Evidence:
+  `evidence/market-refresh-20261103/probe-result.json`; no cache, refresh policy
+  or configuration was changed by that investigation.
+- Read-only native replays of `screenissue2.png` and `screenissue3.png` identify
+  adjoining linked-item/comparison descriptions rejected before title OCR.
+  Steel Avarice reads exactly when that rejection is bypassed inside the saved-
+  image harness. Blue Icarus Cape additionally reads as "Blue loarus Cape";
+  orange text is already normalized. No routing safeguard, catalog alias or
+  native reader code was changed. Screenshot 3 also needs retained locator
+  evidence when its descriptions obscure the HUD. Evidence:
+  `evidence/smega-screenissue2-20261103/`. These are remaining recognition limits,
+  not fixes included in the current preview.
+
+## Map portals and zoom — unreleased source
+
+- The expanded Database/reference suite passes **126 tests**, including destination
+  identity, current render-manifest agreement, ambiguous/scripted exits, hidden
+  direct portals, single-portal maps, stale/corrupt image rejection, bounded
+  thumbnail retention, zoom/pan, independent layers and clickable navigation
+  with Back restoring the map view. Tests run on a private Xvfb/D-Bus desktop
+  with temporary HOME/XDG paths; no package or native reader was rebuilt.
+- Public-data checks verified **Henesys**, **Henesys Hunting Ground I** and
+  **Monkey Swamp I** against the current OSMS portal and render indexes. Their
+  original minimap projections were rejected; coordinate-correct thumbnails
+  of the matching content-addressed renders display 12, 3 and 2 portals
+  respectively at Fit. The HHG I exits resolve to A Hill West of Henesys,
+  Henesys and the hidden connection to HHG II. Zoomed views were also rendered.
+- Evidence: `evidence/map-portals-20261103/tests.log`,
+  `real-map-verification.json`, `real-maps.log`, and `*-fit.png` / `*-zoom.png`.
+  The real-data run used a private copy of Lupin's reference database and public
+  map images, without capturing or controlling the game. The installed app and
+  published 1.0.4 packages do not include these unreleased source changes.
+- Unsupported/cropped images without a verified fallback retain the published
+  minimap and released Connections list. Unconfirmed destination entries never
+  open, scripted targets are not inferred, and local teleports do not open a
+  duplicate copy of the same map. Physical Windows interaction has not been
+  rechecked for this feature; it uses standard Qt widget events on both platforms.
 
 ## Lupin 1.0.4 release
 

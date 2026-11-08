@@ -128,7 +128,8 @@ class ShopRows:
                 if all(a is not None and b is not None and abs(a-b)<=3 for a,b in zip(slot,old)):
                     row['area']=dict(previous['area']);break
 
-    def set_guards(self,area,image,exclude=()):
+    @staticmethod
+    def capture_guards(area,image,exclude=()):
         x,y,w,h=(area[k] for k in ('x','y','width','height'))
         # The owner portrait above the list animates; the table rim does not.
         # The scroll rail includes a moving/highlighted thumb. Only the fixed
@@ -144,9 +145,12 @@ class ShopRows:
         # sold-out row or selection changes it when the viewport scrolls.
         # Sample the two solid frame strokes immediately outside that pixel.
         rects=[QRect(x,y-6,w,4),QRect(x-max(2,round(3*scale)),y-4,bevel,h+8)]
-        self.guards=[(r,(image.copy(r).convertToFormat(QImage.Format.Format_RGBA8888),tuple(QRect(e) for e in exclude)))
-                     for r in rects if image is not None and image.rect().contains(r)]
-        if len(self.guards)!=len(rects):self.guards=[]
+        guards=[(r,(image.copy(r).convertToFormat(QImage.Format.Format_RGBA8888),tuple(QRect(e) for e in exclude)))
+                for r in rects if image is not None and image.rect().contains(r)]
+        return guards if len(guards)==len(rects) else []
+
+    def set_guards(self,area,image,exclude=()):
+        self.guards=self.capture_guards(area,image,exclude)
 
     def observe(self,shop,image,now=None,tooltip=None,exclude=()):
         now=time.monotonic() if now is None else now

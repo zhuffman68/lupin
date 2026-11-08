@@ -308,14 +308,32 @@ fn sibling(frame: &Frame, anchor: Panel, s: f32, before: bool) -> Option<Panel> 
 }
 
 fn current_panels(frame: &Frame, markers: &[Dot], px: i32, py: i32, s: f32,exclude: &[BoxRect]) -> Option<Vec<Panel>> {
-    let candidates: Vec<_> = markers.iter().filter(|d| {
+    let eligible=|d:&Dot| {
         (d.x0 as i32-px).abs() as f32<=640.0*s
             && (d.y0 as i32-py).abs() as f32<=640.0*s
-    }).filter(|&&d| title_marker(frame,d) && !exclude.iter().any(|r|
-        r.x<d.x1&&r.right()>d.x0&&r.y<d.y1&&r.bottom()>d.y0)).take(25).copied().collect();
+            &&title_marker(frame,*d) && !exclude.iter().any(|r|
+                r.x<d.x1&&r.right()>d.x0&&r.y<d.y1&&r.bottom()>d.y0)
+    };
+    let candidates: Vec<_> = markers.iter().filter(|d|d.complete()&&eligible(d)).take(25).copied().collect();
     if candidates.len()>24 {return None}
     let mut panels:Vec<_>=candidates.into_iter().filter_map(|d|
         crate::tooltip_frame::panel_with_exclusions(frame,d,s,true,exclude)).collect();
+    if panels.is_empty() {
+        // Compression/antialiasing can leave a two-pixel cyan core. It only
+        // proposes geometry: keep the same complete cap, both full rails,
+        // dark body and bright-title requirements, then read the framed title
+        // independently of that decorative marker.
+        for &dot in markers.iter().filter(|d|!d.complete()&&eligible(d)).take(16) {
+            if let Some(mut panel)=crate::tooltip_frame::panel_with_exclusions(frame,dot,s,true,exclude) {
+                if !panel.cap {continue}
+                panel.marker=false;
+                panel.title=BoxRect{x:panel.rect.x+(17.0*s).round() as u32,
+                    y:dot.y0.saturating_sub((6.0*s).ceil() as u32),
+                    w:panel.rect.w.saturating_sub((24.0*s).round() as u32),h:(17.0*s).round() as u32};
+                panels.push(panel);
+            }
+        }
+    }
     panels.sort_by_key(|p|p.rect.x);
     panels.dedup_by(|a,b|a.rect.x.abs_diff(b.rect.x)<4&&a.rect.y.abs_diff(b.rect.y)<4);
     if panels.len()==2 && !paired(panels[0],panels[1],s) {
@@ -500,6 +518,8 @@ impl Selector {
             };
         };
         let mut chosen = None;
+        metadata["panelCount"]=json!(panels.len());
+        metadata["cappedPanels"]=json!(panels.iter().filter(|p|p.cap).count());
         if panels.len() < 2 {
             // A known pair can briefly lose one cyan marker while both native
             // frames remain. That is not proof of an ordinary single popup:
@@ -514,7 +534,7 @@ impl Selector {
                 return Association { panel: None, primary_header: None, rejected: true, metadata };
             }
             self.pair = None;
-            if let Some(single)=panels.first().filter(|p|p.cap&&p.marker) {
+            if let Some(single)=panels.first().filter(|p|p.cap) {
                 let margin=(48.0*s).ceil() as i64;
                 let near=slot.is_some_and(|slot| {
                     i64::from(single.rect.x)<=i64::from(slot.right())+margin
@@ -525,8 +545,12 @@ impl Selector {
                 if near&&!single.rect.contains(px,py) {chosen=Some(single.rect)}
             }
             if chosen.is_none() {
-                self.bound_source=None;
-                return Association{panel:None,primary_header:None,rejected:false,metadata}
+                // A description can cover an inventory cell geometrically.
+                // That cell is not the pointer's current hover source; falling
+                // back to a generic title would lend it the covered item's ID.
+                let rejected=panels.iter().any(|panel|panel.rect.contains(px,py));
+                if rejected {metadata["state"]=json!("rejected")} else {self.bound_source=None;}
+                return Association{panel:None,primary_header:None,rejected,metadata}
             }
         }
         if panels.len() == 2 {
@@ -704,6 +728,47 @@ mod tests {
             dots,
             a,
         )
+    }
+
+    #[test]
+    fn a_small_cyan_core_only_proposes_a_fully_framed_source_bound_title() {
+        let (mut capture,dots,primary)=fixture_at(0,3,1900,900,1293,90,1350,180);
+        let comparison=BoxRect{x:primary.right()+3,y:primary.y,w:236,h:240};
+        paint(&mut capture.frame,comparison.x,comparison.y,comparison.w,comparison.h,[20,35,20]);
+        paint(&mut capture.frame,dots[0].x0,dots[0].y0,5,5,[30,30,70]);
+        paint(&mut capture.frame,dots[0].x0+1,dots[0].y0,2,4,[85,204,255]);
+        let (_,markers)=crate::tooltip_surface::prepare(&capture.frame);
+        assert!(markers.iter().any(|dot|!dot.complete()));
+        let selected=Selector::default().select(&capture,&markers,Some(1.0));
+        assert_eq!(selected.panel,Some(primary));
+        assert_eq!(selected.metadata["state"],"inventory-primary");
+        let header=selected.primary_header.unwrap();
+        assert!(header.x>dots[0].x1);
+        let pointer=capture.pointer;
+        capture.pointer=ScreenPoint{x:capture.origin.x+primary.x as i32+30,
+            y:capture.origin.y+primary.y as i32+30};
+        let covered_cell=Selector::default().select(&capture,&markers,Some(1.0));
+        assert_eq!(covered_cell.metadata["state"],"rejected");
+        assert!(covered_cell.panel.is_none());
+        capture.pointer=pointer;
+        paint(&mut capture.frame,primary.x,primary.y,primary.w,3,[20,35,20]);
+        let lost=Selector::default().select(&capture,&markers,Some(1.0));
+        assert_ne!(lost.metadata["state"],"inventory-primary");
+    }
+
+    #[test]
+    fn an_earlier_cap_without_full_rails_cannot_hide_the_complete_current_frame() {
+        let (mut capture,dots,primary)=fixture(0,3);
+        // Keep a short but fully framed current description. A separate old
+        // horizontal stroke above it has the same endpoints but no side rails.
+        paint(&mut capture.frame,primary.x,primary.y+89,primary.w,primary.h-89,[20,35,20]);
+        let false_top=primary.y-81;
+        paint(&mut capture.frame,primary.x,false_top,primary.w,3,[30,30,70]);
+        paint(&mut capture.frame,primary.x,false_top+1,primary.w,1,[190,190,205]);
+        let panel=panel_from_header(&capture.frame,dots[0],1.0,true).unwrap();
+        assert!(panel.cap);
+        assert_eq!(panel.rect.y,primary.y);
+        assert!(panel.rect.h>=80 && panel.rect.h<=92);
     }
 
     #[test]

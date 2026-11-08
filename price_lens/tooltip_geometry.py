@@ -54,22 +54,16 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
         (middle,max(2,int(2*native_scale+.5)),phase)
         for phase in range(max(1,ceil(native_scale)))
         for middle in sorted({max(1,floor(native_scale)),max(1,ceil(native_scale))}))
-    visible=None;vertical=horizontal_visible=None
-    if exclude:
-        visible=np.ones((height,width),dtype=bool)
-        for covered in exclude:
-            part=covered.adjusted(-1,-1,1,1).intersected(image.rect())
-            if not part.isEmpty():visible[part.top():part.bottom()+1,part.left():part.right()+1]=False
-        vertical=visible.copy();horizontal_visible=visible.copy()
-        for step in range(1,7):
-            vertical[:,:-step]&=visible[:,step:]
-            horizontal_visible[:-step,:]&=visible[step:,:]
+    # Validate only queried rim lanes. Full-display masks used several MB and
+    # twelve array shifts for every supplied panel, even for a distant label.
+    covered=tuple(part for rect in exclude
+                  if not (part:=rect.adjusted(-1,-1,1,1).intersected(image.rect())).isEmpty())
     def rim(x,y,horizontal=False,_keep=rgba):
         if not (0<=x<width and 0<=y<height):return False
         # A covered stroke is unknown. In particular, our own opaque cards
         # cannot establish a frame or end a previously verified native edge.
-        if visible is not None:
-            if not (horizontal_visible if horizontal else vertical)[y,x]:return None
+        lane=QRect(x,y,1,min(7,height-y)) if horizontal else QRect(x,y,min(7,width-x),1)
+        if any(lane.intersects(rect) for rect in covered):return None
         at=y*stride+x*4
         step=stride if horizontal else 4
         # Antialiased/native UI scaling widens the same dark/light/dark rim.
@@ -102,7 +96,11 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
             paired=(a.max(axis=2)<180)&(c.max(axis=2)<180)&(np.abs(a-c).max(axis=2)<=endpoint_tolerance)
             contrast=np.any(((b-a>=18)&(b-c>=18))|((a-b>=18)&(c-b>=18)),axis=2)
             found|=valid&paired&contrast
-        valid=np.ones(xx.shape,dtype=bool) if visible is None else (horizontal_visible if horizontal else vertical)[yy,xx]
+        valid=np.ones(xx.shape,dtype=bool)
+        for rect in covered:
+            right=xx if horizontal else np.minimum(xx+6,width-1)
+            bottom=np.minimum(yy+6,height-1) if horizontal else yy
+            valid&=~((xx<=rect.right())&(right>=rect.left())&(yy<=rect.bottom())&(bottom>=rect.top()))
         return xs,ys,found,valid
     def axis_scores(xs,ys,horizontal=False,_keep=rgba):
         """The same stroke predicate, batched over a bounded search grid."""

@@ -267,7 +267,7 @@ class ChatTranslation(QObject):
         for key in ('box','stamp','source_role','role_verified'):card[key]=source.get(key)
         card['gone_at']=None if visible else min(source.get('gone_at',now) for source in sources)
 
-    def request(self,image,region,exclude=(),*,contexts=()):
+    def request(self,image,region,exclude=(),*,contexts=(),hud=None):
         if not self.ready or self.busy:return False
         region=region.intersected(image.rect())
         if region.width()<16 or region.height()<16:return False
@@ -277,6 +277,8 @@ class ChatTranslation(QObject):
         data=bytes(crop.constBits());self.identity+=1
         request={'id':self.identity,'width':crop.width(),'height':crop.height(),'stride':crop.bytesPerLine(),
                  'exclude':[[r[0]-region.x(),r[1]-region.y(),r[2],r[3]] for r in exclude]}
+        if isinstance(hud,QRect) and not hud.isEmpty() and region.contains(hud):
+            request['hud']=list(hud.translated(-region.x(),-region.y()).getRect())
         request['contexts']=[]
         for context in list(contexts)[:8]:
             if not isinstance(context,dict) or context.get('verified') is not True or context.get('role') not in ('store','chat','banner'):continue

@@ -1,6 +1,8 @@
 """Native description bounds from public OCR samples, including clipped panels."""
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import numpy as np
 from PySide6.QtCore import QRect,Qt
 from PySide6.QtGui import QImage,QColor
 from price_lens.tooltip_geometry import description_bounds,still_present,TooltipReference,shop_description_bounds
@@ -9,6 +11,17 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class TooltipGeometryTests(unittest.TestCase):
+    def test_excluded_frame_checks_do_not_allocate_display_sized_masks(self):
+        from price_lens.tooltip_geometry import _rim_pixels
+        image=QImage(3840,2160,QImage.Format.Format_RGBA8888);image.fill(QColor('#55507a'))
+        allocate=np.ones
+        def bounded(shape,*args,**kwargs):
+            self.assertLess(np.prod(shape),100_000,'A small rim query must not allocate a display mask')
+            return allocate(shape,*args,**kwargs)
+        with patch('price_lens.tooltip_geometry.np.ones',side_effect=bounded):
+            rim=_rim_pixels(image,(QRect(3000,1800,100,100),))
+            self.assertEqual(rim.axis_scores((100,335),range(100,400,8)),{100:0.0,335:0.0})
+
     def test_shared_cap_grid_agrees_with_individual_widths_and_exclusions(self):
         from price_lens.tooltip_geometry import _rim_pixels
         image=self.comparison_pair()

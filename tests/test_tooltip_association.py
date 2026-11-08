@@ -50,6 +50,28 @@ class TooltipAssociationTests(unittest.TestCase):
         self.assertFalse(received.matches(changed,(340,190)))
         self.assertIsNone(TooltipAssociation.from_result({**result,'_tooltip_context':None},self.image))
 
+    def test_repeated_frame_checks_reuse_work_but_edits_pointer_and_masks_do_not(self):
+        proof=self.proof();check=TooltipAssociation._matches_current
+        with patch.object(TooltipAssociation,'_matches_current',autospec=True,side_effect=check) as current:
+            for _ in range(3):self.assertTrue(proof.matches(self.image,(340,190)))
+            self.assertEqual(current.call_count,1)
+            self.assertTrue(proof.matches(self.image,(341,190)))
+            self.assertTrue(proof.matches(self.image,(341,190),exclude=(QRect(700,500,20,20),)))
+            self.assertEqual(current.call_count,3)
+            changed=QImage(self.image);changed.setPixelColor(310,155,QColor('red'))
+            self.assertFalse(proof.matches(changed,(340,190)))
+            self.assertTrue(proof.matches(self.image,(340,190)))
+            changed.setPixelColor(310,155,QColor('#24384b'))
+            self.assertTrue(proof.matches(changed,(340,190)))
+            self.assertEqual(current.call_count,5)
+
+    def test_validation_cache_cannot_grow_with_a_capture_session(self):
+        proof=self.proof()
+        for index in range(30):
+            image=self.image.copy();image.setPixelColor(740,500,QColor(index,30,60))
+            self.assertTrue(proof.matches(image,(340,190)))
+        self.assertLessEqual(len(proof._matches_cache),4)
+
     def test_name_header_and_panel_guards_expire_independently(self):
         proof=self.proof()
         for point in ((60,112),(310,155),(51,100),(326,176)):

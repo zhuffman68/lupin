@@ -11,6 +11,41 @@ pub struct PrimaryTitles {
     cache: VecDeque<(Vec<u8>,Option<String>)>,
 }
 
+/// Recognition cache only; every reply still needs fresh source/title proofs.
+/// Exact captured crop bytes include every colour and antialiasing fringe.
+#[derive(Default)]
+pub struct AlternativeTitles {
+    cache: VecDeque<(Vec<u8>,Vec<String>)>,
+}
+
+impl AlternativeTitles {
+    pub fn read(&mut self,frame:&Frame,origin:ScreenPoint,found:&Value,marker_title:bool)->Vec<String> {
+        let Some(key)=alternative_key(frame,origin,found,marker_title) else {return Vec::new()};
+        if let Some((_,value))=self.cache.iter().find(|(old,_)|*old==key) {return value.clone()}
+        let value=alternatives(frame,origin,found,marker_title);
+        if self.cache.len()>=32 {self.cache.pop_front();}
+        self.cache.push_back((key,value.clone()));value
+    }
+}
+
+fn alternative_key(frame:&Frame,origin:ScreenPoint,found:&Value,marker_title:bool)->Option<Vec<u8>> {
+    let area=found.get("area")?;
+    let x=area["x"].as_i64()?.checked_sub(i64::from(origin.x))?;
+    let y=area["y"].as_i64()?.checked_sub(i64::from(origin.y))?;
+    let w=u32::try_from(area["width"].as_u64()?).ok()?;
+    let h=u32::try_from(area["height"].as_u64()?).ok()?;
+    if x<0 || y<0 || !(40..=720).contains(&w) || !(8..=32).contains(&h)
+        || x+w as i64>i64::from(frame.width) || y+h as i64>i64::from(frame.height) {return None}
+    let mut key=Vec::with_capacity((w*h*4+9) as usize);
+    key.extend_from_slice(&w.to_le_bytes());key.extend_from_slice(&h.to_le_bytes());
+    key.push(u8::from(marker_title));
+    for row in y as u32..y as u32+h {
+        let start=((row*frame.width+x as u32)*4) as usize;
+        key.extend_from_slice(frame.rgba.get(start..start+(w*4) as usize)?);
+    }
+    Some(key)
+}
+
 impl PrimaryTitles {
     pub fn read(&mut self,capture:&ItemCapture,area:ScreenRect)->Option<ItemTooltip> {
         let x=i64::from(area.x)-i64::from(capture.origin.x);
@@ -103,4 +138,26 @@ pub fn alternatives(frame:&Frame,origin:ScreenPoint,found:&Value,marker_title:bo
         Some(results)
     };
     read().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_cache_binds_every_current_title_pixel_size_and_marker_policy() {
+        let mut frame=Frame{width:100,height:50,rgba:vec![255;100*50*4],at_ms:1};
+        let origin=ScreenPoint{x:20,y:30};
+        let found=serde_json::json!({"area":{"x":30,"y":40,"width":60,"height":17}});
+        let key=alternative_key(&frame,origin,&found,true).unwrap();
+        frame.at_ms=2;
+        assert_eq!(alternative_key(&frame,origin,&found,true).unwrap(),key);
+        frame.rgba[(49*100+99)*4]=0;
+        assert_eq!(alternative_key(&frame,origin,&found,true).unwrap(),key);
+        frame.rgba[(15*100+20)*4]=0;
+        assert_ne!(alternative_key(&frame,origin,&found,true).unwrap(),key);
+        assert_ne!(alternative_key(&frame,origin,&found,false).unwrap(),key);
+        let invalid=serde_json::json!({"area":{"x":30,"y":40,"width":u64::MAX,"height":17}});
+        assert!(alternative_key(&frame,origin,&invalid,true).is_none());
+    }
 }

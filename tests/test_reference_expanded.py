@@ -9,7 +9,7 @@ from PySide6.QtGui import QImage,QColor,QPainter
 from price_lens.reference_data import ReferenceStore
 from price_lens.reference_indexes import ReleaseIndex,release_name
 from price_lens.reference_relations import quest_rewards,item_quest_sources
-from price_lens.reference_geometry import MapGeometry,alignment,native_size,matching_projection
+from price_lens.reference_geometry import MapGeometry,alignment,native_size,matching_projection,RENDERS
 from test_reference import generation,documents,allow_fixture
 from test_reference_ui import ANIMATION
 
@@ -46,6 +46,26 @@ class ExpandedReferenceTests(unittest.TestCase):
         self.assertFalse(release_name('quests',row,"+ A different chain (2)Finding the Instructor (Warrior)"))
         parser=ReleaseIndex('maps');parser.feed('<a href="/msclassic/maps/100">Mushroom Garden</a><a href="/msclassic/maps/100">Wrong map</a>')
         self.assertNotIn(100,parser.rows)
+
+    def test_followups_include_reverse_completion_requirements_and_released_branches(self):
+        docs=documents();docs['quests.json'][0].update(chain='Cursed Dolls',next_quest_id=10004)
+        docs['quests.json'] += [
+            dict(id=10003,name='Collecting 70 Cursed Dolls',region='Ellinia',chain='Cursed Dolls',level_min=36,requirements=[dict(type='quest',id=10002,state=2)]),
+            dict(id=10004,name='Collecting 100 Cursed Dolls',region='Ellinia',chain='Cursed Dolls',level_min=36,requirements=[dict(type='quest',id=10002,state=2)]),
+            dict(id=10005,name='Unstarted prerequisite',region='Ellinia',requirements=[dict(type='quest',id=10002,state=0)]),
+            dict(id=10006,name='Active prerequisite',region='Ellinia',requirements=[dict(type='quest',id=10002,state=1)]),
+            dict(id=10007,name='Future follow-up',region='Forgotten Hollow',requirements=[dict(type='quest',id=10002,state=2)])]
+        self.store.replace(*generation(docs));allow_fixture(self.store)
+        self.assertEqual([entry.id for entry,row in self.store.quest_followups(10002)],[10004,10003])
+        self.assertEqual(self.store.quest_followups(10003),[])
+
+    def test_shared_chain_name_alone_does_not_invent_a_followup_or_release_status(self):
+        docs=documents();docs['quests.json'][0].update(chain='Same quest line')
+        docs['quests.json'] += [dict(id=10003,name='Same named chain',region='Ellinia',chain='Same quest line'),
+            dict(id=10004,name='Unconfirmed next quest',region='Ellinia',requirements=[dict(type='quest',id=10002,state=2)])]
+        self.store.replace(*generation(docs));allow_fixture(self.store)
+        with self.store.connect() as db:db.execute("DELETE FROM availability WHERE kind='quests' AND id=10004")
+        self.assertEqual(self.store.quest_followups(10002),[])
 
     def test_random_and_choice_rewards_preserve_class_pools_and_do_not_duplicate_flat_rows(self):
         row=dict(rewards=[dict(type='exp',value=10),dict(type='item',id=1,count=1,guaranteed=False)],
@@ -85,11 +105,15 @@ class ExpandedReferenceTests(unittest.TestCase):
         url='https://osmsdataexplorer.com/data/maps/'+hashlib.md5(ANIMATION).hexdigest()+'.webp'
         row=dict(id=100,render_url=url,portals=[dict(name='a',type=2,x=1,y=1,dest_map_id=1),dict(name='b',type=2,x=6,y=6,dest_map_id=2)])
         calls=[]
-        def fetch_json(url):calls.append('index');return {'000000100':[dict(name='a',type=2,x=1,y=1,dest_map='1'),dict(name='b',type=2,x=6,y=6,dest_map='2')]}
+        def fetch_json(address):
+            if address==RENDERS:calls.append('manifest');return {'000000100':hashlib.md5(ANIMATION).hexdigest()}
+            calls.append('index');return {'000000100':[dict(name='a',type=2,x=1,y=1,dest_map='1'),dict(name='b',type=2,x=6,y=6,dest_map='2')]}
         def fetch_bytes(url):calls.append('image');return ANIMATION
         service=MapGeometry(self.store,fetch_bytes=fetch_bytes,fetch_json=fetch_json);self.addCleanup(service.close)
         service.select(row);service.select(row)
         deadline=time.monotonic()+3
         while service.pending and time.monotonic()<deadline:QTest.qWait(10)
-        self.assertEqual(service.cached(row),dict(dx=0,dy=0,anchors=2,width=8,height=8,projection_verified=False))
-        service.select(row);self.assertEqual(calls,['index','image']);self.assertIsNone(service.pending)
+        self.assertEqual(service.cached(row),dict(dx=0,dy=0,anchors=2,width=8,height=8,projection_verified=False,spawns_verified=True,
+            portals=[dict(name='a',type=2,x=1,y=1,dest_map_id=1,dest_portal=''),dict(name='b',type=2,x=6,y=6,dest_map_id=2,dest_portal='')],preview=True))
+        self.assertEqual(service.preview(row).size().width(),8)
+        service.select(row);self.assertEqual(calls,['index','manifest','image']);self.assertIsNone(service.pending)

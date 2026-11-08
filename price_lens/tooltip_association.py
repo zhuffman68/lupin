@@ -1,5 +1,6 @@
 """Pixel proofs binding a native description to its inventory source cell."""
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass,field
 import hashlib
 
 from PySide6.QtCore import QPoint,QRect
@@ -70,6 +71,7 @@ class TooltipAssociation:
     title: TitleProof | None = None
     frame_caps: tuple = ()
     header: InventoryHeader | None = None
+    _matches_cache: OrderedDict = field(default_factory=OrderedDict,init=False,repr=False,compare=False)
 
     @classmethod
     def from_result(cls,result,image,pointer=None):
@@ -188,6 +190,18 @@ class TooltipAssociation:
         if not self.contains_pointer(pointer) or image.isNull():return False
         exclude=tuple(exclude)
         if len(exclude)>64 or any(not isinstance(rect,QRect) for rect in exclude):return False
+        # Capture owns immutable QImages. Qt changes cacheKey on a pixel edit or
+        # detach, so a different capture, pointer or paint mask cannot reuse a
+        # previous decision. Bound this to the submitted/current frames' checks.
+        key=(image.cacheKey(),_point(pointer),tuple(rect.getRect() for rect in exclude))
+        cached=self._matches_cache.get(key)
+        if cached is not None:return cached
+        result=self._matches_current(image,pointer,exclude)
+        self._matches_cache[key]=result
+        while len(self._matches_cache)>4:self._matches_cache.popitem(last=False)
+        return result
+
+    def _matches_current(self,image,pointer,exclude):
         if any(not image.rect().contains(rect) for rect in
                (self.source,self.slot,self.panel,*((self.comparison,) if self.comparison is not None else ()))):return False
         frames=(self.panel,self.comparison) if self.comparison is not None else (self.panel,)

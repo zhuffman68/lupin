@@ -32,6 +32,21 @@ struct Prepared {
     ink_width: u32,
 }
 
+impl Prepared {
+    fn proof_area(&self) -> ScreenRect {
+        // OCR keeps ascent/descent padding, including native divider pixels.
+        // Export only its body rows when that padding has no title ink. Python
+        // can then retain its strict foreign-pixel check instead of accepting
+        // arbitrary bright marks around an otherwise complete name.
+        let inked=|y:u32|(0..self.ink.width()).any(|x|self.ink.get_pixel(x,y).0[0]<160);
+        let first=(0..self.ink.height()).find(|&y|inked(y)).unwrap_or(0);
+        let last=(0..self.ink.height()).rev().find(|&y|inked(y)).unwrap_or(self.ink.height()-1);
+        let top=first.min(3);
+        let bottom=(last+1).max(self.ink.height().saturating_sub(3));
+        ScreenRect{y:self.area.y+top as i32,height:bottom-top,..self.area}
+    }
+}
+
 struct NativeLine {
     area: ScreenRect,
     ink: GrayImage,
@@ -939,7 +954,7 @@ impl NameRecovery {
                 row,
                 RecoveredComponents {
                     row: area,
-                    name: name.area,
+                    name: name.proof_area(),
                     price: price_area,
                     price_value,
                     price_text,
@@ -1002,6 +1017,24 @@ fn asking_text(price: ListedPrice) -> String {
 mod tests {
     use super::*;
     use minerva_core::{Frame, ScreenPoint};
+
+    #[test]
+    fn exported_name_proof_omits_only_ink_free_divider_padding() {
+        let (capture,table,_)=sample(None);
+        let line=prepare(&capture,row(table),false).unwrap();
+        let proof=line.proof_area();
+        assert_eq!(proof.x,line.area.x);
+        assert_eq!(proof.width,line.area.width);
+        assert!(proof.y>=line.area.y && proof.bottom()<=line.area.bottom());
+        for (x,y,pixel) in line.ink.enumerate_pixels() {
+            if pixel.0[0]<160 {
+                assert!(i64::from(line.area.y)+i64::from(y)>=i64::from(proof.y));
+                assert!(i64::from(line.area.y)+i64::from(y)<proof.bottom());
+                assert!(x<proof.width);
+            }
+        }
+        assert!(proof.height<line.area.height);
+    }
 
     #[test]
     fn ordinary_prices_keep_canonical_grouping_without_another_ocr_pass() {

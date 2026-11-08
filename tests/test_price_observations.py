@@ -451,6 +451,18 @@ class PriceObservationTests(unittest.TestCase):
         image.setPixelColor(170,150,QColor('white'))
         self.assertIsNone(self.state.component_proof(self.shop['rows'][0],'name',image,image))
 
+    def test_near_black_name_chroma_stays_ink_and_cannot_hide_source_edits_or_coloured_paint(self):
+        _,_,image=self.component_page(fresh=True);row=self.shop['rows'][0]
+        frame=image.copy();frame.setPixelColor(170,156,QColor(0,4,15))
+        self.assertIsNotNone(self.state.component_proof(row,'name',frame,frame))
+        self.assertIsNone(self.state.component_proof(row,'name',image,frame))
+        for colour in (QColor(0,0,20),QColor(60,0,60),QColor('white')):
+            invalid=frame.copy();invalid.setPixelColor(170,156,colour)
+            self.assertIsNone(self.state.component_proof(row,'name',invalid,invalid))
+        self.assertIsNone(self.state.component_proof(row,'name',frame,frame,pointer=(170,156)))
+        asking,image=self.semantic_asking();image.setPixelColor(143,174,QColor(0,4,15))
+        self.assertIsNone(self.state.component_proof(asking,'price',image,image))
+
     def test_separator_support_cannot_hide_changed_name_or_asking_ink(self):
         for kind,y in (('name',150),('price',168)):
             with self.subTest(kind=kind):
@@ -520,6 +532,23 @@ class PriceObservationTests(unittest.TestCase):
         # The same overlap is rejected when it covers any numeric-core ink.
         self.assertIsNone(self.state.component_proof(row,'price',image,image,pointer=(180,160)))
         self.assertIsNone(self.state.component_proof(row,'price',image,image,exclude=(QRect(193,173,2,2),)))
+
+    def test_first_complete_numeric_reply_needs_no_second_ocr_pass_for_its_container(self):
+        row,image=self.semantic_asking()
+        shop={**self.shop,'rows':[row]}
+        read=self.state.observe_shop(shop,image,image,pointer=(500,450),read_point=(500,450))
+        self.assertFalse(read.retry)
+        self.assertEqual([entry['price'] for entry in self.state.rows],[dict(quantity=1,mesos=9999)])
+
+    def test_first_reply_cannot_establish_components_under_changed_or_hidden_rims(self):
+        row,image=self.semantic_asking();shop={**self.shop,'rows':[row]}
+        latest=image.copy();latest.setPixelColor(120,145,QColor('red'))
+        self.state.observe_shop(deepcopy(shop),image,latest,pointer=(500,450),read_point=(500,450))
+        self.assertFalse(any(entry.get('price') for entry in self.state.rows))
+        self.setUp()
+        self.state.observe_shop(deepcopy(shop),image,image,pointer=(500,450),read_point=(500,450),
+            exclude=(QRect(90,140,220,10),QRect(90,140,12,280)))
+        self.assertFalse(any(entry.get('price') for entry in self.state.rows))
 
     def test_semantic_asking_requires_matching_strict_numeric_text(self):
         row,image=self.semantic_asking()

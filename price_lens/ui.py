@@ -35,6 +35,7 @@ from .tooltip_association import TooltipAssociation,association_state
 from .tooltip_source import capture_title
 from .shop_dialog import ShopPriceEntry
 from .chat import ChatTranslation
+from .owned_capture import OwnedCapture
 from .translation_ui import TranslationPanel
 from .compose import KoreanComposer
 from .composer_ui import ComposerDialog
@@ -156,6 +157,7 @@ class LensWindow(QMainWindow):
         self.overlay = Overlay(root, self)
         if hasattr(self.overlay,'status'):self.overlay.status.connect(self.on_overlay_status)
         self.screens = sorted(QApplication.screens(), key=lambda screen: (screen.geometry().x(), screen.geometry().y()))
+        self.owned_capture=OwnedCapture()
         self.screen_index = None
         self.capture_starting = False
         self.capture_kind = "kde" if kde_capture else "portal"
@@ -849,16 +851,28 @@ class LensWindow(QMainWindow):
         sx,sy=image.width()/geometry.width(),image.height()/geometry.height()
         exclude=[[round(x*sx),round(y*sy),round(w*sx),round(h*sy)] for x,y,w,h in getattr(self.overlay,'layout_boxes',[])]
         exclude.extend(list(rect.getRect()) for rect in self.writer_capture_exclusions())
-        for owned in (self,self.composer_dialog):
-            if owned is not None and owned.isVisible() and not owned.isMinimized():
-                rect=owned.frameGeometry().translated(-geometry.x(),-geometry.y())
-                exclude.append([round(rect.x()*sx),round(rect.y()*sy),round(rect.width()*sx),round(rect.height()*sy)])
+        exclude.extend(list(rect.getRect()) for rect in self.owned_capture_exclusions())
         contexts=[]
         if self.shop_open and self.effective_shop_context() is not None:
             offset=self.reader.crop.topLeft() if self.reader.crop else QPoint()
             store=self.effective_shop_context().translated(offset).intersected(region).intersected(image.rect())
             if not store.isEmpty():contexts.append({'role':'store','box':list(store.getRect()),'verified':True})
-        self.chat.request(image,region,exclude,contexts=contexts)
+        footer=getattr(self.reader,'game_footer' if self.reader.auto_active else 'manual_game_footer',None)
+        self.chat.request(image,region,exclude,contexts=contexts,hud=footer)
+
+    def owned_capture_exclusions(self):
+        image=self.reader.image
+        if self.screen_index is None or image.isNull():return []
+        geometry=self.screens[self.screen_index].geometry()
+        surfaces=[(self,(self.brand.wordmark,self.shortcuts_button))]
+        if self.composer_dialog is not None:
+            editor=self.composer_dialog.editor
+            surfaces.append((self.composer_dialog,(editor.title,editor.hint)))
+        regions=[]
+        for widget,anchors in surfaces:
+            rect=self.owned_capture.rectangle(image,widget,anchors,geometry)
+            if rect is not None:regions.append(rect)
+        return regions
 
     def pickup_capture_exclusions(self):
         image=self.reader.image
@@ -867,10 +881,7 @@ class LensWindow(QMainWindow):
         sx,sy=image.width()/geometry.width(),image.height()/geometry.height()
         regions=[QRect(round(x*sx),round(y*sy),round(w*sx),round(h*sy)) for x,y,w,h in getattr(self.overlay,'layout_boxes',[])]
         regions.extend(self.writer_capture_exclusions())
-        for owned in (self,self.composer_dialog):
-            if owned is not None and owned.isVisible() and not owned.isMinimized():
-                rect=owned.frameGeometry().translated(-geometry.x(),-geometry.y())
-                regions.append(QRect(round(rect.x()*sx),round(rect.y()*sy),round(rect.width()*sx),round(rect.height()*sy)))
+        regions.extend(self.owned_capture_exclusions())
         offset=self.reader.crop.topLeft() if self.reader.crop else QPoint()
         for rect in (self.effective_shop_context(),self.shop_tooltip_rect):
             if rect:regions.append(rect.translated(offset))
@@ -1596,9 +1607,10 @@ class LensWindow(QMainWindow):
             return
         epoch = result.get('shopViewportEpoch')
         stale_shop=bool(result.get('_shop_stale') or type(epoch) is int and epoch!=self.shop_browsing.epoch)
+        deferred_shop=bool(result.get('_shop_deferred'))
         if stale_shop and result.get('hover') and association_state(result.get('tooltipAssociation'))!='inventory-primary':
             return
-        if stale_shop:
+        if stale_shop or deferred_shop:
             # Shop viewport authority is independent of a current inventory
             # source/title proof from the same immutable capture.
             result={**result,'shop':None,'hover':None}
@@ -1674,7 +1686,7 @@ class LensWindow(QMainWindow):
             and request.started_at<self.shop_price_entry.closed_at)
         shop_read=(self.observations.observe_shop(shop,image,latest,pointer=pointer,read_point=read_point,
             panel=bounds,exclude=exclusions,source_exclude=self.shop_source_exclusions(bounds))
-            if not stale_shop and not old_entry_reply and self.shop_price_entry.rectangle is None else None)
+            if not stale_shop and not deferred_shop and not old_entry_reply and self.shop_price_entry.rectangle is None else None)
         entry_restored=self.shop_price_entry.accept(request.started_at if isinstance(request,SubmittedRequest) else time.monotonic(),
             verified=bool(not stale_shop and shop_read is not None and shop_read.shop is not None
                           and not shop_read.retry and self.shop_rows._page_proven),
