@@ -21,7 +21,8 @@ class CaptureRequestTests(unittest.TestCase):
         reader=SimpleNamespace(paused=False,experience_enabled=False,pickup_worker=None,pending=False,
             image=image,image_sequence=1,submitted_sequence=0,process=process,live_source=False,crop=None,
             auto_active=False,prices_enabled=True,rescan_requested=rescan,pointer=(180,160),
-            tooltip_enabled=True,tooltip_retry_requested=False,tooltip_rect=None,tooltip_fingerprint=None,
+            tooltip_enabled=False,tooltip_retry_requested=False,tooltip_rect=None,tooltip_fingerprint=None,
+            inventory_absence=None,
             shop_rect=native,shop_context=native,shop_context_provider=lambda:full,
             shop_fingerprint=None,roi_clean=True,pending_since=0,last_pointer=(180,160),
             temp=temp,last_frame=100,last_geometry_check=0,writer_regions=lambda:[],annotation_regions=lambda:[],submit=Mock())
@@ -51,7 +52,7 @@ class CaptureRequestTests(unittest.TestCase):
         self.assertFalse(request['shop_recovery'])
 
     def test_inventory_hover_requests_an_early_source_bound_reply_without_shop_interleaving(self):
-        reader,_=self.scanning_reader();reader.pointer=(500,450)
+        reader,_=self.scanning_reader();reader.pointer=(500,450);reader.tooltip_enabled=True
         with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
         payload=reader.submit.call_args.args[0]
         self.assertTrue(payload['tooltip']);self.assertTrue(payload['progressive_tooltip'])
@@ -91,6 +92,7 @@ class CaptureRequestTests(unittest.TestCase):
         for missing_fingerprint,changed_ink in ((False,False),(False,True),(True,False),(True,True)):
             with self.subTest(missing_fingerprint=missing_fingerprint,changed_ink=changed_ink):
                 reader,_=self.scanning_reader();reader.shop_rect=reader.shop_context=None
+                reader.tooltip_enabled=True
                 reader.shop_context_provider=lambda:None
                 reader.pointer=reader.last_pointer=(260,120);reader.tooltip_association=None
                 painter=QPainter(reader.image);panel=QRect(100,150,260,230)

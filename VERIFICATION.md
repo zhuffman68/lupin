@@ -1,5 +1,16 @@
 # Verification — 2026-11-13
 
+## Inventory/Korean follow-up — source preview
+
+The [follow-up record](docs/INVENTORY_AND_KOREAN_FOLLOWUP.md) distinguishes the
+inventory/shop routing defect, annotation-watchdog regression and Korean
+recognition/output changes. Before the final liveness fix the full suite runs
+**1,385 tests, three skipped, 193.193 s**. The subsequent helper/canvas, inventory
+and Korean checks pass **149 tests**; all **75 Rust tests** and **39 release-tool
+tests** pass. Both original and forced-overlap 26-case inventory replays have no
+wrong-item annotations. Full qualification of the final source is recorded in
+that follow-up. This is not an installed or published release.
+
 ## Unreleased performance/resource pass — 2026-11-13
 
 This is source and isolated staging qualification, separate from published 1.0.5.

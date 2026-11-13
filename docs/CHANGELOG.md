@@ -7,6 +7,17 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
+- Unchanged price overlays stay visible while reading continues. Lightweight
+  liveness messages preserve timeout protection without rebuilding labels or
+  restarting their animations.
+
+- Inventory items can be recognized in front of a shop's saved rectangle,
+  without enabling duplicate description prices for shop listings.
+- Korean chat can recover a clear message despite an unreadable timestamp or
+  sender. Bubble detection tolerates small channel-rounding differences;
+  freeform translation considers two candidates and checks explicit shortage
+  and negation, with clearer party-member and skill-request wording.
+
 - Market refreshes prepare saved prices and availability in the background,
   keeping the interface responsive. Older catalogs remain available offline.
 - Screen reading avoids discarded-frame conversions and unnecessary tooltip

@@ -191,6 +191,34 @@ class ChatHistoryTests(unittest.TestCase):
         result=ScanMemory().read(image,False,reader,lambda:False,time.perf_counter()+1,history=True)
         self.assertEqual(result,[])
 
+    def test_clear_body_survives_an_unreadable_timestamp_without_guessing_sender(self):
+        image=self.contrast_fixture()
+        text='[14:0S] P1ayer: Work Gloves 25만 메소 삽니다'
+        message='Work Gloves 25만 메소 삽니다'
+        class Reader:
+            def read(self,line):return (text,.74) if line.width()==400 else (message,.99)
+            def detail(self,line):
+                return dict(glyphs=[(i,i+1,i*7,(i+1)*7,.99) for i in range(len(text))]) if line.width()==400 else {}
+        reader=Reader();read=ScanMemory().read(image,False,reader,lambda:False,time.perf_counter()+1,history=True)
+        self.assertEqual(len(read),1);self.assertEqual(read[0]['text'],message)
+        self.assertTrue(read[0]['anonymous_history']);self.assertGreater(read[0]['rect'][0],0)
+        from price_lens.chat_scan import make_row
+        from price_lens.chat_worker import source_role
+        translated=[]
+        translator=SimpleNamespace(translate=lambda value:(translated.append(value) or 'Buying Work Gloves for 250k mesos','Local'))
+        row=make_row(image,[0,0,400,16],False,read,translator,(),source_role,lambda:False)
+        self.assertEqual(translated,[message]);self.assertEqual(row['speaker'],'')
+        self.assertEqual(row['original'],message);self.assertIn('Sender unreadable',row['note'])
+        self.assertNotIn('14:',row['original'])
+
+    def test_body_rescue_does_not_lower_message_confidence_or_apply_to_generic_text(self):
+        image=self.contrast_fixture();text='[14:0S] P1ayer: 안녕하세요'
+        class Reader:
+            def read(self,line):return (text,.74) if line.width()==400 else ('안녕하세요',.75)
+            def detail(self,line):return dict(glyphs=[(i,i+1,i*7,(i+1)*7,.99) for i in range(len(text))])
+        self.assertEqual(ScanMemory().read(image,False,Reader(),lambda:False,time.perf_counter()+1,history=True),[])
+        self.assertEqual(ScanMemory().read(image,False,Reader(),lambda:False,time.perf_counter()+1,history=False),[])
+
     def test_contrast_cannot_destroy_an_intact_history_header(self):
         image=self.contrast_fixture();good='[14:05] Player: 안녕하세요';bad='[14:05Player: 안녕하세요'
         reader=SimpleNamespace(read=lambda line:(good,.91) if line.format()==image.format() else (bad,.99))

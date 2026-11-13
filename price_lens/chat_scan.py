@@ -69,7 +69,7 @@ class ScanMemory:
 
     def read(self,crop,is_bubble,recognizer,cancelled,deadline,*,key=None,history=False):
         from .chat_ocr import lines, contrast_line
-        from .chat_history import parse_prefix,header_without_badges,body_bounds,speaker_bounds,prepare_line
+        from .chat_history import parse_prefix,header_without_badges,body_bounds,speaker_bounds,prepare_line,anonymous_body_bounds
         key=key or self.key(crop,is_bubble,history=history)
         if history:key=('history',*key)
         if key in self.reads:
@@ -114,6 +114,26 @@ class ScanMemory:
                     prefix=parse_prefix(text)
                     if confidence>=.92 and (not history or prefix is not None):break
             prefix=parse_prefix(text) if not is_bubble else None
+            anonymous=False
+            weak_sender=bool(prefix and confidence<.90 and body_bounds(prefix,detail) is None)
+            if history and (prefix is None or weak_sender):
+                body_left=anonymous_body_bounds(text,detail)
+                if body_left is not None and 0<body_left<line.width()-8:
+                    if time.perf_counter()>=deadline:incomplete=True;continue
+                    body=line.copy(body_left,0,line.width()-body_left,line.height())
+                    body_input=body;other=recognizer.read(body_input)
+                    if cancelled():return []
+                    if other[1]<.90 and time.perf_counter()<deadline:
+                        alternate=contrast_line(body);normalized=recognizer.read(alternate)
+                        if cancelled():return []
+                        if normalized[1]>other[1]:other=normalized;body_input=alternate
+                    elif other[1]<.90:incomplete=True
+                    if (other[1]>=.90 and HANGUL.search(other[0])
+                            and not re.match(r'^\s*\[\d{1,2}:',other[0])):
+                        from PySide6.QtCore import QPoint
+                        body.setOffset(line.offset()+QPoint(body_left,0));line=body
+                        text,confidence=other;detail=recognizer.detail(body_input) if hasattr(recognizer,'detail') else {}
+                        prefix=None;anonymous=True
             # A malformed timestamp is metadata, never Korean prose to send
             # to the translation model. Unprefixed continuation text is kept.
             if history and prefix is None and re.match(r'^\s*\[\d{1,2}:',text):continue
@@ -144,6 +164,7 @@ class ScanMemory:
             if confidence<(.80 if is_bubble else .90):continue
             result.append(dict(text=text,confidence=confidence,rect=[line.offset().x(),line.offset().y(),line.width(),line.height()],
                 speaker_rect=sender_rect,
+                anonymous_history=anonymous,
                 alternatives=detail.get('alternatives',()),content_right=detail.get('content_right',line.width()),
                 meaningful=detail.get('meaningful',bool(re.search(r'[A-Za-z0-9가-힣ㄱ-ㅣ]',text)))))
         if incomplete and not result:return None
@@ -155,7 +176,8 @@ class ScanMemory:
 def make_row(image,box,is_bubble,read,translator,contexts,role_for,cancelled):
     if not read:return None
     words=[line['text'] for line in read]
-    role,verified=role_for(box,' '.join(words),is_bubble,contexts,(image.width(),image.height()))
+    anonymous=any(line.get('anonymous_history') for line in read)
+    role,verified=(('text',False) if anonymous else role_for(box,' '.join(words),is_bubble,contexts,(image.width(),image.height())))
     sender=''
     prefix=None
     if role=='chat':
@@ -180,6 +202,7 @@ def make_row(image,box,is_bubble,read,translator,contexts,role_for,cancelled):
     corrected=supported_ocr_alternative(original,alternatives)
     if cancelled():return None
     english,note=translator.translate(corrected or original)
+    if anonymous:note+=' · Sender unreadable'
     if cancelled():return None
     row=dict(box=list(box),speaker=sender,original=corrected or original,text=english,note=note,
              source_role=role,role_verified=verified)

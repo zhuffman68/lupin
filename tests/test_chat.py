@@ -79,6 +79,22 @@ class ChatSnapshotTests(unittest.TestCase):
         finally:
             chat.process=None;chat.close();chat.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
 
+    def test_scan_diagnostics_include_only_fixed_numeric_fields(self):
+        class Pipe:
+            def readAllStandardOutput(self):data,self.output=self.output,b'';return data
+        chat=ChatTranslation(ROOT);pipe=Pipe();chat.process=pipe;chat.enabled=chat.ready=True
+        chat.identity=chat.batch_identity=2;chat.started=time.monotonic();chat.busy=True
+        pipe.output=(json.dumps({'id':1,'row':{'original':'PRIVATE MESSAGE'}})+'\n'+
+                     json.dumps({'id':2,'done':dict(count=0,regions=3,processed=2,readable=1,korean=0,speaker='PRIVATE NAME',elapsed_ms=150)})+'\n').encode()
+        try:
+            chat.receive();data=chat.diagnostics()
+            self.assertEqual(data['obsolete'],1);self.assertEqual(data['passes'],1)
+            self.assertEqual(data['last_pass']['regions'],3)
+            self.assertNotIn('PRIVATE',json.dumps(data));self.assertNotIn('speaker',data['last_pass'])
+            self.assertTrue(all(type(v) in (int,float) for v in data['last_pass'].values()))
+        finally:
+            chat.process=None;chat.close();chat.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
+
     def test_restarting_a_busy_scan_drops_late_results_and_requests_only_latest_frame(self):
         class Pipe:
             def __init__(self):self.writes=[];self.output=b''

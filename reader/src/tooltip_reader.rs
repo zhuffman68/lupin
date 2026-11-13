@@ -14,7 +14,7 @@ pub struct TooltipReader {
 }
 
 impl TooltipReader {
-    pub fn read(&mut self,capture:&ShopCapture,pointer:ScreenPoint,retry:bool,
+    pub fn read(&mut self,capture:&ShopCapture,pointer:ScreenPoint,retry:bool,inventory_only:bool,
                 annotations:&[Rect],scale_hint:Option<f32>)
         -> Result<Value,Box<dyn std::error::Error>> {
         let mut value=json!({});
@@ -27,6 +27,14 @@ impl TooltipReader {
             x:capture.origin.x+header.x as i32,y:capture.origin.y+header.y as i32,
             width:header.w,height:header.h});
         value["tooltipAssociation"]=association.metadata;
+        if inventory_only {
+            value["inventoryProbe"]=json!({"absent":value["tooltipAssociation"]["source"].is_null(),
+                "area":tooltip_association::inventory_probe_area(&capture.frame,capture.origin,pointer)});
+            if value["tooltipAssociation"]["state"]!="inventory-primary" {
+                value["tooltip"]=json!("none");
+                return Ok(value);
+            }
+        }
         if association.rejected {
             value["tooltip"]=json!("none");
             return Ok(value);

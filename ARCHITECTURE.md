@@ -42,6 +42,12 @@ manifest during confirmation. Drop navigation projects relevant identities and
 release evidence in one read transaction. Workers do not mutate live snapshot
 dictionaries.
 
+`inventory_probe.py` stores only a bounded exact negative source-header discovery
+for a particular pointer/image geometry. It permits cheap unchanged-shop reuse
+without letting a shop rectangle suppress a foreground inventory. Candidate
+inventory sources still need fresh primary/header/cell/title proofs; ordinary
+shop descriptions cannot use this path.
+
 `reader_process.py` owns lazy startup, three bounded recovery retries, and
 three-minute idle release after capture is paused. Loss revokes the submitted
 request/generation before restarting only our reader. `process_lifecycle.py`
@@ -50,6 +56,13 @@ entry point drains them with a shared final budget and joins cancelled backgroun
 workers before releasing installer IPC. Screen-sharing handoff remains separate.
 
 ## Capture and recognition
+
+Identical overlay states are coalesced, while repeated GUI authorization sends
+an at-most-once-per-second heartbeat on an idle helper pipe. The canvas refreshes
+its five-second watchdog without rebuilding rows or restarting motion. No
+independent sender timer keeps obsolete labels alive when GUI updates stop.
+Fresh empty state stays hidden; a valid repeated state may restore rows after a
+temporary watchdog expiry. Heartbeats never advance paint presentation IDs.
 
 Linux retains its approved PipeWire/portal sharing session. SIGUSR1 hands the capture helper to a replacement UI without another chooser. Normal Quit ends sharing. The explicit KDE screenshot fallback remains available for troubleshooting.
 

@@ -36,6 +36,8 @@ struct Request {
     tooltip: bool,
     #[serde(default)]
     tooltip_retry: bool,
+    #[serde(default)]
+    inventory_only: bool,
     origin: Option<ScreenPoint>,
     #[serde(default)]
     auto_game: bool,
@@ -183,15 +185,16 @@ fn main() {
             let scale_hint=location.as_ref().and_then(|l|l.guards.get(1)).map(|r|r.width as f32/36.0);
             let tooltip_value=if request.tooltip {
                 if let Some(pointer)=request.pointer {
-                    tooltip_reader.read(&capture,pointer,request.tooltip_retry,&request.annotations,scale_hint)?
+                    tooltip_reader.read(&capture,pointer,request.tooltip_retry,request.inventory_only,&request.annotations,scale_hint)?
                 } else {serde_json::json!({})}
             } else {serde_json::json!({})};
             let tooltip_ms=tooltip_started.elapsed().as_secs_f64()*1000.0;
             // An independently bound inventory title can finish before shop
             // repair; its frame, epoch and original deadline remain immutable.
-            if request.progressive_tooltip && request.tooltip
+            let inventory_partial=request.progressive_tooltip && request.tooltip
                 && tooltip_value["tooltipAssociation"]["state"]=="inventory-primary"
-                && tooltip_value["tooltip"]["found"]["name"].is_string() {
+                && tooltip_value["tooltip"]["found"]["name"].is_string();
+            if inventory_partial {
                 let mut partial=tooltip_value.clone();
                 partial["atMs"]=serde_json::json!(request.at_ms);
                 partial["tooltipPartial"]=serde_json::json!(true);
@@ -218,7 +221,8 @@ fn main() {
             // Return already complete ordinary rows before costly missing-line
             // recovery. Only explicit shop-only requests opt into this protocol;
             // inventory reads and complete/cache-hit pages remain one reply.
-            if request.progressive_shop && !request.tooltip && !cache_hit && request.shop_area.is_some()
+            if request.progressive_shop && (!request.tooltip || request.inventory_only) && !inventory_partial
+                && !cache_hit && request.shop_area.is_some()
                 && request.shop_recovery.unwrap_or(true)
                 && shop_reading.shop.as_ref().is_some_and(|shop|
                     shop.rows.iter().any(|row| !row.covered && row.name.is_some() && row.price.is_some())

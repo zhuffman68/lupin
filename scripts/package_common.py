@@ -34,7 +34,7 @@ def stage_application(out):
     shutil.copy2(ROOT / "docs/DATABASE_SOURCES.md", documentation / "DATABASE_SOURCES.md")
     shutil.copy2(ROOT / "docs/UPDATES.md", documentation / "UPDATES.md")
     shutil.copy2(ROOT / "docs/CHANGELOG.md", documentation / "CHANGELOG.md")
-    for name in ("SHOP_RECOGNITION.md", "TRACKING_AND_READER_PERFORMANCE.md", "PERFORMANCE_PASS.md", "STORAGE_MAINTENANCE.md"):
+    for name in ("SHOP_RECOGNITION.md", "TRACKING_AND_READER_PERFORMANCE.md", "PERFORMANCE_PASS.md", "STORAGE_MAINTENANCE.md", "INVENTORY_AND_KOREAN_FOLLOWUP.md"):
         shutil.copy2(ROOT / "docs" / name, documentation / name)
     for source in (ROOT / "docs").glob("PATCH_*.md"):
         shutil.copy2(source, documentation / source.name)

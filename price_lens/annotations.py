@@ -88,6 +88,11 @@ class AnnotationWindow(QWidget):
         try:
             state = json.loads(line)
             if not isinstance(state,dict):return
+            if 'heartbeat' in state:
+                if len(state)==1 and state['heartbeat'] is True:
+                    self.last_command=time.monotonic()
+                    if (self.rows or self.retiring) and not self.isVisible():self.show()
+                return
             if state.get("quit"):
                 QApplication.quit()
                 return

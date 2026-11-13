@@ -24,10 +24,11 @@ class Translator:
         self.cache=OrderedDict()
 
     def translate(self, text):
-        from .chat_text import glossary, HANGUL, numbers_preserved,recruiting_phrase,model_source,terms_preserved,unknown_shorthand
+        from .chat_text import (glossary,HANGUL,numbers_preserved,recruiting_phrase,skill_request,
+                               model_source,terms_preserved,unknown_shorthand,meaning_preserved)
         if text in self.cache:
             self.cache.move_to_end(text);return self.cache[text]
-        output=recruiting_phrase(text)
+        output=recruiting_phrase(text) or skill_request(text)
         note='Game-chat phrase'
         if output is None:output=glossary(text);note='Game-chat glossary'
         if output is None:
@@ -36,10 +37,18 @@ class Translator:
                 return "Unrecognized shorthand · see the original", "Partial · unknown Korean kept"
             prepared,required=model_source(text)
             tokens=self.source.encode(prepared,out_type=str)
-            result=self.model.translate_batch([tokens],beam_size=1,max_decoding_length=72,repetition_penalty=1.15)[0]
-            output=self.target.decode(result.hypotheses[0]);note="Approximate local translation"
-            if HANGUL.search(output) or unknown_shorthand(text) or not terms_preserved(required,output) or len(result.hypotheses[0])>=72:
-                output=partial or text;note='Partial · unknown Korean kept'
+            result=self.model.translate_batch([tokens],beam_size=2,num_hypotheses=2,max_decoding_length=72,repetition_penalty=1.15)[0]
+            def failure(output,hypothesis):
+                if (not output.strip() or HANGUL.search(output) or unknown_shorthand(text)
+                        or not terms_preserved(required,output) or len(hypothesis)>=72):return 'incomplete'
+                if not meaning_preserved(text,output):return 'meaning'
+                if not numbers_preserved(text,output):return 'numbers'
+                return None
+            candidates=[(self.target.decode(h),h) for h in result.hypotheses[:2]]
+            output,hypothesis=next((row for row in candidates if failure(*row) is None),candidates[0])
+            reason=failure(output,hypothesis);note="Approximate local translation"
+            if reason in ('incomplete','meaning'):
+                output=partial or text;note='Partial · '+('meaning uncertain' if reason=='meaning' else 'unknown Korean kept')
         if not numbers_preserved(text,output):
             output="Translation could not preserve the numbers. Please check the original."
             note="Numbers uncertain · original retained"

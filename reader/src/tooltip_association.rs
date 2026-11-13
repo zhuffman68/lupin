@@ -60,6 +60,25 @@ fn count(
         .filter(|&(col, row)| predicate(rgb(frame, col, row)))
         .count()
 }
+fn source_search(frame:&Frame,px:i32,py:i32,scale_hint:Option<f32>)->Option<BoxRect> {
+    if px<0 || py<0 || px as u32>=frame.width || py as u32>=frame.height {return None}
+    let scale=scale_hint.filter(|s|(0.65..=2.1).contains(s)).unwrap_or(2.1);
+    let reach_x=(220.0*scale).ceil() as u32;
+    let reach_y=(300.0*scale).ceil() as u32;
+    let x=(px as u32).saturating_sub(reach_x);
+    let y=(py as u32).saturating_sub(reach_y);
+    let right=((px as u32)+reach_x).min(frame.width);
+    let bottom=(py as u32).min(frame.height);
+    (right>x && bottom>y).then_some(BoxRect{x,y,w:right-x,h:bottom-y})
+}
+
+pub fn inventory_probe_area(frame:&Frame,origin:minerva_core::ScreenPoint,
+    pointer:minerva_core::ScreenPoint)->Option<Value> {
+    // Cover every supported source-header search, including an older cached
+    // inventory at a larger scale. This is only an exact negative-work cache.
+    source_search(frame,pointer.x-origin.x,pointer.y-origin.y,None).map(|r|r.global(origin))
+}
+
 fn source(
     frame: &Frame,
     px: i32,
@@ -79,21 +98,8 @@ fn source(
     // Search only the bounded neighbourhood which can contain this source's
     // header. Its distance from any game/capture edge does not identify the
     // hovered item: a fitted description pair may end well beyond its window.
-    if px < 0 || py < 0 || px as u32 >= frame.width || py as u32 >= frame.height {
-        return None;
-    }
-    let search_scale = scale_hint.filter(|s| (0.65..=2.1).contains(s)).unwrap_or(2.1);
-    let reach_x = (220.0 * search_scale).ceil() as u32;
-    let reach_y = (300.0 * search_scale).ceil() as u32;
-    let x0 = (px as u32).saturating_sub(reach_x);
-    let x1 = ((px as u32) + reach_x).min(frame.width);
-    let y0 = (py as u32).saturating_sub(reach_y);
-    let y1 = (py as u32).min(frame.height);
-    let w = x1 - x0;
-    let h = y1 - y0;
-    if w == 0 || h == 0 {
-        return None;
-    }
+    let search=source_search(frame,px,py,scale_hint)?;
+    let (x0,y0,w,h)=(search.x,search.y,search.w,search.h);
     let mut mask: Vec<u8> = (0..w * h)
         .map(|i| u8::from(pink(rgb(frame, x0 + i % w, y0 + i / w))))
         .collect();

@@ -31,6 +31,19 @@ reads go first among untouched rows; deferred reads rotate behind other rows,
 so a difficult English banner cannot repeatedly block the remaining messages.
 Unsupported or obscured panels retain the generic scan path.
 
+Within independently detected history rows, an unreadable sender or timestamp
+can be separated from a clear body using a closed timestamp fragment, a confident
+later colon and measured character positions. The body still needs its own
+90 percent confidence. Lupin neither guesses the sender nor translates timestamp
+digits as prose. Recovered bodies stay unattributed and note the unreadable
+sender. Generic scenery cannot use this recovery path. Bubble fill permits one
+level of independent RGB rounding within 237–239, with the same geometry checks.
+
+Fixed numeric diagnostics count requests, proposed/read regions, accepted, late
+and obsolete rows and worker state. They contain no messages or player names and
+perform no ordinary diagnostics file I/O. A development preview can use these
+counters to investigate misses without another recording from the user.
+
 Recognized `[HH:MM]` / `[HH:MM:SS]` timestamps and explicit channel labels are
 separated from the player name and message. A timestamp alone never becomes a
 speaker. A native channel badge can be removed from the OCR preparation only
@@ -113,6 +126,13 @@ marked **Possible OCR correction**; hovering its Korean line in the app shows
 the first reading. This does not add spelling search or guessed prices.
 
 Explicit amounts use English units: `25만` = `250k`, `250만` = `2.5m`, `1억` = `100m`. Bare `250` stays `250`; the app never supplies an unstated multiplier or currency. ATT values, levels and scroll percentages are not automatically interpreted as prices. A translation that drops, invents or changes a numeric value is rejected in favour of the original. This check cannot recover digits that OCR itself misread.
+
+Freeform Korean decoding considers two ranked candidates from the same bundled
+model and retains one that passes the existing name/number checks plus narrow
+checks for explicit negation and shortage. Complete party-member, one-more-person
+and supported skill-cast requests have grammar-based translations. Unknown tails
+or negated requests do not qualify for those templates. These checks do not prove
+general semantic correctness; freeform output remains approximate.
 
 ## Performance and resource boundary
 

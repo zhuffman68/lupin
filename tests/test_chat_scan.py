@@ -51,6 +51,17 @@ def row():
 
 
 class TranslationScanTests(unittest.TestCase):
+    def test_native_bubble_fill_tolerates_independent_channel_rounding_only(self):
+        from price_lens.chat_ocr import bubbles
+        before=scene();expected=bubbles(before);self.assertTrue(expected)
+        rounded=before.copy()
+        for y in range(100,190):
+            for x in range(100,260):
+                if rounded.pixelColor(x,y)==QColor('#eeeeee'):rounded.setPixelColor(x,y,QColor(237,238,239))
+        self.assertEqual(bubbles(rounded),expected)
+        foreign=scene();p=QPainter(foreign);p.fillRect(100,100,160,90,QColor(232,238,245));p.end()
+        self.assertEqual(bubbles(foreign),[])
+
     def test_repeated_scans_prioritize_changed_pixels_and_keep_progress_without_a_cursor(self):
         image=QImage(400,200,QImage.Format.Format_RGB888);image.fill(QColor('white'))
         boxes=[[10,20,80,14],[100,20,80,14],[190,20,80,14]];memory=ScanMemory();reads=[]

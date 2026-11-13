@@ -27,6 +27,7 @@ class Overlay(QObject):
         self.buffer = b''
         self.last_state = None
         self.sent_state = None
+        self.last_label_write=0.0
         self.presentation_id=0;self.capture_at=0;self.last_capture_considered=0;self.pending_capture_at=0
         self.diagnostics=bool(os.environ.get('LUPIN_READER_DIAGNOSTICS'))
         self.state_pending = False
@@ -204,7 +205,15 @@ class Overlay(QObject):
                                shop_viewport_pending=getattr(self, 'shop_viewport_pending', False))
         new_capture=self.capture_at if self.capture_at!=self.last_capture_considered else 0
         self.last_capture_considered=self.capture_at
-        if state==self.last_state:return
+        if state==self.last_state:
+            # The canvas expires without main-loop authorization. Keep that
+            # liveness independent of structural/price changes, without
+            # resending rows or queuing heartbeats behind a busy pipe.
+            if (not self.closed and self.ready and self.sent_state==state and not self.state_pending
+                    and self.process.state()==QProcess.ProcessState.Running and not self.process.bytesToWrite()
+                    and time.monotonic()-self.last_label_write>=1):
+                self.process.write(b'{"heartbeat":true}\n');self.last_label_write=time.monotonic()
+            return
         if new_capture:self.pending_capture_at=new_capture
         self.last_state=state
         self.state_pending=True
@@ -227,6 +236,7 @@ class Overlay(QObject):
         if self.diagnostics:
             state=dict(state,trace=dict(id=self.presentation_id,sent_at=time.monotonic(),captured_at=self.pending_capture_at))
         self.process.write((json.dumps(state,separators=(',',':'))+'\n').encode())
+        self.last_label_write=time.monotonic()
         self.sent_state=self.last_state
         self.pending_capture_at=0
 

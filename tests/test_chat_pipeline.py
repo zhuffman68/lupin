@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from PySide6.QtGui import QImage,QColor,QPainter
-from price_lens.chat_text import recruiting_phrase,numbers_preserved,model_source,message_key
+from price_lens.chat_text import recruiting_phrase,numbers_preserved,model_source,message_key,skill_request,meaning_preserved
 from price_lens.chat_worker import Translator,scan,source_role
 from price_lens.chat_scan import ScanMemory
 
@@ -19,6 +19,35 @@ def fake_translator(output):
 
 
 class ChatPipelineTests(unittest.TestCase):
+    def test_candidate_selection_keeps_shortage_negation_and_explicit_amounts(self):
+        translator,_=fake_translator('unused')
+        def candidates(texts):
+            translator.model=SimpleNamespace(translate_batch=lambda *a,**k:[SimpleNamespace(hypotheses=[[s] for s in texts])])
+        candidates(["I can't buy it because I have enough mesos.","I can't buy it because I don't have enough mesos."])
+        output,note=translator.translate('메소가 부족해서 못 사요')
+        self.assertIn("don't have enough",output);self.assertIn('Approximate',note)
+        candidates(['250m mesos','2.5m mesos'])
+        self.assertEqual(translator.translate('250만 메소')[0],'2.5m mesos')
+        self.assertFalse(meaning_preserved('그 아이템은 안 팔아요','I sell that item.'))
+        self.assertTrue(meaning_preserved('그 아이템은 안 팔아요',"I'm not selling that item."))
+        self.assertFalse(meaning_preserved('메소가 부족해요','I have the black gloves.'))
+
+    def test_contradictory_meaning_retains_the_original_instead_of_fluent_wrong_text(self):
+        translator,_=fake_translator("I can't buy it because I have enough mesos.")
+        output,note=translator.translate('메소가 부족해서 못 사요')
+        self.assertIn('부족',output);self.assertIn('meaning uncertain',note)
+
+    def test_complete_party_and_skill_requests_do_not_depend_on_model_guessing(self):
+        translator,calls=fake_translator('Hill, please.')
+        self.assertIn('one more person',translator.translate('파티원 한 명 더 구해요')[0])
+        self.assertEqual(translator.translate('커닝 파퀘 같이 하실 분 구해요')[0],'Looking for people to join Kerning PQ')
+        self.assertEqual(translator.translate('힐 한 번만 부탁드려요')[0],'Please cast Heal just once')
+        self.assertEqual(translator.translate('헤이스트 1번 주세요')[0],'Please cast Haste 1 time')
+        self.assertEqual(calls,[])
+        for source in ('힐튼 호텔이 어디예요','힐 한 번만 안 주세요','힐 한번만 부탁드려요 내일'):
+            self.assertIsNone(skill_request(source))
+        self.assertIsNone(recruiting_phrase('파티원 한명 더 안구해요'))
+
     def test_partial_glossary_ordinary_grammar_reaches_the_local_model(self):
         translator,calls=fake_translator('Can the Warrior train again today?')
         output,note=translator.translate('전사 오늘도 사냥할 수 있나요?')

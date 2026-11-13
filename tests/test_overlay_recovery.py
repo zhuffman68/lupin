@@ -153,6 +153,32 @@ counter=Path(__file__).with_name('attempts.txt');counter.write_text(str(int(coun
         self.assertGreaterEqual(report['painted_at'],report['sent_at'])
         self.assertNotIn('Fixture',json.dumps(report))
 
+    def test_unchanged_prices_stay_visible_and_stopped_authorization_still_expires(self):
+        overlay=self.start(self.helper(READY+READ_LOOP));self.wait(lambda:overlay.ready)
+        canvas=AnnotationWindow(start_listener=False);clock=[100.0];messages=[]
+        def deliver(data):
+            messages.append(json.loads(bytes(data)));canvas.read_command(bytes(data));return len(data)
+        try:
+            overlay.reduce_motion=True
+            rows=[dict(x=30,y=30,name='Fixture',text='1,000',key='own',kind='shop')]
+            with patch('price_lens.overlay.time.monotonic',side_effect=lambda:clock[0]),\
+                    patch.object(overlay.process,'bytesToWrite',return_value=0),\
+                    patch.object(overlay.process,'write',side_effect=deliver):
+                overlay.update([0,0,800,600],rows);active=canvas.rows[0]
+                for second in range(1,9):
+                    clock[0]=100.0+second
+                    overlay.update([0,0,800,600],rows);canvas.expire()
+                    self.assertTrue(canvas.isVisible());self.assertIs(canvas.rows[0],active)
+                self.assertEqual(sum('rows' in m for m in messages),1)
+                self.assertTrue(all(m=={'heartbeat':True} for m in messages[1:]))
+                self.assertEqual(overlay.presentation_id,1)
+                clock[0]+=6;canvas.expire();self.assertFalse(canvas.isVisible())
+                overlay.update([0,0,800,600],rows);self.assertTrue(canvas.isVisible())
+                overlay.update([0,0,800,600],[]);self.assertFalse(canvas.isVisible())
+                clock[0]+=2;overlay.update([0,0,800,600],[]);self.assertFalse(canvas.isVisible())
+        finally:
+            canvas.close();canvas.deleteLater()
+
     def test_transient_exit_replays_only_saved_annotation_state_to_new_helper(self):
         root=self.helper("""
 counter=Path(__file__).with_name('attempts.txt');n=int(counter.read_text())+1 if counter.exists() else 1;counter.write_text(str(n))

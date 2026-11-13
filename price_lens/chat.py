@@ -25,6 +25,8 @@ class ChatTranslation(QObject):
         self.notice='';self.notice_until=0;self.last_track=0;self.last_image=None
         self.current_frame=QImage();self.current_frame_at=0
         self.idle_seconds=180;self.recovery_attempts=0;self.late_rows=0
+        self.scan_metrics=dict(requests=0,received=0,accepted=0,late_rejected=0,obsolete=0,passes=0)
+        self.last_pass={}
         self.cadence=QTimer(self);self.cadence.setSingleShot(True);self.cadence.setInterval(250);self.cadence.timeout.connect(self.want_frame)
         self.window_timer=QTimer(self);self.window_timer.setSingleShot(True);self.window_timer.timeout.connect(self.finish_scan)
         self.deadline=QTimer(self);self.deadline.setSingleShot(True);self.deadline.setInterval(4000);self.deadline.timeout.connect(self.timeout)
@@ -173,16 +175,22 @@ class ChatTranslation(QObject):
                     continue
                 self.busy=False;self.deadline.stop();self.abort_scan(message['error']);continue
             if message.get('id')!=self.identity:
+                if message.get('row'):self.scan_metrics['obsolete']+=1
                 if message.get('done'):
                     self.busy=False;self.deadline.stop();self.frame=QImage()
                     if self.watching:self.cadence.start(0)
                     else:self.arm_idle()
                 continue
             if message.get('row'):
+                self.scan_metrics['received']+=1
                 if time.monotonic()-self.started<2.5 or self.late_row_current(message['row']):
-                    if self.accept_row(message['row']):self.hits+=1
-                else:self.late_rows+=1
+                    if self.accept_row(message['row']):self.hits+=1;self.scan_metrics['accepted']+=1
+                else:self.late_rows+=1;self.scan_metrics['late_rejected']+=1
             if message.get('done'):
+                self.scan_metrics['passes']+=1
+                done=message['done']
+                self.last_pass={key:done[key] for key in ('count','bubbles','regions','processed','readable','korean','elapsed_ms')
+                    if isinstance(done,dict) and type(done.get(key)) in (int,float) and 0<=done[key]<=1000000}
                 self.busy=False;self.deadline.stop();self.frame=QImage()
                 if self.watching:
                     self.status.emit('Scanning Korean…')
@@ -202,6 +210,11 @@ class ChatTranslation(QObject):
         local=QRect(*box);current=local.translated(self.region.topLeft())
         return bool(not local.isEmpty() and self.frame.rect().contains(local) and self.current_frame.rect().contains(current)
                     and self.frame.copy(local)==self.current_frame.copy(current))
+
+    def diagnostics(self):
+        """Fixed numeric fields only; never include a message or player name."""
+        return dict(self.scan_metrics,last_pass=dict(self.last_pass),loading=self.waiting,
+                    scanning=self.watching,busy=self.busy,worker_ready=self.ready)
 
     def accept_row(self,supplied):
         if not isinstance(supplied,dict):return
@@ -349,6 +362,7 @@ class ChatTranslation(QObject):
             request['contexts'].append({'role':context['role'],'verified':True,
                                        'box':[rect.x()-region.x(),rect.y()-region.y(),rect.width(),rect.height()]})
         self.started=time.monotonic();self.busy=True;self.batch_identity=self.identity
+        self.scan_metrics['requests']+=1
         self.process.write((json.dumps(request)+'\n').encode());self.process.write(data);self.deadline.start()
         self.status.emit(self.phase_message());self.changed.emit();return True
 

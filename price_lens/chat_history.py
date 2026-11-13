@@ -77,6 +77,26 @@ def body_bounds(prefix,detail,*,minimum=.90):
     return max(0,min(g[2] for g in body)-2)
 
 
+def anonymous_body_bounds(text,detail):
+    """Measure a timestamped row's body without trusting its OCR sender.
+
+    Caller must already have native chat-history geometry. A closed timestamp
+    fragment and confident later delimiter keep metadata out of the crop.
+    The resulting text must pass its own ordinary confidence threshold.
+    """
+    if not isinstance(text,str) or not re.match(r'^\s*\[\d{1,2}:',text):return None
+    close=text.find(']')
+    if not 4<=close<=14:return None
+    separator=text.find(':',close+1)
+    if separator<=close+2 or not re.search(r'[가-힣ㄱ-ㅣ]',text[separator+1:]):return None
+    glyphs=detail.get('glyphs',())
+    delimiter=[g for g in glyphs if g[0]<=separator<g[1]]
+    body=[g for g in glyphs if g[0]>separator]
+    if len(delimiter)!=1 or not body or delimiter[0][4]<.90:return None
+    left=max(delimiter[0][3],min(g[2] for g in body)-2)
+    return left if left>0 else None
+
+
 def speaker_bounds(prefix,detail):
     """Measured sender pixels, independent of timestamp and message pixels."""
     glyphs=[g for g in detail.get('glyphs',())

@@ -161,6 +161,19 @@ shop epochs or rebuild the Prices page.
 
 ## Submission, current frame and late replies
 
+A pointer inside the saved shop rectangle does not establish foreground
+ownership. With inventory reading enabled, `inventory_only` probing there checks
+for an independently source-bound inventory primary before any description may
+publish. The request includes its header instead of clipping it to the shop ROI.
+Ordinary shop descriptions stay shop-only. An early inventory reply excludes the
+shop-partial phase; otherwise ordinary rows may use progressive shop results.
+
+An exact negative cache covers the native source-header search area, pointer and
+image dimensions. It skips repeated absent-source work only for unchanged search
+pixels. A source waiting for its description is never cached as absent. Header
+changes outside the table invalidate it too. This cache supplies no item/offer
+proof and is cleared when area context resets.
+
 Each reader request owns its source frame, pointer, crop coordinates, capture
 generation, shop epoch, annotation rectangles and deadline. NPC handling checks
 the submitted frame and current frame separately:

@@ -78,11 +78,11 @@ def components(mask,*,min_run=2):
 def bubbles(image):
     """Connected runs of Classic's neutral bubble fill; no full-scene OCR.
 
-    A one-level tolerance permits normal capture rounding. Exclude large UI
+    A one-level per-channel tolerance permits normal capture rounding. Exclude large UI
     panels and scenery by component size, fill ratio and subsequent text checks.
     """
     a = pixels(image)
-    mask = (a[:,:,0]>=237)&(a[:,:,0]<=239)&(a[:,:,1]==a[:,:,0])&(a[:,:,2]==a[:,:,0])
+    mask = (a.min(2)>=237)&(a.max(2)<=239)
     result=[]
     scale=max(1,image.width()/1366)
     for (x,y,right,bottom),area in components(mask):

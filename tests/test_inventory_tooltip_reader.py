@@ -61,22 +61,45 @@ class InventoryTooltipReaderTests(unittest.TestCase):
             painter.drawImage(20,500,QImage(str(ROOT/'vendor/minerva/samples/player-shop/ideal-ratio-weapons-and-a-robe.png')))
         painter.end();return image
 
-    def read(self,images,*,pointer=(1378,152),annotations=()):
+    def read(self,images,*,pointer=(1378,152),annotations=(),inventory_only=False,progressive=False):
         if isinstance(images,QImage):images=[images]
         with tempfile.TemporaryDirectory(prefix='lupin-generated-inventory-') as directory:
             requests=[]
             for index,image in enumerate(images):
                 path=Path(directory)/f'{index}.png';self.assertTrue(image.save(str(path)))
                 requests.append(dict(path=str(path),at_ms=index,tooltip=True,tooltip_retry=True,
+                    inventory_only=inventory_only,progressive_tooltip=progressive,progressive_shop=progressive,
                     pointer=dict(zip(('x','y'),pointer)),
                     annotations=[dict(zip(('x','y','width','height'),rect.getRect())) for rect in annotations]))
             result=subprocess.run([str(BINARY)],input=''.join(json.dumps(r)+'\n' for r in requests),
                 text=True,capture_output=True,check=True,timeout=30,
                 env={**os.environ,'RAYON_NUM_THREADS':'2'})
         values=[json.loads(line) for line in result.stdout.splitlines()]
-        self.assertEqual(len(values),len(images))
+        if not progressive:self.assertEqual(len(values),len(images))
+        else:self.assertGreaterEqual(len(values),len(images))
         self.assertTrue(all('error' not in value for value in values),values)
         return values
+
+    def test_inventory_probe_keeps_primary_identity_and_only_one_partial_phase(self):
+        values=self.read(self.frame(shop=True),inventory_only=True,progressive=True)
+        self.assertEqual(len(values),2)
+        self.assertTrue(values[0]['tooltipPartial']);self.assertTrue(values[0]['shopDeferred'])
+        for value in values:
+            self.assertEqual(value['tooltipAssociation']['state'],'inventory-primary')
+            self.assertEqual(value['tooltip']['found']['name'],'Emerald Staff')
+            self.assertFalse(value.get('shopPartial',False))
+            self.assertFalse(value['inventoryProbe']['absent'])
+
+    def test_shop_probe_cannot_promote_an_unbound_description_to_inventory(self):
+        result=self.read(self.frame(primary=False,shop=True),pointer=(1250,150),inventory_only=True)[0]
+        self.assertEqual(result['tooltip'],'none')
+        self.assertTrue(result['inventoryProbe']['absent'])
+        self.assertIsNotNone(result['shop'])
+
+    def test_delayed_description_does_not_become_a_permanent_negative_source(self):
+        before,after=self.read([self.frame(primary=False,comparison=False),self.frame()],inventory_only=True)
+        self.assertEqual(before['tooltip'],'none');self.assertFalse(before['inventoryProbe']['absent'])
+        self.assertEqual(after['tooltip']['found']['name'],'Emerald Staff')
 
     def test_cold_primary_marker_loss_reads_current_primary_letters_with_and_without_shop(self):
         for shop in (False,True):

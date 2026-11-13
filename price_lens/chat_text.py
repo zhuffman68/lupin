@@ -98,6 +98,18 @@ def recruiting_phrase(text):
         context,times,only,occupancy,punctuation=match.groups()
         count='once' if times=='한번' else '1 time'
         return ('Kerning PQ · ' if context else '')+'Looking for someone to defeat King Slime '+('just ' if only else '')+count+(f' · {occupancy}' if occupancy else '')+punctuation
+    # Recruitment is a complete grammatical intent, including ordinary party
+    # members and "one more". Unknown tails and negative clauses stay freeform.
+    contexts={**PARTIES,'파티':'party','커닝파퀘':'Kerning PQ','커닝파티퀘스트':'Kerning PQ'}
+    context_pattern='|'.join(sorted(contexts,key=len,reverse=True));counts='|'.join(PEOPLE)
+    match=re.fullmatch(rf'({context_pattern})(?:원)?({counts}|[0-9]{{1,3}})(?:명|분)(더)?(?:구함|구해요|구합니다|모집합니다|모집)([!.]*)',value)
+    if match:
+        party,count,more,punctuation=match.groups();number=PEOPLE.get(count,count)
+        return f"Looking for {number}{' more' if more else ''} {'person' if count in ('한','1') else 'people'} for {contexts[party]}{punctuation}"
+    match=re.fullmatch(rf'({context_pattern})(?:같이|함께)?(?:하실|가실)분(?:구함|구해요|구합니다|모집합니다|모집)?([!.]*)',value)
+    if match:
+        party,punctuation=match.groups()
+        return f'Looking for people to join {contexts[party]}{punctuation}'
     parties='|'.join(sorted(PARTIES,key=len,reverse=True));counts='|'.join(PEOPLE)
     invite=r'(?:팟|파티)(?:점여|점요|좀여|좀요|주세요|부탁해요)|초대(?:점여|점요|좀여|좀요|좀|해주세요|부탁해요)'
     match=re.fullmatch(rf'({parties})?({invite})([!?!.]*)',value)
@@ -117,6 +129,28 @@ def recruiting_phrase(text):
         article='an' if JOBS[job][0].casefold() in 'aeiou' else 'a'
         return f"Are you taking {article} {JOBS[job]} for the {PARTIES[party]}{punctuation or '?'}"
     return None
+
+
+def skill_request(text):
+    """Complete skill-cast requests; never replace a syllable inside prose."""
+    value=re.sub(r'\s+','',normalize(text))
+    skills={'힐':'Heal','홀리심볼':'Holy Symbol','헤이스트':'Haste','하이퍼바디':'Hyper Body'}
+    pattern='|'.join(skills)
+    match=re.fullmatch(rf'({pattern})(?:좀)?(한번|1번)?(만)?(?:주세요|부탁드려요|부탁해요|부탁드립니다)([!.]*)',value)
+    if not match:return None
+    skill,count,only,punctuation=match.groups()
+    times=('once' if count=='한번' else '1 time') if count else ''
+    return 'Please cast '+skills[skill]+((' just ' if only else ' ')+times if times else '')+punctuation
+
+
+def meaning_preserved(source,translated):
+    """Reject a few explicit contradictions, not claim general semantic proof."""
+    value=translated.casefold().replace('’',"'")
+    if re.search(r'부족|모자라',source):
+        if not re.search(r"not (?:\w+\s+){0,3}enough|(?:don't|doesn't|didn't) have enough|\binsufficient\b|\black(?:ing|s)?\b|\bshort(?:age| of)|need more|cannot afford|can't afford",value):return False
+    negative=re.search(r'(?<![가-힣])(?:안|못)\s+(?=[가-힣])|지\s*않|수\s*없|필요\s*없',source)
+    if negative and not re.search(r"\b(?:not|no|never|cannot|unable|without|lack)\b|\b\w+n't\b",value):return False
+    return True
 
 
 def supported_ocr_alternative(original,candidates):

@@ -19,6 +19,7 @@ from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
 from .reader_metrics import ReaderMetrics
 from .reader_process import ReaderProcess
+from .inventory_probe import InventoryAbsence
 from .npc_shop import find_npc_shop,suppress_npc_rows,suppress_npc_prices
 from .shop_source import cursor_rectangle
 
@@ -78,6 +79,7 @@ class PixelReader(QObject):
         self.tooltip_fingerprint = None
         self.tooltip_association = None
         self.tooltip_title_proof = None
+        self.inventory_absence = None
         self.tooltip_retry_requested = False
         self.tooltip_retry_key = None
         self.tooltip_retry_at = 0.0
@@ -138,6 +140,7 @@ class PixelReader(QObject):
         self.shop_context = None
         self.tooltip_rect = self.tooltip_fingerprint = None
         self.tooltip_association = None
+        self.inventory_absence = None
         self.status.emit("Choose a monitor or full workspace in the system sharing dialog"
                          if uses_system_picker() else "Capturing the selected display")
         self.stream.start(screen, desktop)
@@ -367,6 +370,7 @@ class PixelReader(QObject):
         self.tooltip_rect = self.tooltip_fingerprint = None
         self.tooltip_association = None
         self.tooltip_title_proof = None
+        self.inventory_absence = None
         self.last_experience = self.last_map_read = self.last_pickup = self.last_pickup_frame = 0
         self.area_changed.emit()
 
@@ -474,9 +478,12 @@ class PixelReader(QObject):
         context=self.current_shop_context()
         npc=getattr(self,'npc_shop',None)
         in_shop = pointer_in_shop(pointer, context)
-        hover_check = self.tooltip_enabled and pointer is not None and not in_shop
+        hover_check = self.tooltip_enabled and pointer is not None
         if self.auto_active:
             hover_check = bool(hover_check and self.game_area and self.game_area.contains(QPoint(*pointer)))
+        inventory_only=bool(hover_check and in_shop)
+        known_absent=bool(inventory_only and self.inventory_absence is not None
+                          and self.inventory_absence.matches(image,pointer))
         tooltip_same = False
         if (hover_check and not self.tooltip_retry_requested and self.tooltip_rect and self.pointer==self.last_pointer
                 and (self.tooltip_fingerprint is not None or getattr(self,'tooltip_association',None) is not None
@@ -493,8 +500,11 @@ class PixelReader(QObject):
             # An unchanged stationary shop need not repeat description OCR
             # five times a second merely because the pointer remains inside it.
             shop_hover_due = (in_shop or bool(npc and npc.contains(pointer))) and self.pointer != self.last_pointer
-            if (not force_rescan and fingerprint == self.shop_fingerprint and not shop_hover_due and (not hover_check or tooltip_same)
+            if (not force_rescan and fingerprint == self.shop_fingerprint and not shop_hover_due
+                    and (not hover_check or tooltip_same or known_absent)
                     and (not self.auto_active or now-self.last_locator_check<1.0)):
+                metrics=getattr(self,'metrics',None)
+                if metrics is not None:metrics.record('inventory.absent_reused' if known_absent else 'tooltip.unchanged' if tooltip_same else 'shop.unchanged')
                 self.submitted_sequence = self.image_sequence
                 if exp_due:self.scan_experience(now)
                 return
@@ -531,6 +541,7 @@ class PixelReader(QObject):
         request = {"path": str(path), "at_ms": int(self.last_frame * 1000),
                    "pointer": {"x": pointer[0], "y": pointer[1]} if pointer is not None else None,
                    "tooltip": bool(hover_check),
+                   "inventory_only": inventory_only,
                    "tooltip_retry": bool(hover_check and self.tooltip_retry_requested),
                    "origin": origin,
                    "auto_game": self.auto_active and not local_roi,
@@ -540,7 +551,7 @@ class PixelReader(QObject):
         request['shop_area']=(dict(zip(('x','y','width','height'),context.getRect()))
                                if context is not None else None)
         request['shop_recovery']=bool(context is not None and needs_name(pointer))
-        request['progressive_shop']=bool(context is not None and not hover_check)
+        request['progressive_shop']=bool(context is not None and (not hover_check or inventory_only))
         request['progressive_tooltip']=bool(hover_check)
         crop_origin=self.crop.topLeft() if self.crop else QPoint()
         source_region=self.crop.intersected(self.image.rect()) if self.crop else self.image.rect()
@@ -834,6 +845,7 @@ class PixelReader(QObject):
                             self.shop_fingerprint = self.fingerprint(source, self.current_shop_context() or self.shop_rect)
                         else:
                             self.shop_fingerprint = None
+                    self.inventory_absence=InventoryAbsence.capture(result.get('inventoryProbe'),source,read_point)
                     tooltip = (result.get("tooltip") or {})
                     found = tooltip.get("found") if isinstance(tooltip, dict) else None
                     association=result.get('tooltipAssociation');state=association_state(association)
@@ -847,8 +859,12 @@ class PixelReader(QObject):
                             if current_point is not None:current_point=(current_point[0]-self.crop.x(),current_point[1]-self.crop.y())
                         proof=TooltipAssociation.read(association,found,source,pointer=read_point,
                             exclude=tuple(QRect(*rect) for rect in request.annotations))
-                        if proof is None or not proof.contains_pointer(read_point) or not proof.matches(
-                                current,current_point,exclude=self.annotation_regions()):state='rejected'
+                        if proof is None or not proof.contains_pointer(read_point):
+                            if metrics is not None:metrics.record('inventory.binding_rejected')
+                            state='rejected'
+                        elif not proof.matches(current,current_point,exclude=self.annotation_regions()):
+                            if metrics is not None:metrics.record('inventory.source_changed')
+                            state='rejected'
                     if state=='rejected':result['tooltipAssociation']={'state':'rejected'}
                     for npc,point in ((source_npc,read_point),(current_npc,current_point)):
                         result=suppress_npc_prices(result,npc,point,inventory=proof if state=='inventory-primary' else None)
