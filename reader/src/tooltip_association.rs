@@ -150,7 +150,10 @@ fn source(
         if ((bw as f32) / (29.0 * s) - 1.0).abs() > 0.18 {
             continue;
         }
-        for tab in [0_u32, 4] {
+        // Every native inventory tab shares the same source controls/grid.
+        // Restricting this to equipment/cash positions leaves consumables,
+        // scrolls and materials on the unbound generic-description path.
+        for tab in 0_u32..6 {
             let dx = ((6.0 + 33.0 * tab as f32) * s).round() as u32;
             let dy = (23.0 * s).round() as u32;
             if x0 + a < dx || y0 + top < dy {
@@ -783,7 +786,7 @@ mod tests {
 
     #[test]
     fn source_slot_and_horizontal_pair_choose_primary_before_ocr() {
-        for tab in [0, 4] {
+        for tab in 0..6 {
             let (capture, dots, expected) = fixture(tab, 3);
             let mut selector = Selector::default();
             let result = selector.select(&capture, &dots, None);
@@ -1136,17 +1139,34 @@ mod tests {
 
     #[test]
     fn a_single_description_binds_to_the_source_cell_and_ignores_a_noisy_hud_scale() {
-        let (mut capture,dots,primary)=fixture(0,3);
-        paint(&mut capture.frame,primary.x,primary.y,primary.w,primary.h,[20,35,20]);
-        let single=BoxRect{x:1263,y:180,w:236,h:240};
-        // Keep the source header intact; only the comparison body disappears.
-        for hint in [None,Some(35.0/36.0),Some(1.0)] {
-            let result=Selector::default().select(&capture,&dots[1..],hint);
-            assert_eq!(result.panel,Some(single),"{}",result.metadata);
-            assert_eq!(result.metadata["source"]["width"],207);
-            assert_eq!(result.metadata["version"],3);
-            assert_eq!(result.metadata["layout"],"single");
-            assert!(result.metadata["comparison"].is_null());
+        for tab in 0..6 {
+            let (mut capture,dots,primary)=fixture(tab,3);
+            paint(&mut capture.frame,primary.x,primary.y,primary.w,primary.h,[20,35,20]);
+            let single=BoxRect{x:1263,y:180,w:236,h:240};
+            // Keep the source header intact; only the comparison body disappears.
+            for hint in [None,Some(35.0/36.0),Some(1.0)] {
+                let result=Selector::default().select(&capture,&dots[1..],hint);
+                assert_eq!(result.panel,Some(single),"{}",result.metadata);
+                assert_eq!(result.metadata["source"]["width"],207);
+                assert_eq!(result.metadata["sourceTab"],tab);
+                assert_eq!(result.metadata["version"],3);
+                assert_eq!(result.metadata["layout"],"single");
+                assert!(result.metadata["comparison"].is_null());
+            }
+        }
+    }
+
+    #[test]
+    fn switching_inventory_tabs_reacquires_the_header_and_changes_source_identity() {
+        let mut selector=Selector::default();let mut previous=None;
+        for tab in [0,1,2,3,4,5,1,0] {
+            let (capture,dots,_)=fixture(tab,3);
+            let result=selector.select(&capture,&dots,None);
+            assert_eq!(result.metadata["state"],"inventory-primary");
+            assert_eq!(result.metadata["sourceTab"],tab);
+            if let Some(old)=previous {assert_ne!(result.metadata["token"],old)}
+            previous=Some(result.metadata["token"].clone());
+            assert_eq!(selector.select(&capture,&dots,None).metadata["token"],result.metadata["token"]);
         }
     }
 

@@ -1,5 +1,39 @@
 # Verification — 2026-11-13
 
+## Non-equipment inventory tabs — source preview
+
+The [description stability record](docs/BLUE_DESCRIPTION_STABILITY.md) explains
+the confirmed source-detector gap: only tab positions 0 and 4 were tried. Other
+tabs could not obtain the source binding required inside a shop's rectangle or
+use the stronger description-retention path. All six measured tab positions now
+use the same existing header/control/grid/title/native-frame checks. No fuzzy
+identity, weaker pixel proof or shop-description overlay is added.
+
+- The pre-fix regression fails **eight cases** across the four omitted positions,
+  with/without a shop. The corrected native test covers single-item acquisition
+  on all six positions and their early inventory replies. Changed current
+  controls still revoke a previously bound source on the newly supported tabs.
+- The real offscreen painter verifies **ten cases**: potions, a scroll, a chair
+  and a material, each with/without a shop. Their exact controlled item remains
+  painted after a missing/rejected OCR reply and clears on a changed source cell.
+  OCR is real; titles/frames are generated, market/catalog data and capture are
+  controlled. This is not a live-game or physical Windows capture test.
+- The complete final Python suite runs **1,403 tests, three skipped, 233.791 s**,
+  successfully. The dedicated three-test acceptance run also passes. **76 Rust
+  tests** pass, including source-token changes across tab switches and existing
+  comparison-rejection cases. Selected-tab pulse checks now cover all six
+  positions at five scales.
+- The local GNU release reader rebuilds successfully with two low-priority
+  jobs. SHA256:
+  `f63f5c74d32573525de504824e4497b2a7b956c63381cd2bcfa22a722be7fcb6`.
+  Minerva remains at `7e1aa7d418fb255bd66eb4dce848fc9eb305cd81`.
+
+Private evidence is in `evidence/performance-2026-11-13/non-equipment/`, including
+`before.log`, `native-tests.log`, `reader-build.log`, `acceptance.log` and
+`full-python.log`. QA uses private Xvfb/D-Bus/HOME/XDG state. The source preview
+handoff preserves the existing sharing helper and starts paused; no installer
+build, installation or publication is part of this follow-up.
+
 ## Blue-description stability — source preview
 
 The [stability record](docs/BLUE_DESCRIPTION_STABILITY.md) describes current-pixel

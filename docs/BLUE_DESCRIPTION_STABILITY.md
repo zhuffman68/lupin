@@ -70,6 +70,34 @@ fading are unchanged. See [shop recognition](SHOP_RECOGNITION.md).
 
 ## Verification
 
+### Non-equipment inventory follow-up
+
+The native source detector previously tried only selected-tab positions 0 and
+4, although its header/grid layout and Python validation already supported all
+six positions. A single description on the other tabs could be read generically
+outside a shop, but could not acquire an inventory binding or its persistent
+current-pixel reference. Inside a shop's cached rectangle, `inventory_only`
+correctly rejected that unbound title. The exact absent-source cache could then
+avoid repeating a search which was incapable of finding that tab.
+
+The detector now tests all six measured tab positions with the same unchanged
+caption, controls, inactive-tab, source-cell and native-panel requirements.
+Changing tabs reacquires the header and changes the source token; it does not
+transfer the preceding item's identity. No cache TTL, confidence threshold or
+shop-description eligibility is relaxed.
+
+A pre-fix native regression fails eight cases on the four omitted tab positions,
+with and without a shop. Generated single-item fixtures now exercise all six
+tabs, native-to-Python proof adoption and the early inventory phase. Separate
+checks require current controls on newly supported tabs and cover selected-tab
+pulses at five scales. The real offscreen painter checks consumables, a scroll,
+a chair and a material, with/without a shop; their cards survive a missing OCR
+reply and clear after a source-cell change. The pinned vendor remains unchanged.
+The local GNU reader is rebuilt; installer/Windows qualification and live-game
+stress acceptance are separate. Final suite totals are in VERIFICATION.
+
+### Earlier continuity checks
+
 Focused source checks pass 223 tests. Regressions exercise prolonged missing OCR
 metadata through 300 simulated seconds, pointer-driven pane motion, changed
 source/title pixels, pane closure, wrong fresh OCR guesses, linked-window

@@ -60,6 +60,10 @@ reanchor the panes after revalidating all proofs. This does not authorize a
 shop-origin description, a new item or a fresh asking amount. The annotation
 avoids both captured and predicted pane positions; see
 [the stability record](BLUE_DESCRIPTION_STABILITY.md).
+Inventory acquisition checks all six selected-tab positions. The same measured
+source/header/grid/panel proof applies to non-equipment single descriptions;
+they do not have to use the generic shop-hover path. A tab change invalidates
+the old source token and requires the newly selected header to verify.
 Cached native results receive the new capture timestamp but do not establish
 current offers by themselves: Python still checks all current source/amount
 proofs. See [the performance record](TRACKING_AND_READER_PERFORMANCE.md) for

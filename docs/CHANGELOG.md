@@ -16,7 +16,8 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
   restarting their animations.
 
 - Inventory items can be recognized in front of a shop's saved rectangle,
-  without enabling duplicate description prices for shop listings.
+  including consumables, scrolls and materials on previously skipped inventory
+  tabs, without enabling duplicate description prices for shop listings.
 - Korean chat can recover a clear message despite an unreadable timestamp or
   sender. Bubble detection tolerates small channel-rounding differences;
   freeform translation considers two candidates and checks explicit shortage

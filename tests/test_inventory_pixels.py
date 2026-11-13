@@ -42,7 +42,7 @@ class InventoryPixelsTests(unittest.TestCase):
 
     def test_pulse_preserves_tab_shape_in_both_directions_at_supported_scales(self):
         for width in (155,207,259,311,414):
-            for tab in (0,4):
+            for tab in range(6):
                 before=header(width,tab);after=pulse(before,tab)
                 self.assertTrue(same_header(before,after,tab),(width,tab))
                 self.assertTrue(same_header(after,before,tab),(width,tab))

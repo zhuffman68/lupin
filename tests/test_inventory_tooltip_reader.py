@@ -29,7 +29,8 @@ class InventoryTooltipReaderTests(unittest.TestCase):
         font_id=QFontDatabase.addApplicationFont(str(ROOT/'price_lens/resources/fonts/InterVariable.ttf'))
         cls.font=QFont(QFontDatabase.applicationFontFamilies(font_id)[0]);cls.font.setPixelSize(14)
 
-    def frame(self,*,marker=True,header=True,title=True,comparison=True,primary=True,shop=False):
+    def frame(self,*,marker=True,header=True,title=True,comparison=True,primary=True,shop=False,
+              tab=0,primary_name='Emerald Staff',single_name='Mithril Pole Arm'):
         image=QImage(1500,900,QImage.Format.Format_RGBA8888);image.fill(QColor(20,35,20))
         painter=QPainter(image);painter.setFont(self.font)
         ix,iy=1293,90
@@ -38,13 +39,13 @@ class InventoryTooltipReaderTests(unittest.TestCase):
         for x in range(ix+8,ix+128,6):painter.fillRect(x,iy+7,2,6,QColor('black'))
         for cx,color in [(168,(220,85,68)),(181,(220,85,68)),(194,(51,153,204))]:
             painter.fillRect(ix+cx-4,iy+5,8,10,QColor(*color))
-        for tab in range(6):
-            painter.fillRect(ix+6+33*tab,iy+23,29,17,
-                QColor(234,101,129) if tab==0 else QColor(180,180,180))
+        for index in range(6):
+            painter.fillRect(ix+6+33*index,iy+23,29,17,
+                QColor(234,101,129) if index==tab else QColor(180,180,180))
         if not header:painter.fillRect(ix+4,iy+21,33,21,QColor(40,40,70))
         for x,height,name,visible,is_primary in [
-            (1024,270,'Emerald Staff',primary,True),
-            (1263,240,'Mithril Pole Arm',comparison,False)]:
+            (1024,270,primary_name,primary,True),
+            (1263,240,single_name,comparison,False)]:
             if not visible:continue
             painter.fillRect(x,180,236,height,QColor(30,30,70))
             painter.fillRect(x+1,180,1,height,QColor(190,190,205))
@@ -223,6 +224,34 @@ class InventoryTooltipReaderTests(unittest.TestCase):
         from price_lens.tooltip_association import TooltipAssociation
         proof=TooltipAssociation.read(association,result['tooltip']['found'],image,pointer=(1378,152))
         self.assertIsNotNone(proof);self.assertTrue(proof.matches(image,(1378,152)))
+
+    def test_single_items_bind_on_every_inventory_tab_with_or_without_a_shop(self):
+        from price_lens.tooltip_association import TooltipAssociation
+        for tab,name in enumerate(('Emerald Staff','Red Potion','Relaxer','Bronze Ore','Power Elixir','White Potion')):
+            for shop in (False,True):
+                with self.subTest(tab=tab,shop=shop):
+                    image=self.frame(primary=False,tab=tab,single_name=name,shop=shop)
+                    values=self.read(image,inventory_only=shop,progressive=True)
+                    for result in values:
+                        self.assertEqual(result['tooltipAssociation']['state'],'inventory-primary')
+                        self.assertEqual(result['tooltipAssociation']['sourceTab'],tab)
+                        self.assertEqual(result['tooltipAssociation']['layout'],'single')
+                        self.assertEqual(result['tooltip']['found']['name'],name)
+                        proof=TooltipAssociation.read(result['tooltipAssociation'],result['tooltip']['found'],image,pointer=(1378,152))
+                        self.assertIsNotNone(proof);self.assertTrue(proof.matches(image,(1378,152)))
+                    if shop:
+                        self.assertTrue(values[0]['tooltipPartial']);self.assertFalse(values[0]['inventoryProbe']['absent'])
+
+    def test_newly_supported_tabs_still_require_current_inventory_controls(self):
+        for tab in (1,2,3,5):
+            with self.subTest(tab=tab):
+                good=self.frame(primary=False,tab=tab,single_name='Red Potion',shop=True)
+                bad=good.copy();painter=QPainter(bad)
+                painter.fillRect(1293+190,95,8,10,QColor('#283749'));painter.end()
+                before,after=self.read([good,bad],inventory_only=True)
+                self.assertEqual(before['tooltipAssociation']['state'],'inventory-primary')
+                self.assertNotEqual(after['tooltipAssociation']['state'],'inventory-primary')
+                self.assertEqual(after['tooltip'],'none')
 
     def test_scaled_native_pair_proofs_are_accepted_by_the_frontend(self):
         from price_lens.tooltip_association import TooltipAssociation

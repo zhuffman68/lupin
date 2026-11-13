@@ -47,6 +47,11 @@ for a particular pointer/image geometry. It permits cheap unchanged-shop reuse
 without letting a shop rectangle suppress a foreground inventory. Candidate
 inventory sources still need fresh primary/header/cell/title proofs; ordinary
 shop descriptions cannot use this path.
+Source acquisition checks every one of the six measured selected-tab positions,
+so consumables, scrolls, setup items and materials use the same current inventory
+binding as equipment. Header/control proof, rather than an item name/category or
+market coverage, establishes the source. A tab change reacquires those controls
+and changes the source token.
 
 `reader_process.py` owns lazy startup, three bounded recovery retries, and
 three-minute idle release after capture is paused. Loss revokes the submitted
