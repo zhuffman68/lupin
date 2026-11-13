@@ -55,6 +55,17 @@ class DescriptionContinuityTests(unittest.TestCase):
         reference=self.reference()
         self.assertIsNone(reference.observe(None,self.image,self.pointer,allow=False,now=1))
 
+    def test_rejection_diagnostics_reuse_the_exact_same_current_frame_check(self):
+        from unittest.mock import patch
+        proof=self.context
+        for reason,point in (('cell',(proof.slot.left()+5,proof.slot.top()+2)),
+                             ('header',(proof.source.left()+12,proof.source.top()+7))):
+            with self.subTest(reason=reason):
+                changed=QImage(self.image);changed.setPixelColor(*point,QColor('red'))
+                self.assertFalse(proof.matches(changed,self.pointer))
+                with patch.object(TooltipAssociation,'_matches_current',side_effect=AssertionError('Do not repeat proof work for diagnostics')):
+                    self.assertEqual(proof.failure_reason(changed,self.pointer),reason)
+
     def test_generic_blue_description_is_held_by_its_title_proof_without_a_short_timer(self):
         reference=TooltipReference()
         reference.observe(deepcopy(self.found),self.image,self.pointer,title=self.context.title,now=0)
@@ -132,3 +143,36 @@ class DescriptionContinuityTests(unittest.TestCase):
             self.assertIsNone(window.tooltip_result)
             self.assertFalse(any(r.get('kind')=='item' for r in window.overlay.rows))
         finally:test.tearDown();test.doCleanups()
+
+    def test_first_inventory_reply_can_follow_a_current_proved_pane_without_repeating_ocr(self):
+        import time
+        from types import SimpleNamespace
+        from PySide6.QtGui import QPainter
+        import test_ui_context as ui
+        from price_lens.domain import Catalog
+        ui.ContextUiTests.setUpClass()
+        for changed_source in (False,True):
+            with self.subTest(changed_source=changed_source):
+                test=ui.ContextUiTests();test.setUp()
+                try:
+                    frame=QImage(self.image);p=QPainter(frame)
+                    for pane in (self.context.panel,self.context.comparison):p.fillRect(pane,QColor('#142314'))
+                    for pane in (self.context.panel,self.context.comparison):p.drawImage(pane.topLeft()+QPoint(-2,3),self.image.copy(pane))
+                    p.end();point=(self.pointer[0]-2,self.pointer[1]+3)
+                    if changed_source:frame.setPixelColor(self.context.slot.left()+5,self.context.slot.top()+2,QColor('red'))
+                    w=test.window;w.screens=[SimpleNamespace(geometry=frame.rect,devicePixelRatio=lambda:1,name=lambda:'Fixture')]
+                    w.screen_index=0;w.reader.image=frame;w.reader.submitted_image=QImage(self.image)
+                    w.reader.pointer=point;w.reader.game_area=frame.rect();w.last_screen=time.time()
+                    w.on_catalog(Catalog({'items':[dict(id=1,name='Emerald Staff')],'scrolls':[]}))
+                    reply=deepcopy(self.result);reply.update(pointerAtRead=list(self.pointer),_shop_deferred=True,shop=None,hover=None)
+                    w.on_reading(reply)
+                    if changed_source:
+                        self.assertIsNone(w.tooltip_result)
+                        self.assertFalse(any(row.get('kind')=='item' for row in w.overlay.rows))
+                    else:
+                        self.assertIsNotNone(w.tooltip_result)
+                        self.assertEqual(w.tooltip_result['name'],'Emerald Staff')
+                        self.assertEqual(w.tooltip_context.panel,self.context.panel.translated(-2,3))
+                        self.assertEqual(w.tooltip_result['_pointer'],list(point))
+                        self.assertEqual([row['item_id'] for row in w.overlay.rows if row.get('kind')=='item'],[1])
+                finally:test.tearDown();test.doCleanups()

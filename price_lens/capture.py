@@ -716,6 +716,7 @@ class PixelReader(QObject):
                 if metrics is not None and request.mode=='prices':
                     metrics.record('prices.capture_age',age_ms=time.monotonic()*1000-result.get('atMs',0))
                     if result.get('shopCached') is True:metrics.record('prices.cache_hit')
+                    if result.get('tooltipCacheHit') is True:metrics.record('inventory.title_cache_hit')
                     for key,event in (('shopMs','prices.native_shop'),('componentMs','prices.native_components'),('tooltipMs','prices.native_tooltip')):
                         metrics.record(event,duration_ms=(result.get('readerStages') or {}).get(key))
                 if self.paused or request.generation != self.generation:
@@ -849,7 +850,7 @@ class PixelReader(QObject):
                     tooltip = (result.get("tooltip") or {})
                     found = tooltip.get("found") if isinstance(tooltip, dict) else None
                     association=result.get('tooltipAssociation');state=association_state(association)
-                    proof=None
+                    proof=source_proof=None
                     if state=='inventory-primary':
                         source=request.source_image()
                         current=self.image.copy(self.crop) if self.crop else self.image
@@ -857,14 +858,20 @@ class PixelReader(QObject):
                         if self.crop:
                             if read_point is not None:read_point=(read_point[0]-self.crop.x(),read_point[1]-self.crop.y())
                             if current_point is not None:current_point=(current_point[0]-self.crop.x(),current_point[1]-self.crop.y())
-                        proof=TooltipAssociation.read(association,found,source,pointer=read_point,
+                        source_proof=TooltipAssociation.read(association,found,source,pointer=read_point,
                             exclude=tuple(QRect(*rect) for rect in request.annotations))
-                        if proof is None or not proof.contains_pointer(read_point):
+                        if source_proof is None or not source_proof.contains_pointer(read_point):
                             if metrics is not None:metrics.record('inventory.binding_rejected')
                             state='rejected'
-                        elif not proof.matches(current,current_point,exclude=self.annotation_regions()):
-                            if metrics is not None:metrics.record('inventory.source_changed')
-                            state='rejected'
+                        else:
+                            proof=source_proof.at_current_position(current,current_point,exclude=self.annotation_regions())
+                            if proof is None:
+                                if metrics is not None:
+                                    metrics.record('inventory.source_changed')
+                                    reason=source_proof.failure_reason(current,current_point,exclude=self.annotation_regions())
+                                    if reason:metrics.record('inventory.changed_'+reason)
+                                state='rejected'
+                            elif proof.panel!=source_proof.panel and metrics is not None:metrics.record('inventory.first_reanchored')
                     if state=='rejected':result['tooltipAssociation']={'state':'rejected'}
                     for npc,point in ((source_npc,read_point),(current_npc,current_point)):
                         result=suppress_npc_prices(result,npc,point,inventory=proof if state=='inventory-primary' else None)
@@ -874,9 +881,11 @@ class PixelReader(QObject):
                     if state=='rejected':
                         result['tooltipAssociation']={'state':'rejected'}
                         result['tooltip']={**(tooltip if isinstance(tooltip,dict) else {}),'found':None}
-                        found=None;proof=None
+                        found=None;proof=source_proof=None
                     self.tooltip_association=proof
-                    result['_tooltip_context']=proof
+                    # The GUI resolves the original OCR against its submitted
+                    # pixels, then presents only the independently current pane.
+                    result['_tooltip_context']=source_proof
                     tooltip_area = found.get("area") if found else None
                     self.tooltip_rect = QRect(tooltip_area["x"], tooltip_area["y"], tooltip_area["width"], tooltip_area["height"]) if tooltip_area else None
                     if self.tooltip_rect and (proof is not None or self.image_sequence == self.submitted_sequence):

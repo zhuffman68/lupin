@@ -8,9 +8,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 ## Unreleased — performance and resource improvements
 
 - Blue item-description prices retain their verified item through temporary OCR
-  misses and small cursor movements. Placement avoids the captured description
-  and its moving position; changed items still clear immediately. Shop-item
-  hovers continue to use listing labels only.
+  misses and small cursor movements, including movement during the first read.
+  Unchanged complete titles reuse recognition to reduce repeated work. Placement
+  avoids the captured description and its moving position; changed items still
+  clear immediately. Shop-item hovers continue to use listing labels only.
 - Unchanged price overlays stay visible while reading continues. Lightweight
   liveness messages preserve timeout protection without rebuilding labels or
   restarting their animations.

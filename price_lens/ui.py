@@ -1677,10 +1677,11 @@ class LensWindow(QMainWindow):
             if pointer is not None:pointer=(pointer[0]-self.reader.crop.x(),pointer[1]-self.reader.crop.y())
             if read_point is not None:read_point=(read_point[0]-self.reader.crop.x(),read_point[1]-self.reader.crop.y())
         association=result.get('tooltipAssociation');state=association_state(association)
-        context=None
+        context=source_context=None
         if state=='inventory-primary':
-            context=TooltipAssociation.from_result(result,image,pointer=read_point)
-            if context is None or not context.contains_pointer(read_point) or not context.matches(latest,pointer,exclude=self.annotation_exclusions()):state='rejected'
+            source_context=TooltipAssociation.from_result(result,image,pointer=read_point)
+            context=source_context.at_current_position(latest,pointer,exclude=self.annotation_exclusions()) if source_context is not None and source_context.contains_pointer(read_point) else None
+            if context is None:state='rejected'
         native = (shop_tooltip or {}).get('found') or ((tooltip or {}).get('found') if shop or self.shop_open else None)
         reuse_panel=False
         proof=self.observations.shop_description_proof
@@ -1780,7 +1781,9 @@ class LensWindow(QMainWindow):
                     # source-bound title raster together. Do not independently
                     # reject the same title's scenery-blended antialias pixels.
                     title_proof=context.title
-                    title_current=bool(title_proof and box==QRect(*title_proof.rect) and context.matches(latest,pointer,exclude=self.annotation_exclusions())
+                    title_current=bool(title_proof and source_context is not None and source_context.title is not None
+                        and box==QRect(*source_context.title.rect) and source_context.matches(image,read_point,exclude=tuple(QRect(*rect) for rect in request.annotations) if isinstance(request,SubmittedRequest) else exclusions)
+                        and context.matches(latest,pointer,exclude=self.annotation_exclusions())
                         and title_proof.matches(latest,panel=popup,pointer=pointer,exclude=title_exclude,antialias=True))
                 else:
                     title_proof=capture_title(image,box,panel=popup,pointer=read_point,exclude=title_exclude)
@@ -1792,7 +1795,10 @@ class LensWindow(QMainWindow):
                     found = None
                 else:
                     found = {**found, "_pointer": list(read_pointer),**({'_association_token':context.token} if context is not None else {})}
-                    if context is not None and state=='inventory-primary':found.pop('pinned',None)
+                    if context is not None and state=='inventory-primary':
+                        found.pop('pinned',None)
+                        found={**found,'area':dict(zip(('x','y','width','height'),context.title.rect)),
+                               '_pointer':list(self.reader.pointer)}
             except (KeyError, TypeError, ValueError):
                 found = None
         previous=self.tooltip_reference.current(latest,pointer,exclude=self.annotation_exclusions()) if self.hover_enabled else None
@@ -1808,7 +1814,7 @@ class LensWindow(QMainWindow):
         # Only this fresh native read may establish circulation. The following
         # retention step can preserve presentation but is never release proof.
         self.observe_native_availability(result,image,latest,rows=rows,
-            description=raw_found if found is not None else None,association=context if state=='inventory-primary' else None)
+            description=raw_found if found is not None else None,association=source_context if state=='inventory-primary' else None)
         # A failed fresh OCR attempt is not contrary screen evidence. Existing
         # inventory proof still checks this frame's cell/header/primary title
         # and both panels, independently of the returned metadata or shop epoch.
@@ -1913,12 +1919,21 @@ class LensWindow(QMainWindow):
         if isinstance(description,dict):
             rect=rectangle(description.get('area'))
             if (rect is not None and rect.width()>=40 and rect.height()<=32
-                    and not any(rect.intersects(hidden) for hidden in exclusions) and image.copy(rect)==latest.copy(rect)):
+                    and not any(rect.intersects(hidden) for hidden in exclusions)):
                 if association is not None:
-                    proven=bool(association.regions and association.regions[0]==rect and association.matches(latest,reader.pointer,exclude=exclusions))
+                    current=association.at_current_position(latest,reader.pointer,exclude=exclusions)
+                    target=current.regions[0] if current is not None and current.regions else None
+                    read_point=result.get('pointerAtRead',reader.pointer)
+                    submitted=result.get('_submitted_request')
+                    original_masks=tuple(QRect(*r) for r in submitted.annotations) if isinstance(submitted,SubmittedRequest) else exclusions
+                    proven=bool(association.regions and association.regions[0]==rect and target is not None and game.contains(target)
+                        and not any(target.intersects(hidden) for hidden in exclusions)
+                        and association.matches(image,read_point,exclude=original_masks)
+                        and image.copy(rect)==latest.copy(target))
                 else:
                     panel=description_bounds(image,description.get('area'),exclusions)
-                    proven=bool(panel is not None and game.contains(panel) and panel.contains(rect) and still_present(latest,panel,exclusions))
+                    proven=bool(panel is not None and game.contains(panel) and panel.contains(rect) and still_present(latest,panel,exclusions)
+                                and image.copy(rect)==latest.copy(rect))
                 if proven:observe(description,'item-description')
         if changed and not getattr(self,'native_availability_refresh_pending',False):
             self.native_availability_refresh_pending=True

@@ -64,6 +64,10 @@ Inventory acquisition checks all six selected-tab positions. The same measured
 source/header/grid/panel proof applies to non-equipment single descriptions;
 they do not have to use the generic shop-hover path. A tab change invalidates
 the old source token and requires the newly selected header to verify.
+That proof can reanchor a first reply within the same source cell; its submitted
+name/context remain separate from the independently checked current placement.
+Native title-cache hits save recognition only, retain the original complete
+name/relative area and cannot bypass these source, NPC or shop ownership checks.
 Cached native results receive the new capture timestamp but do not establish
 current offers by themselves: Python still checks all current source/amount
 proofs. See [the performance record](TRACKING_AND_READER_PERFORMANCE.md) for

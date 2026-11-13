@@ -1,5 +1,48 @@
 # Verification — 2026-11-13
 
+## Inventory price latency and first-reply movement — source preview
+
+The [stability record](docs/BLUE_DESCRIPTION_STABILITY.md) describes the first-
+reply motion defect and complete-title recognition cache. This applies to every
+source-bound inventory category, including Use items. Name resolution retains
+the submitted pixels/context; independently proved current geometry supplies
+placement. A first result no longer needs another OCR attempt merely because
+the same pane moved within the same verified cell.
+
+- A pre-fix regression fails on the first reply after a two/three-pixel pane
+  translation. Both capture and GUI regressions now admit that current pane and
+  still reject a changed source. Existing comparison, NPC, shop-hover and
+  availability checks remain enabled.
+- The complete final Python suite runs **1,407 tests, three skipped, 210.468 s**,
+  successfully. All **78 Rust tests** pass, including cache size limits, complete
+  endings, moved result coordinates, changed/added glyph rejection and hidden
+  title rejection. The final focused cache/capture/continuity checks pass 58
+  tests before the additional cached-rejection diagnostic regression; the latter
+  is included in the complete final suite.
+- A controlled 30-request comparison returns **30 correct names and bindings**
+  before and after. Median native title time is **74.559 ms before, 4.810 ms
+  afterward**; maxima are 111.543 and 75.144 ms. The new run has **25 title-cache
+  hits**, while new titles keep the ordinary recognizer. These unpaired local
+  measurements exclude real capture/compositor time; host workloads were left
+  alone, and a timing ratio is not an end-to-end latency guarantee.
+- All **26 saved cases** match through actual native IPC, source validation,
+  GUI and offscreen annotation painting, with **zero wrong-item labels**. The
+  generated non-equipment painter checks also remain in the complete suite.
+  Market data/capture are controlled during QA; physical Windows and a new live
+  hover demonstration are untested. Passive live observation did not start
+  after the user paused reading; the last Lupin-owned submitted frame was
+  inspected instead. No game input or forced resume occurred.
+- Diagnostics add fixed numeric counters for first-result reanchoring, title
+  cache hits and source-rejection stages. Retrieving the rejection stage uses
+  the existing bounded decision cache, without another scan or recognized text.
+
+The local GNU reader is rebuilt. Private evidence is under
+`evidence/performance-2026-11-13/non-equipment-latency/`, including `before.json`,
+`final.json`, `moving-first-before.log`, `native-final.log`, `full-python.log`
+and `painted-replay.json`. Earlier replay results remain separate. The updated
+preview preserves the approved sharing session and paused state. No installer
+is built, installed or published as part of this source follow-up.
+
 ## Non-equipment inventory tabs — source preview
 
 The [description stability record](docs/BLUE_DESCRIPTION_STABILITY.md) explains

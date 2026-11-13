@@ -196,11 +196,21 @@ class TooltipAssociation:
         # previous decision. Bound this to the submitted/current frames' checks.
         key=(image.cacheKey(),_point(pointer),tuple(rect.getRect() for rect in exclude))
         cached=self._matches_cache.get(key)
-        if cached is not None:return cached
+        if cached is not None:return cached[0]
         result=self._matches_current(image,pointer,exclude)
         self._matches_cache[key]=result
         while len(self._matches_cache)>4:self._matches_cache.popitem(last=False)
-        return result
+        return result[0]
+
+    def failure_reason(self,image,pointer,*,exclude=()):
+        """Fixed diagnostic stage from the same cached decision, never OCR text."""
+        if not self.contains_pointer(pointer):return 'pointer'
+        if image.isNull():return 'bounds'
+        exclude=tuple(exclude)
+        if len(exclude)>64 or any(not isinstance(rect,QRect) for rect in exclude):return 'masks'
+        if self.matches(image,pointer,exclude=exclude):return None
+        key=(image.cacheKey(),_point(pointer),tuple(rect.getRect() for rect in exclude))
+        return self._matches_cache[key][1]
 
     def at_current_position(self,image,pointer,*,exclude=()):
         """Reanchor only the same source-bound title on current native frames."""
@@ -230,13 +240,15 @@ class TooltipAssociation:
 
     def _matches_current(self,image,pointer,exclude):
         if any(not image.rect().contains(rect) for rect in
-               (self.source,self.slot,self.panel,*((self.comparison,) if self.comparison is not None else ()))):return False
+               (self.source,self.slot,self.panel,*((self.comparison,) if self.comparison is not None else ()))):return False,'bounds'
         frames=(self.panel,self.comparison) if self.comparison is not None else (self.panel,)
-        return (self._slot_matches(image,pointer)
-                and (self.header is None or self.header.matches(image))
-                and all(verified_frame(image,rect,scale=self.source.width()/207,cap=cap,exclude=exclude)
-                        for rect,cap in zip(frames,self.frame_caps))
-                and (self.title.matches(image,panel=self.panel,pointer=pointer,antialias=True,exclude=exclude) if self.title is not None
-                     else _fingerprint(image,self.regions[0])==self.fingerprints[0]) and all(
+        if not self._slot_matches(image,pointer):return False,'cell'
+        if self.header is not None and not self.header.matches(image):return False,'header'
+        if not all(verified_frame(image,rect,scale=self.source.width()/207,cap=cap,exclude=exclude)
+                   for rect,cap in zip(frames,self.frame_caps)):return False,'frame'
+        if not (self.title.matches(image,panel=self.panel,pointer=pointer,antialias=True,exclude=exclude) if self.title is not None
+                else _fingerprint(image,self.regions[0])==self.fingerprints[0]):return False,'title'
+        if not all(
             image.rect().contains(rect) and _fingerprint(image,rect)==proof
-            for rect,proof in zip(self.regions[1:],self.fingerprints[1:])))
+            for rect,proof in zip(self.regions[1:],self.fingerprints[1:])):return False,'guard'
+        return True,None

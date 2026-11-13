@@ -25,8 +25,8 @@ struct PairBinding {
 
 pub struct Association {
     pub panel: Option<BoxRect>,
-    /// Current header of a structurally proven primary whose marker is hidden.
-    /// This authorizes bounded title OCR only inside the selected primary.
+    /// Current glyph lane of a structurally proven primary. Marker decoration
+    /// and native frame pixels stay outside this bounded title OCR crop.
     pub primary_header: Option<BoxRect>,
     pub rejected: bool,
     pub metadata: Value,
@@ -598,6 +598,7 @@ impl Selector {
             metadata["version"] = json!(3);
             metadata["sourceKind"] = json!("inventory");
             metadata["sourceTab"] = json!(inv.tab);
+            metadata["titleMarker"] = json!(panels[0].marker);
             metadata["layout"] = json!(if single {"single"} else {"primary-left"});
             metadata["panel"] = rect.global(origin);
             metadata["comparison"] = if single {Value::Null} else {panels[1].rect.global(origin)};
@@ -626,7 +627,13 @@ impl Selector {
         }
         Association {
             panel: chosen,
-            primary_header: chosen.and_then(|_|panels.first().filter(|p|!p.marker).map(|p|p.title)),
+            primary_header: chosen.and_then(|_|panels.first().and_then(|p| {
+                if !p.marker {return Some(p.title)}
+                let x=crate::tooltip_surface::name_glyph_start(frame,p.title.x,p.title.y,p.title.w,p.title.h,true);
+                if x==p.title.x {return None}
+                let right=p.rect.right().saturating_sub((7.0*s).ceil() as u32);
+                (right>x).then_some(BoxRect{x,y:p.title.y,w:right-x,h:p.title.h})
+            })),
             rejected,
             metadata,
         }

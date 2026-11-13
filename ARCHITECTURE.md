@@ -81,6 +81,17 @@ existing pointer tolerance, while clicked item-link windows remain pointer-
 independent with a current title proof. Shop-list descriptions never create
 another price label. See [blue-description stability](docs/BLUE_DESCRIPTION_STABILITY.md).
 
+First inventory replies use the same bounded current-pane reanchoring as retained
+references. Capture preserves the submitted context for name resolution and
+availability, while the GUI adopts a separately verified current context for
+placement. First-result reanchoring never changes the source item/cell. The
+native `MarkerTitles` cache stores at most 16 complete framed title lanes, with
+exact bright-ink RGBA and dimensions and an original relative result rectangle.
+Every hit still requires current source/panel admission. Cold/changed titles use
+the ordinary marker reader; marker-free titles keep their existing double-read
+policy. The bounded proof-decision cache also stores fixed rejection stages so
+numeric diagnostics do not repeat current-pixel scans.
+
 Linux retains its approved PipeWire/portal sharing session. SIGUSR1 hands the capture helper to a replacement UI without another chooser. Normal Quit ends sharing. The explicit KDE screenshot fallback remains available for troubleshooting.
 
 Windows captures the selected OS display with `QScreen.grabWindow(0)`, using desktop GDI rather than Direct3D desktop duplication. It never obtains a game window handle. The dropdown contains real displays; geometry changes update the selected display. Capture runs at most ten times per second, pauses without demand, and skips work while its local output is busy.

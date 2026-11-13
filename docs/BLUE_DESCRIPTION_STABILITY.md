@@ -96,6 +96,44 @@ reply and clear after a source-cell change. The pinned vendor remains unchanged.
 The local GNU reader is rebuilt; installer/Windows qualification and live-game
 stress acceptance are separate. Final suite totals are in VERIFICATION.
 
+### Initial-read latency and motion
+
+The first inventory reply previously required the native pane to remain at its
+submitted coordinates. The later retention path could reanchor an already shown
+price, but could not rescue that first reply. A generated regression reproduces
+rejection after a two-pixel/three-pixel pane movement in the same source cell.
+
+Capture now checks whether the same source-bound pane can reanchor on the latest
+frame before rejecting it. The source context remains attached to the original
+immutable request; the current context is separate. The GUI resolves the OCR name
+against its submitted pixels and verifies both contexts before changing only
+the presentation's area/pointer. New source cells, changed icon/header/title
+pixels, unproved frames and comparison-only candidates still reject. Native
+availability observations retain byte-exact source/current title comparison at
+the respective positions, separately from presentation.
+
+`MarkerTitles` retains at most 16 recognized complete title lanes. The key covers
+the measured lane's dimensions and every current bright glyph's RGBA bytes,
+using the existing 150-light title-ink policy; only dark native background may
+vary. The remembered native name/area is rebased rather than rerun through OCR.
+New or changed titles keep the ordinary one-pass marker recognizer. Marker-free
+primary titles retain their existing independently agreeing reads. A clipped
+ending, unknown title or lost current source cannot be supplied by this cache.
+No full-frame images, prices or item-name guesses enter it.
+
+The 30-request controlled comparison keeps all 30 names and bindings correct.
+The median native title stage changes from 74.559 ms to 4.810 ms, with 25 cache
+hits; maximum title time is 111.543 ms before and 75.144 ms afterward. New-name
+reads still perform OCR. These unpaired measurements on a shared host exclude
+capture/compositor/network time and are not a guarantee of first-display latency.
+The count of avoided recognitions is stronger evidence than a timing ratio.
+
+Fixed numeric diagnostics now distinguish cell, header, frame, title and guard
+rejections using the same cached decision, without repeating proof scans or
+logging item/chat/player text. Counters also expose first-result reanchoring and
+title-cache reuse. The existing sharing session is preserved. Live observation
+stopped when the user paused; no game input or forced resume was used.
+
 ### Earlier continuity checks
 
 Focused source checks pass 223 tests. Regressions exercise prolonged missing OCR

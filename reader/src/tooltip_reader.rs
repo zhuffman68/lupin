@@ -9,6 +9,7 @@ pub struct TooltipReader {
     reader: Option<ItemTooltipReader>,
     centered: centered_tooltip::CenteredTitles,
     primary: tooltip_text::PrimaryTitles,
+    markers: tooltip_text::MarkerTitles,
     selector: tooltip_association::Selector,
     alternatives: tooltip_text::AlternativeTitles,
 }
@@ -26,6 +27,7 @@ impl TooltipReader {
         let primary_header=association.primary_header.map(|header|minerva_core::ScreenRect{
             x:capture.origin.x+header.x as i32,y:capture.origin.y+header.y as i32,
             width:header.w,height:header.h});
+        let marker_source=association.metadata["titleMarker"].as_bool()==Some(true);
         value["tooltipAssociation"]=association.metadata;
         if inventory_only {
             value["inventoryProbe"]=json!({"absent":value["tooltipAssociation"]["source"].is_null(),
@@ -52,11 +54,17 @@ impl TooltipReader {
         } else {(prepared.unwrap_or_else(||capture.frame.clone()),capture.origin,pointer)};
         let mut tooltip_capture=ItemCapture{frame,origin,pointer};
         if !owned.is_empty(){mask_regions(&mut tooltip_capture.frame,tooltip_capture.origin,annotations,64);}
-        let mut marker_title=primary_header.is_none();
-        if let Some(header)=primary_header {
-            value["tooltip"]=match self.primary.read(&tooltip_capture,header) {
-                Some(title)=>serde_json::to_value(title)?,None=>json!("none"),
-            };
+        let direct=primary_header.and_then(|header|if marker_source {
+            self.markers.get(&tooltip_capture,header)
+        } else {self.primary.read(&tooltip_capture,header)});
+        let cached=marker_source && direct.is_some();
+        value["tooltipCacheHit"]=json!(cached);
+        let mut marker_title=marker_source || primary_header.is_none();
+        if let Some(title)=direct {
+            value["tooltip"]=serde_json::to_value(title)?;
+        } else if primary_header.is_some() && !marker_source {
+            // A hidden marker may not reopen nearest-comparison recognition.
+            value["tooltip"]=json!("none");
         } else {
             let reader=self.reader.get_or_insert_with(ItemTooltipReader::bundled);
             value["tooltip"]=serde_json::to_value(reader.read(&tooltip_capture).tooltip)?;
@@ -69,6 +77,9 @@ impl TooltipReader {
                     value["tooltip"]["found"]["pinned"]=json!(true);
                 }
             }
+        }
+        if marker_source && !cached && let Some(header)=primary_header {
+            self.markers.remember(&tooltip_capture,header,&value["tooltip"]);
         }
         if retry {
             let found=&value["tooltip"]["found"];

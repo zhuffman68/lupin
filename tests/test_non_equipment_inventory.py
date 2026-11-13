@@ -6,11 +6,14 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QPoint
-from PySide6.QtGui import QColor,QImage
+from PySide6.QtCore import QPoint,QCoreApplication,QEvent
+from PySide6.QtGui import QColor,QImage,QPainter
 
 from price_lens.annotations import AnnotationWindow
 from price_lens.domain import Catalog
+from price_lens.capture import PixelReader
+from price_lens.reader_request import SubmittedRequest
+from price_lens.tooltip_association import TooltipAssociation
 import test_inventory_tooltip_reader as native_fixtures
 import test_ui_context as ui
 
@@ -21,6 +24,41 @@ class NonEquipmentInventoryTests(unittest.TestCase):
     def setUpClass(cls):
         native_fixtures.InventoryTooltipReaderTests.setUpClass()
         ui.ContextUiTests.setUpClass()
+
+    def test_capture_admits_the_first_moving_pane_only_with_current_source_and_title(self):
+        native=native_fixtures.InventoryTooltipReaderTests();point=(1378,152)
+        source=native.frame(primary=False,tab=1,single_name='Red Potion')
+        raw=native.read(source)[0]
+        proof=TooltipAssociation.from_result(raw,source,pointer=point)
+        self.assertIsNotNone(proof)
+        for changed_source in (False,True):
+            with self.subTest(changed_source=changed_source):
+                latest=QImage(source);painter=QPainter(latest)
+                painter.fillRect(proof.panel,QColor('#142314'))
+                painter.drawImage(proof.panel.topLeft()+QPoint(-2,3),source.copy(proof.panel));painter.end()
+                if changed_source:latest.setPixelColor(proof.slot.left()+5,proof.slot.top()+2,QColor('red'))
+                reader=PixelReader(native_fixtures.ROOT);reader.timer.stop();reader.auto_enabled=False
+                try:
+                    now=time.monotonic();reader.image=latest;reader.pointer=(point[0]-2,point[1]+3)
+                    reader.last_frame=now;reader.image_sequence=reader.submitted_sequence=1
+                    request=SubmittedRequest('prices',source,point,1,reader.generation,now,shop_epoch=reader.shop_browsing.epoch)
+                    reader.active_request=reader.submitted_request=request
+                    result={**deepcopy(raw),'atMs':int(now*1000)};accepted=[];reader.reading.connect(accepted.append)
+                    with patch('price_lens.capture.QTimer.singleShot'),patch.object(reader.process,'readAllStandardOutput',return_value=(json.dumps(result)+'\n').encode()):
+                        reader.on_output()
+                    self.assertEqual(len(accepted),1)
+                    if changed_source:
+                        self.assertEqual(accepted[0]['tooltipAssociation']['state'],'rejected')
+                        self.assertIsNone(reader.tooltip_association)
+                    else:
+                        self.assertEqual(accepted[0]['tooltipAssociation']['state'],'inventory-primary')
+                        self.assertTrue(accepted[0]['_tooltip_context'].matches(source,point))
+                        self.assertTrue(reader.tooltip_association.matches(latest,reader.pointer))
+                        self.assertEqual(reader.tooltip_association.panel,proof.panel.translated(-2,3))
+                finally:
+                    reader.close();reader.deleteLater()
+                    QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
+                    ui.ContextUiTests.app.processEvents()
 
     def test_non_equipment_cards_paint_and_survive_missed_reads_until_the_source_changes(self):
         native=native_fixtures.InventoryTooltipReaderTests();point=(1378,152)

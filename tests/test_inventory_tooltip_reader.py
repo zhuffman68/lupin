@@ -253,6 +253,23 @@ class InventoryTooltipReaderTests(unittest.TestCase):
                 self.assertNotEqual(after['tooltipAssociation']['state'],'inventory-primary')
                 self.assertEqual(after['tooltip'],'none')
 
+    def test_marker_title_cache_reuses_only_complete_current_ink_and_rebases_its_area(self):
+        from PySide6.QtCore import QPoint,QRect
+        original=self.frame(primary=False,tab=1,single_name='Red Potion')
+        background=original.copy();p=QPainter(background)
+        p.fillRect(1468,187,18,18,QColor(45,40,80));p.end()
+        moved=original.copy();p=QPainter(moved);pane=QRect(1263,180,236,240)
+        p.fillRect(pane,QColor('#142314'));p.drawImage(pane.topLeft()+QPoint(-2,3),original.copy(pane));p.end()
+        other=self.frame(primary=False,tab=1,single_name='White Potion')
+        bad=original.copy();p=QPainter(bad);p.fillRect(1483,95,8,10,QColor('#283749'));p.end()
+        values=self.read([original,background,moved,other,original,bad],inventory_only=True)
+        for index,name in enumerate(('Red Potion','Red Potion','Red Potion','White Potion','Red Potion')):
+            self.assertEqual(values[index]['tooltip']['found']['name'],name)
+        self.assertEqual([v.get('tooltipCacheHit',False) for v in values],[False,True,True,False,True,False])
+        old=values[0]['tooltip']['found']['area'];new=values[2]['tooltip']['found']['area']
+        self.assertEqual(new,{**old,'x':old['x']-2,'y':old['y']+3})
+        self.assertEqual(values[-1]['tooltip'],'none')
+
     def test_scaled_native_pair_proofs_are_accepted_by_the_frontend(self):
         from price_lens.tooltip_association import TooltipAssociation
         original=self.frame()
