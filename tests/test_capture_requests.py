@@ -120,6 +120,23 @@ class CaptureRequestTests(unittest.TestCase):
         PixelReader.observe_shop_frame(reader)
         self.assertEqual(reader.shop_browsing.observe_frame.call_args.args[1],area)
 
+    def test_pointer_motion_only_skips_ocr_when_current_inventory_source_proves_the_same_item(self):
+        for bound,current in ((True,True),(True,False),(False,True)):
+            with self.subTest(bound=bound,current=current):
+                reader,_=self.scanning_reader();reader.shop_rect=reader.shop_context=None
+                reader.shop_context_provider=lambda:None
+                reader.tooltip_enabled=True;reader.pointer=(181,162)
+                reader.tooltip_rect=QRect(100,100,160,20)
+                reader.tooltip_fingerprint=b'old'
+                reader.tooltip_association=Mock(matches=Mock(return_value=current)) if bound else None
+                reader.tooltip_title_proof=Mock(matches=Mock(return_value=True))
+                with patch('price_lens.capture.time.monotonic',return_value=100):PixelReader.scan(reader)
+                if bound and current:
+                    reader.submit.assert_not_called()
+                    self.assertEqual(reader.submitted_sequence,reader.image_sequence)
+                    reader.tooltip_association.matches.assert_called_once_with(reader.image,reader.pointer,exclude=[])
+                else:reader.submit.assert_called_once()
+
     def pending_reader(self):
         request=SubmittedRequest('prices',QImage(),None,1,0,100,shop_epoch=0)
         reader=SimpleNamespace(paused=False,experience_enabled=False,pickup_worker=None,pending=True,

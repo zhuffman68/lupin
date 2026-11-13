@@ -64,6 +64,18 @@ independent sender timer keeps obsolete labels alive when GUI updates stop.
 Fresh empty state stays hidden; a valid repeated state may restore rows after a
 temporary watchdog expiry. Heartbeats never advance paint presentation IDs.
 
+`TooltipReference.current` retains an established description price only while
+its latest title/native-panel proof remains valid. Modern inventory references
+also require their source header/cell and both native panes. Missing OCR metadata
+cannot discard that independent current proof, and a conflicting fresh OCR guess
+cannot replace its exact ID. Within-cell movement may translate pane geometry
+only after all those checks pass again; it does not supply new identity evidence.
+The canvas protects both captured and predicted pane positions and uses the
+proved source cell as its pointer region. Generic descriptions retain their
+existing pointer tolerance, while clicked item-link windows remain pointer-
+independent with a current title proof. Shop-list descriptions never create
+another price label. See [blue-description stability](docs/BLUE_DESCRIPTION_STABILITY.md).
+
 Linux retains its approved PipeWire/portal sharing session. SIGUSR1 hands the capture helper to a replacement UI without another chooser. Normal Quit ends sharing. The explicit KDE screenshot fallback remains available for troubleshooting.
 
 Windows captures the selected OS display with `QScreen.grabWindow(0)`, using desktop GDI rather than Direct3D desktop duplication. It never obtains a game window handle. The dropdown contains real displays; geometry changes update the selected display. Capture runs at most ten times per second, pauses without demand, and skips work while its local output is busy.

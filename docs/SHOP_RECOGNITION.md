@@ -53,6 +53,13 @@ replace or clear the existing shop. Python validates its submitted/current
 inventory evidence and NPC ownership normally. The final result completes the
 same request; no second request is enqueued between phases. Ordinary or rejected
 shop descriptions cannot use this early inventory path.
+Once independently admitted, a modern inventory description remains visible
+through transient OCR misses only while its current source/header/cell/title and
+native panes still prove the same item. Pointer movement within that cell may
+reanchor the panes after revalidating all proofs. This does not authorize a
+shop-origin description, a new item or a fresh asking amount. The annotation
+avoids both captured and predicted pane positions; see
+[the stability record](BLUE_DESCRIPTION_STABILITY.md).
 Cached native results receive the new capture timestamp but do not establish
 current offers by themselves: Python still checks all current source/amount
 proofs. See [the performance record](TRACKING_AND_READER_PERFORMANCE.md) for

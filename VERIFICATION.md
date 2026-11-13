@@ -1,5 +1,39 @@
 # Verification — 2026-11-13
 
+## Blue-description stability — source preview
+
+The [stability record](docs/BLUE_DESCRIPTION_STABILITY.md) describes current-pixel
+retention, strict within-cell pane reanchoring, exact-ID conflict handling and
+placement outside both captured/predicted native panes. Shop-origin descriptions
+remain excluded. No native source/vendor changes or installer builds are needed
+for this follow-up.
+
+- Full Python suite: **1,400 tests run, three skipped, 177.775 s**, successful.
+  Focused continuity/annotation/UI/capture checks: **223 tests**, successful.
+  All **39 release-tool tests** pass; documentation staging includes the record.
+- All **26 saved cases** match through actual native IPC, submitted/current
+  source validation, GUI and the real offscreen annotation painter: 20 positive
+  item cases and six required rejections, **zero wrong-item labels**. Positive
+  first-correct painting is 178.35 ms median and 606.6 ms maximum in this local
+  sample; two exceed 500 ms. Market/media are controlled, and these measurements
+  exclude real capture/compositor latency. No universal subsecond guarantee is
+  established. The final replay exits successfully in its private desktop.
+- Regressions cover missing/rejected OCR metadata with current modern source
+  proof, conflicting fresh OCR names, long stationary holds, pane motion,
+  changed source/title/closed windows, linked-window cursor departure and scaled
+  pointer cells. Legacy rejection and wrong-comparison checks remain enabled.
+- Independent Xvfb/D-Bus/HOME/XDG state and software rendering keep QA off the
+  user's desktop. The full suite initially exposed one old movement assertion;
+  its replacement checks both safe pending-capture placement and resumed motion
+  after the new pane geometry is measured. The complete final suite passes.
+
+Private evidence is under `evidence/performance-2026-11-13/blue-description/`,
+including `full-python-final.log`, `final-focused.log`, `release-tools.log`,
+`render-replay-clean.log` and `render-replay.json`. Physical Windows capture and
+live-game stress acceptance remain untested. Preview handoff uses the existing
+sharing helper and preserves the user's paused state; no installation or release
+publication is part of this change.
+
 ## Inventory/Korean follow-up — source preview
 
 The [follow-up record](docs/INVENTORY_AND_KOREAN_FOLLOWUP.md) distinguishes the

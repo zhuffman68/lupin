@@ -56,6 +56,17 @@ class AnnotationMotionTests(unittest.TestCase):
         self.window.read_command(json.dumps({**self.command,'rows':[plain]}))
         self.assertIsNone(active['description_box']);self.assertIsNone(active['comparison_box'])
 
+    def test_bound_source_uses_its_scaled_cell_and_clears_the_mode_when_reused(self):
+        row={**self.command['rows'][0],'kind':'item','source_bound':True,'pointer_region':[100,100,80,80]}
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        self.assertIsNotNone(self.window.label_rect(active,QPoint(178,178)))
+        self.assertIsNone(self.window.label_rect(active,QPoint(180,178)))
+        generic={key:value for key,value in row.items() if key!='source_bound'}
+        generic['pointer_region']=[0,0,800,800]
+        self.window.read_command(json.dumps({**self.command,'rows':[generic]}))
+        self.assertFalse(self.window.rows[0]['source_bound'])
+        self.assertIsNone(self.window.label_rect(self.window.rows[0],QPoint(178,178)))
+
     def test_inventory_card_avoids_source_cells_and_the_native_title(self):
         row=dict(x=1000,y=238,key='inventory',kind='item',name='Hat',text='FM 1,000',
                  follow_pointer=[1100,300],pointer_region=[0,28,1366,766],bounds=[0,28,1366,766],
@@ -66,6 +77,18 @@ class AnnotationMotionTests(unittest.TestCase):
         self.assertIsNotNone(box);self.assertTrue(QRect(*row['bounds']).contains(box))
         self.assertTrue(all(not box.intersects(QRect(*rect).adjusted(-3,-3,3,3)) for rect in row['avoid_regions']))
         self.assertLess(abs(box.x()-row['x'])+abs(box.y()-(row['y']-5)),250)
+
+    def test_following_pointer_cannot_paint_over_the_last_captured_blue_pane(self):
+        row=dict(x=410,y=310,key='item',kind='item',name='Hat',text='FM 1,000',
+                 follow_pointer=[450,300],pointer_region=[0,0,800,800],bounds=[0,0,800,800],
+                 description_box=[400,350,236,260],avoid_regions=[[400,350,236,260]])
+        self.window.read_command(json.dumps({**self.command,'rows':[row]}));active=self.window.rows[0]
+        measured=QRect(*row['description_box'])
+        for dx,dy in ((0,10),(10,0),(-5,-8),(8,12)):
+            box=self.window.label_rect(active,QPoint(450+dx,300+dy))
+            self.assertIsNotNone(box)
+            self.assertFalse(box.intersects(measured))
+            self.assertFalse(box.intersects(measured.translated(dx,dy)))
 
     def test_avoiding_proof_keeps_pointer_following_on_unblocked_axes_without_new_commands(self):
         row={**self.command['rows'][0],'kind':'item','bounds':[0,0,800,800],

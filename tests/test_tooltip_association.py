@@ -191,7 +191,8 @@ class TooltipAssociationTests(unittest.TestCase):
         changed=self.image.copy();changed.setPixelColor(326,176,QColor('red'))
         self.assertIsNone(reference.observe(None,changed,(340,190),now=1.2,context=proof))
         reference.observe(found,self.image,(340,190),now=2,context=proof)
-        self.assertIsNone(reference.observe(None,self.image,(340,190),now=2.2))
+        self.assertIs(reference.observe(None,self.image,(340,190),now=2.2),found)
+        self.assertIsNone(reference.observe(None,changed,(340,190),now=2.3))
 
     def test_blended_title_fringe_still_requires_the_same_inventory_cell_and_header(self):
         from PySide6.QtGui import QPainter

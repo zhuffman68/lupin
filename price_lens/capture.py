@@ -485,14 +485,14 @@ class PixelReader(QObject):
         known_absent=bool(inventory_only and self.inventory_absence is not None
                           and self.inventory_absence.matches(image,pointer))
         tooltip_same = False
-        if (hover_check and not self.tooltip_retry_requested and self.tooltip_rect and self.pointer==self.last_pointer
+        if (hover_check and not self.tooltip_retry_requested and self.tooltip_rect
                 and (self.tooltip_fingerprint is not None or getattr(self,'tooltip_association',None) is not None
                      or getattr(self,'tooltip_title_proof',None) is not None)):
             if self.tooltip_association is not None:
                 tooltip_same=self.tooltip_association.matches(image,pointer,exclude=self.annotation_regions())
-            elif getattr(self,'tooltip_title_proof',None) is not None:
+            elif self.pointer==self.last_pointer and getattr(self,'tooltip_title_proof',None) is not None:
                 tooltip_same=self.tooltip_title_proof.matches(image,pointer=pointer)
-            else:tooltip_same=self.fingerprint(image,self.tooltip_rect)==self.tooltip_fingerprint
+            elif self.pointer==self.last_pointer:tooltip_same=self.fingerprint(image,self.tooltip_rect)==self.tooltip_fingerprint
         if self.shop_rect and self.shop_fingerprint is not None:
             patch = image.copy(context or self.shop_rect)
             fingerprint = hashlib.blake2b(patch.constBits(), digest_size=8).digest()

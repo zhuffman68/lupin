@@ -155,6 +155,7 @@ class AnnotationWindow(QWidget):
                 row['shop_entry']=supplied.get('shop_entry')
                 row['description_box']=supplied.get('description_box')
                 row['comparison_box']=supplied.get('comparison_box')
+                row['source_bound']=supplied.get('source_bound') is True
                 if 'follow_pointer' not in supplied:
                     for field in ('follow_pointer','pointer_region','_cursor_offset'):row.pop(field,None)
                 row.update(supplied)

@@ -469,11 +469,11 @@ def shop_description_bounds(image,pointer,*,scale=1.0,exclude=()):
 
 
 class TooltipReference:
-    """Bridge a brief OCR miss only while the same captured name/panel remains."""
+    """A recognized description survives OCR misses only with current pixel proof."""
     def __init__(self):self.clear()
 
     def clear(self):
-        self.found=None;self.name=None;self.panel=None;self.pixels=b'';self.pointer=None;self.at=0;self.context=None
+        self.found=None;self.name=None;self.panel=None;self.pixels=b'';self.pointer=None;self.at=0;self.context=None;self.title=None
 
     @staticmethod
     def signature(image,rect):
@@ -481,16 +481,44 @@ class TooltipReference:
         patch=image.copy(rect).convertToFormat(QImage.Format.Format_Grayscale8)
         return bytes(patch.constBits())
 
-    def observe(self,found,image,pointer,allow=True,now=None,*,context=None,exclude=()):
+    def current(self,image,pointer,*,exclude=()):
+        """Revalidate an existing identity; this never establishes a new one."""
+        if not self.found:return None
+        if self.context is not None:
+            current=self.context.at_current_position(image,pointer,exclude=exclude)
+            if current is None:return None
+            if current is not self.context:
+                dx,dy=current.panel.x()-self.context.panel.x(),current.panel.y()-self.context.panel.y()
+                self.name=self.name.translated(dx,dy);self.panel=current.panel;self.title=current.title
+                self.found={**self.found,'area':dict(zip(('x','y','width','height'),self.name.getRect()))}
+                self.context=current
+            if pointer is not None and self.pointer is not None and pointer!=self.pointer:
+                original=self.found.get('_pointer')
+                if original is not None:
+                    self.found={**self.found,'_pointer':[original[0]+pointer[0]-self.pointer[0],original[1]+pointer[1]-self.pointer[1]]}
+                self.pointer=tuple(pointer)
+            return self.found
+        if self.title is None or self.title.panel is None:return None
+        if not self.found.get('pinned'):
+            if pointer is None or self.pointer is None or max(abs(a-b) for a,b in zip(pointer,self.pointer))>8:return None
+        return self.found if self.title.matches(image,panel=self.panel,pointer=pointer,exclude=exclude) else None
+
+    def observe(self,found,image,pointer,allow=True,now=None,*,context=None,title=None,exclude=()):
         now=time.monotonic() if now is None else now
         if not allow:self.clear();return None
-        if self.context is not None and (context is None or context.token!=self.context.token):self.clear()
+        if self.context is not None and context is not None and context.token!=self.context.token:self.clear()
         if context is not None and not context.matches(image,pointer,exclude=exclude):self.clear();return None
         if found:
             area=found['area'];self.name=QRect(*(area[k] for k in ('x','y','width','height'))).intersected(image.rect())
-            self.panel=context.panel if context is not None else description_bounds(image,area);self.pixels=self.signature(image,self.name)
+            self.title=title or (context.title if context is not None else None)
+            self.panel=context.panel if context is not None else QRect(*self.title.panel) if self.title is not None and self.title.panel is not None else description_bounds(image,area)
+            self.pixels=self.signature(image,self.name)
             self.found=found;self.pointer=pointer;self.at=now;self.context=context
             return found
+        if self.context is not None or self.title is not None:
+            held=self.current(image,pointer,exclude=exclude)
+            if held is not None:return held
+            self.clear();return None
         if self.found and pointer and self.pointer and now-self.at<=.4 and max(abs(a-b) for a,b in zip(pointer,self.pointer))<=8 and still_present(image,self.panel):
             current=self.signature(image,self.name)
             if current and len(current)==len(self.pixels) and sum(abs(a-b)>22 for a,b in zip(current,self.pixels))/len(current)<.04:

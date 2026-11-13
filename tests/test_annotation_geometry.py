@@ -41,10 +41,20 @@ class AnnotationGeometryTests(unittest.TestCase):
         self.assertIsNotNone(box);self.assertFalse(box.intersects(QRect(*row['description_box'])))
         self.assertGreaterEqual(box.y(),35);self.assertLess(box.right(),400)
 
-    def test_primary_anchor_follows_pointer_without_moving_inventory_protection(self):
+    def test_primary_anchor_protects_captured_pane_until_the_moving_pane_is_measured(self):
         row=dict(x=410,y=300,_width=230,kind='item',bounds=[0,0,900,700],
             description_box=[400,350,236,260],avoid_regions=[[650,100,207,285],[400,350,236,260]],
             follow_pointer=[650,330],_cursor_offset=(-240,-30),pointer_region=[0,0,900,700])
         a=label_rectangle(row,QPoint(650,330),QRect(0,0,900,700),QPoint())
         b=label_rectangle(row,QPoint(655,334),QRect(0,0,900,700),QPoint())
-        self.assertEqual((b.x()-a.x(),b.y()-a.y()),(5,4))
+        # Moving downward must not move the card onto the captured native rim
+        # while the next game frame is still pending. Its unblocked x follows.
+        self.assertEqual((b.x()-a.x(),b.y()-a.y()),(5,0))
+        for protected in (QRect(*row['avoid_regions'][0]),QRect(*row['description_box']),
+                          QRect(*row['description_box']).translated(5,4)):
+            self.assertFalse(b.intersects(protected))
+        measured={**row,'description_box':[405,354,236,260],
+            'avoid_regions':[row['avoid_regions'][0],[405,354,236,260]],'follow_pointer':[655,334]}
+        c=label_rectangle(measured,QPoint(655,334),QRect(0,0,900,700),QPoint())
+        self.assertEqual((c.x()-a.x(),c.y()-a.y()),(5,4))
+        self.assertFalse(c.intersects(QRect(*row['avoid_regions'][0])))

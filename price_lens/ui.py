@@ -1431,8 +1431,12 @@ class LensWindow(QMainWindow):
         image = self.reader.image
         if not self.labels_enabled or self.mode != "live" or image.isNull() or not geometry.contains(QPoint(x, y)):
             self.reader.pointer = None
-            if self.tooltip_result:
+            pixels=image.copy(self.reader.crop) if self.reader.crop else image
+            held_link=(self.labels_enabled and self.mode=='live' and (self.tooltip_result or {}).get('pinned')
+                       and self.tooltip_reference.current(pixels,None,exclude=self.annotation_exclusions()) is not None)
+            if self.tooltip_result and not held_link:
                 self.tooltip_result = None
+                self.tooltip_context=None;self.tooltip_reference.clear()
                 self.render()
             return
         point = (round((x - geometry.x()) * image.width() / geometry.width()),
@@ -1444,7 +1448,8 @@ class LensWindow(QMainWindow):
             outside = (self.reader.auto_active and
                        (self.reader.game_area is None or not self.reader.game_area.contains(QPoint(*point))))
             jumped = previous is not None and max(abs(point[0] - previous[0]), abs(point[1] - previous[1])) > 64
-            clear = outside or (jumped and not (self.tooltip_result or {}).get('pinned')) or (pointer_in_shop(context_point, self.effective_shop_context()) and self.tooltip_context is None)
+            pinned=bool((self.tooltip_result or {}).get('pinned'))
+            clear = (outside and not pinned) or (jumped and not pinned) or (pointer_in_shop(context_point, self.effective_shop_context()) and self.tooltip_context is None and not pinned)
             if self.tooltip_context and not self.tooltip_context.contains_pointer(context_point):clear=True
             had_tooltip = bool(self.tooltip_result and clear)
             if clear:
@@ -1589,11 +1594,19 @@ class LensWindow(QMainWindow):
         pointer=self.reader.pointer
         if pointer is not None and self.reader.crop:pointer=(pointer[0]-self.reader.crop.x(),pointer[1]-self.reader.crop.y())
         cleared_tooltip=False
-        if self.tooltip_result and self.tooltip_context and not self.tooltip_context.matches(pixels,pointer,exclude=self.annotation_exclusions()):
+        proved_description=bool(self.tooltip_reference.context is not None or self.tooltip_reference.title is not None)
+        held=self.tooltip_reference.current(pixels,pointer,exclude=self.annotation_exclusions()) if self.tooltip_result and proved_description else None
+        if self.tooltip_result and proved_description and held is None:
             self.tooltip_result=None;self.tooltip_context=None;self.tooltip_reference.clear()
             self.reader.tooltip_title_proof=None
             self.reader.tooltip_association=None;self.reader.tooltip_fingerprint=None
             self.request_prices();cleared_tooltip=True
+        moved_description=held is not None and held!=self.tooltip_result
+        if held is not None:
+            self.tooltip_result=held;self.tooltip_context=self.tooltip_reference.context
+            self.reader.tooltip_association=self.tooltip_context;self.reader.tooltip_title_proof=self.tooltip_reference.title
+            self.reader.tooltip_rect=QRect(*(held['area'][key] for key in ('x','y','width','height')))
+        if moved_description:self.draw_labels(time.time(),False)
         if self.shop_price_entry.blocking:
             # A verified native form occludes the table; it is neither a new
             # page nor evidence that a previous item was removed. Retain the
@@ -1734,7 +1747,6 @@ class LensWindow(QMainWindow):
             not result.get("hover") and not pointer_in_shop(pointer, self.effective_shop_context())
             and (not self.observations.shop_tooltip_from_shop or separate_header))
         if state=='rejected':eligible=False
-        if self.tooltip_context and (context is None or context.token!=self.tooltip_context.token):self.tooltip_reference.clear()
         raw_found=found
         found = found if eligible else None
         title_proof=None
@@ -1780,17 +1792,42 @@ class LensWindow(QMainWindow):
                     found = None
                 else:
                     found = {**found, "_pointer": list(read_pointer),**({'_association_token':context.token} if context is not None else {})}
+                    if context is not None and state=='inventory-primary':found.pop('pinned',None)
             except (KeyError, TypeError, ValueError):
                 found = None
+        previous=self.tooltip_reference.current(latest,pointer,exclude=self.annotation_exclusions()) if self.hover_enabled else None
+        if (found is not None and previous is not None and self.tooltip_reference.context is not None
+                and context is not None and context.token==self.tooltip_reference.context.token):
+            old_item=self.item_for(previous);new_item=self.item_for(found)
+            if old_item is not None and (new_item is None or new_item.game_id!=old_item.game_id):
+                # Exact unchanged title/source pixels outweigh a new OCR guess.
+                # It must not replace the item or establish circulation for it.
+                found=raw_found=None;context=None;title_proof=None
+                metrics=getattr(self.reader,'metrics',None)
+                if metrics is not None:metrics.record('description.ocr_conflict')
         # Only this fresh native read may establish circulation. The following
         # retention step can preserve presentation but is never release proof.
         self.observe_native_availability(result,image,latest,rows=rows,
             description=raw_found if found is not None else None,association=context if state=='inventory-primary' else None)
+        # A failed fresh OCR attempt is not contrary screen evidence. Existing
+        # inventory proof still checks this frame's cell/header/primary title
+        # and both panels, independently of the returned metadata or shop epoch.
+        prior_context=self.tooltip_reference.context
+        independently_bound=bool(prior_context is not None and prior_context.header is not None and prior_context.title is not None)
+        held_description=(self.hover_enabled and (independently_bound or (self.tooltip_reference.found or {}).get('pinned'))
+                          and self.tooltip_reference.current(latest,pointer,exclude=self.annotation_exclusions()) is not None)
+        newly_read=found is not None
         found=self.tooltip_reference.observe(found,latest,pointer,
-            allow=eligible and (not raw_found or not raw_found.get('name') or found is not None),
-            context=context if state=='inventory-primary' else None,exclude=self.annotation_exclusions())
-        self.tooltip_context=context if found and state=='inventory-primary' else None
-        self.reader.tooltip_title_proof=title_proof if found else None
+            allow=bool(held_description or eligible and (not raw_found or not raw_found.get('name') or found is not None)),
+            context=context if state=='inventory-primary' else None,title=title_proof,exclude=self.annotation_exclusions())
+        self.tooltip_context=self.tooltip_reference.context if found else None
+        self.reader.tooltip_title_proof=self.tooltip_reference.title if found else None
+        self.reader.tooltip_association=self.tooltip_context
+        if found is not None and not newly_read:
+            metrics=getattr(self.reader,'metrics',None)
+            if metrics is not None:metrics.record('description.retained')
+        if found:
+            self.reader.tooltip_rect=QRect(*(found['area'][key] for key in ('x','y','width','height')))
         if found and separate_header:self.observations.shop_tooltip_from_shop=False
         previous_description=self.shop_description
         read_point=read_pointer
@@ -2343,6 +2380,10 @@ class LensWindow(QMainWindow):
                 if self.tooltip_context is not None:
                     # Our own card must not cover the inventory cell or the
                     # native pixels that authorize this reference.
+                    slot=self.tooltip_context.slot
+                    annotations[-1]['source_bound']=True
+                    annotations[-1]['pointer_region']=[geometry.x()+round((slot.x()+ox)*sx),geometry.y()+round((slot.y()+oy)*sy),
+                        max(1,round(slot.width()*sx)),max(1,round(slot.height()*sy))]
                     protected=(self.tooltip_context.source,self.tooltip_context.panel,
                                *((self.tooltip_context.comparison,) if self.tooltip_context.comparison is not None else ()))
                     primary=self.tooltip_context.panel

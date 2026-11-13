@@ -1,6 +1,6 @@
 """Pixel proofs binding a native description to its inventory source cell."""
 from collections import OrderedDict
-from dataclasses import dataclass,field
+from dataclasses import dataclass,field,replace
 import hashlib
 
 from PySide6.QtCore import QPoint,QRect
@@ -71,6 +71,7 @@ class TooltipAssociation:
     title: TitleProof | None = None
     frame_caps: tuple = ()
     header: InventoryHeader | None = None
+    panel_pointer: tuple | None = None
     _matches_cache: OrderedDict = field(default_factory=OrderedDict,init=False,repr=False,compare=False)
 
     @classmethod
@@ -200,6 +201,32 @@ class TooltipAssociation:
         self._matches_cache[key]=result
         while len(self._matches_cache)>4:self._matches_cache.popitem(last=False)
         return result
+
+    def at_current_position(self,image,pointer,*,exclude=()):
+        """Reanchor only the same source-bound title on current native frames."""
+        point=_point(pointer);anchor=self.panel_pointer or self.read_pointer
+        if self.matches(image,pointer,exclude=exclude):
+            return self if point==anchor else replace(self,panel_pointer=point)
+        if (point is None or anchor is None or self.header is None or self.title is None
+                or not self.contains_pointer(point)):return None
+        # Legacy guards may contain unclassified popup pixels. Only the modern
+        # separately checked source/header/title/frame family can move this way.
+        if any(rect.intersects(frame) for rect in self.regions[1:]
+               for frame in (self.panel,*((self.comparison,) if self.comparison is not None else ()))):return None
+        dx,dy=point[0]-anchor[0],point[1]-anchor[1]
+        offsets=list(dict.fromkeys(((dx,dy),(dx,0),(0,dy))))
+        for x,y in offsets:
+            if x==0 and y==0:continue
+            panel=self.panel.translated(x,y)
+            comparison=self.comparison.translated(x,y) if self.comparison is not None else None
+            title=replace(self.title,rect=QRect(*self.title.rect).translated(x,y).getRect(),
+                          panel=panel.getRect(),
+                          pointer=(self.title.pointer[0]+x,self.title.pointer[1]+y) if self.title.pointer else None,
+                          exclude=tuple(QRect(*r).translated(x,y).getRect() for r in self.title.exclude))
+            candidate=replace(self,panel=panel,comparison=comparison,title=title,
+                              regions=(self.regions[0].translated(x,y),*self.regions[1:]),panel_pointer=point)
+            if candidate.matches(image,point,exclude=exclude):return candidate
+        return None
 
     def _matches_current(self,image,pointer,exclude):
         if any(not image.rect().contains(rect) for rect in

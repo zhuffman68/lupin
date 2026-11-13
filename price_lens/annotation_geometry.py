@@ -32,9 +32,10 @@ def place_item_away_from_proof(row,requested,bounds,*,canvas):
         if (not isinstance(value,(tuple,list)) or len(value)!=4
                 or any(type(part) is not int for part in value) or value[2]<=0 or value[3]<=0):return None
         rect=QRect(*value)
-        if rect in moving:rect.translate(shift)
-        rect=rect.adjusted(-4,-4,4,4)
-        if rect.intersects(bounds):protected.append(rect)
+        candidates=(rect,rect.translated(shift)) if rect in moving else (rect,)
+        for rectangle in candidates:
+            rectangle=rectangle.adjusted(-4,-4,4,4)
+            if rectangle.intersects(bounds) and rectangle not in protected:protected.append(rectangle)
     left,right=bounds.left(),bounds.right()-width+1
     top,bottom=bounds.top(),bounds.bottom()-height+1
     clamp_x=lambda x:max(left,min(x,right))
@@ -46,7 +47,9 @@ def place_item_away_from_proof(row,requested,bounds,*,canvas):
         xs.extend(((('before',index),clamp_x(rect.left()-width)),(('after',index),clamp_x(rect.right()+1))))
         ys.extend(((('before',index),clamp_y(rect.top()-height)),(('after',index),clamp_y(rect.bottom()+1))))
     if description is not None:
-        description=description.translated(shift)
+        # The OS pointer can precede the next capture. Keep our paint off both
+        # the measured pane and its predicted position until that frame arrives.
+        description=description.united(description.translated(shift))
         aligned=(clamp_x(description.left()),clamp_x(description.right()-width+1))
         horizontal=set(x for _,x in xs)|set(aligned)
         vertical=set(y for _,y in ys)|{clamp_y(description.top())}
@@ -83,8 +86,9 @@ def label_rectangle(row,point,canvas,window_origin):
     if row.get("follow_pointer") is not None:
         origin = row["follow_pointer"]
         region = row.get("pointer_region")
+        limit=max(region[2:]) if row.get('source_bound') is True and region else 64
         if ((region and not QRect(*region).contains(point)) or
-                max(abs(point.x() - origin[0]), abs(point.y() - origin[1])) > 64):
+                max(abs(point.x() - origin[0]), abs(point.y() - origin[1])) > limit):
             return None
         dx, dy = row["_cursor_offset"]
         x, y = point.x() - window_origin.x() + dx, point.y() - window_origin.y() + dy
