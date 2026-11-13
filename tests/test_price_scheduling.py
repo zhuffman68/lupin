@@ -16,7 +16,7 @@ class PriceSchedulingTests(unittest.TestCase):
         self.directory=tempfile.TemporaryDirectory();self.service=PriceService(Path(self.directory.name)/'prices.sqlite')
         self.now=time.time();self.item=Item(4010000,'Bronze Ore');self.service.snapshot.save(document(self.now),self.now)
     def tearDown(self):
-        self.service.close();self.service.pool.shutdown(wait=True);self.app.processEvents();self.directory.cleanup()
+        self.service.close();self.service.wait_closed();self.app.processEvents();self.directory.cleanup()
     def until(self,condition):
         end=time.monotonic()+3
         while not condition() and time.monotonic()<end:self.app.processEvents();time.sleep(.001)

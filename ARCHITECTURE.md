@@ -34,8 +34,9 @@ The main Qt process owns settings, layouts, market state and session accounting.
 
 `background_job.py` owns cancellation-guarded jobs: at most one running and one
 latest pending job. `SnapshotGeneration` and `JobResult` carry owned results back
-to Qt. Snapshot validation/persistence shares the catalog's single worker; Qt
-adopts a complete generation without exposing partial rows. Market availability
+to Qt. Snapshot validation/persistence has an independent bounded worker, so a
+slow catalog network request cannot delay a completed market refresh. Qt adopts
+a complete generation without exposing partial rows. Market availability
 uses its own bounded job and a single name projection, then checks the current
 manifest during confirmation. Drop navigation projects relevant identities and
 release evidence in one read transaction. Workers do not mutate live snapshot

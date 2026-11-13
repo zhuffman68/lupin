@@ -131,6 +131,28 @@ counter=Path(__file__).with_name('attempts.txt');counter.write_text(str(int(coun
         overlay.retry();self.wait(lambda:overlay.ready)
         self.assertEqual(self.attempts(),4);self.assertEqual(overlay.retries,0);self.assertTrue(overlay.writer_available)
 
+    def test_busy_pipe_keeps_only_latest_state_and_does_not_resend_identical_rows(self):
+        overlay=self.start(self.helper(READY+READ_LOOP));self.wait(lambda:overlay.ready)
+        with patch.object(overlay.process,'bytesToWrite',return_value=4096) as queued,patch.object(overlay.process,'write') as write:
+            for text in ('First','Obsolete','Latest'):
+                overlay.update([0,0,800,600],[dict(name='Fixture',text=text,x=1,y=2,key='own')])
+            write.assert_not_called();self.assertTrue(overlay.state_pending)
+            queued.return_value=0;overlay.flush_labels()
+            self.assertEqual(write.call_count,1)
+            self.assertEqual(json.loads(bytes(write.call_args.args[0]))['rows'][0]['text'],'Latest')
+            overlay.update([0,0,800,600],[dict(name='Fixture',text='Latest',x=1,y=2,key='own')])
+            self.assertEqual(write.call_count,1);self.assertFalse(overlay.state_pending)
+
+    def test_numeric_paint_acknowledgement_comes_from_real_canvas(self):
+        overlay=self.start(ROOT);self.wait(lambda:overlay.ready)
+        overlay.diagnostics=True;overlay.capture_at=time.monotonic();reports=[];overlay.painted.connect(reports.append)
+        overlay.update([0,0,800,600],[dict(name='Fixture',text='1,000',x=30,y=30,key='own')])
+        self.wait(lambda:bool(reports))
+        report=reports[-1];self.assertEqual(report['id'],overlay.presentation_id)
+        self.assertEqual(report['captured_at'],overlay.capture_at)
+        self.assertGreaterEqual(report['painted_at'],report['sent_at'])
+        self.assertNotIn('Fixture',json.dumps(report))
+
     def test_transient_exit_replays_only_saved_annotation_state_to_new_helper(self):
         root=self.helper("""
 counter=Path(__file__).with_name('attempts.txt');n=int(counter.read_text())+1 if counter.exists() else 1;counter.write_text(str(n))

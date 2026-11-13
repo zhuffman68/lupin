@@ -33,6 +33,7 @@ class ExperienceCaptureTests(unittest.TestCase):
 
     def test_exp_only_results_preserve_stationary_shop_and_use_one_process(self):
         reader = PixelReader(ROOT)
+        reader.reader_process.ensure()
         reader.auto_enabled = False
         reader.live_source = True
         reader.crop = QRect(0,0,1366,768)

@@ -28,6 +28,8 @@ from price_lens.chat_ocr import pixels,with_frame_pixels
 from price_lens.reader_process import ReaderProcess
 from price_lens.process_lifecycle import drain_retired
 from price_lens.update_cache import usage,clear
+from price_lens.service import PriceService
+from price_lens.data import load_catalog
 from test_reference import generation
 from test_snapshot import document
 
@@ -98,7 +100,7 @@ class PerformancePathTests(unittest.TestCase):
         self.addCleanup(updater.storage.pool.shutdown,wait=True);self.addCleanup(updater.close)
         release=threading.Event();started=threading.Event();heartbeat=[]
         original=store.prepare
-        def slow(doc,**kwargs):started.set();release.wait(2);return original(doc,**kwargs)
+        def slow(doc,*args,**kwargs):started.set();release.wait(2);return original(doc,*args,**kwargs)
         updater.enabled=True
         with patch.object(store,'prepare',side_effect=slow):
             updater.accept(document());self.assertTrue(started.wait(1))
@@ -162,3 +164,50 @@ class PerformancePathTests(unittest.TestCase):
         self.assertEqual(usage(folder),256);clear(folder)
         self.assertTrue(keep.exists());self.assertEqual(target.read_text(),'keep')
         if linked:self.assertTrue((folder/'Lupin-fixture.exe').is_symlink())
+
+    def test_cached_catalog_and_snapshot_are_not_blocked_by_catalog_network_refresh(self):
+        service=PriceService(Path(self.folder.name)/'prices.sqlite')
+        release=threading.Event();self.addCleanup(service.wait_closed);self.addCleanup(service.close);self.addCleanup(release.set)
+        doc={'items':[dict(id=4010000,name='Bronze Ore')],'scrolls':[]}
+        service.cache.put('catalog','osms',doc,saved=time.time()-90000)
+        ready=[];service.catalog_ready.connect(ready.append)
+        def slow(_):release.wait(2);return Catalog(doc)
+        with patch('price_lens.service.load_catalog',side_effect=slow),patch('price_lens.snapshot_fetcher.SnapshotFetcher.start'):
+            service.start();self.wait_for(lambda:bool(ready))
+            self.assertTrue(service.catalog_pending);self.assertEqual(ready[0].items[0].game_id,4010000)
+            service.set_snapshot_enabled(True);service.snapshot_updater.accept(document())
+            self.wait_for(lambda:not service.snapshot_updater.busy)
+            self.assertTrue(service.catalog_pending);self.assertEqual(service.snapshot.meta['rows'],1)
+            release.set();self.wait_for(lambda:not service.catalog_pending)
+            self.assertEqual(len(ready),1)
+
+    def test_invalid_new_catalog_cannot_replace_last_good_identifiers(self):
+        cache=Cache(Path(self.folder.name)/'prices.sqlite');old={'items':[dict(id=4010000,name='Bronze Ore')],'scrolls':[]}
+        cache.put('catalog','osms',old,saved=time.time()-90000)
+        with patch('price_lens.data.get_json',return_value={'items':[dict(id=True,name='Wrong')],'scrolls':[]}):
+            result=load_catalog(cache)
+        self.assertEqual([item.game_id for item in result.items],[4010000]);self.assertEqual(cache.get('catalog','osms'),old)
+
+    def test_installed_update_prunes_only_older_version_proven_bases(self):
+        from price_lens.updates import ReleaseClient
+        client=ReleaseClient(Path(self.folder.name),{});folder=client.cache/'packages';folder.mkdir()
+        first=folder/'lupin-1.0.4-1-x86_64.pkg.tar.zst';first.write_bytes(b'old')
+        second=folder/'lupin-1.0.5-1-x86_64.pkg.tar.zst'
+        client.keep_base(first,{'sha256':'a'*64},'1.0.4')
+        second.write_bytes(b'current');client.keep_base(second,{'sha256':'b'*64},'1.0.5')
+        unknown=folder/('base-'+'c'*64);unknown.write_bytes(b'legacy unknown')
+        notes=folder/'notes.txt';notes.write_text('keep')
+        client.prune_cache('1.0.5')
+        self.assertFalse((folder/('base-'+'a'*64)).exists());self.assertTrue((folder/('base-'+'b'*64)).exists())
+        self.assertTrue(unknown.exists());self.assertTrue(notes.exists());self.assertTrue(second.exists())
+
+    def test_unsupported_hard_links_do_not_accumulate_named_installers(self):
+        from price_lens.updates import ReleaseClient
+        client=ReleaseClient(Path(self.folder.name),{});folder=client.cache/'packages';folder.mkdir()
+        old=folder/'Lupin-Windows-x64-Setup-old.exe';old.write_bytes(b'old')
+        current=folder/'Lupin-Windows-x64-Setup.exe';current.write_bytes(b'current')
+        notes=folder/'notes.txt';notes.write_text('keep')
+        with patch('price_lens.updates.os.link',side_effect=OSError('Unsupported filesystem')):
+            client.keep_base(current,{'sha256':'a'*64},'1.0.5')
+        self.assertFalse(old.exists());self.assertEqual(current.read_bytes(),b'current')
+        self.assertTrue(notes.exists());self.assertFalse(list(folder.glob('base-*')))

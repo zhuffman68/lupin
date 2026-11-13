@@ -29,6 +29,7 @@ pub struct RecoveredComponents {
 struct Prepared {
     area: ScreenRect,
     ink: GrayImage,
+    #[cfg(test)]
     ink_width: u32,
 }
 
@@ -604,6 +605,7 @@ fn prepare_ending(
             height,
         },
         ink,
+        #[cfg(test)]
         ink_width: bounds.2 - bounds.0 + 1,
     })
 }

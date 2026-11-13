@@ -5,9 +5,8 @@ import hashlib
 import os
 import tempfile
 import time
-import sys
 
-from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal, QRect, QPoint, Qt
+from PySide6.QtCore import QObject, QProcess, QTimer, Signal, QRect, QPoint, Qt
 from PySide6.QtGui import QImage
 import json
 from .stream import StreamClient, screen_pixels

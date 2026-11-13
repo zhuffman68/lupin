@@ -80,6 +80,8 @@ def main():
     QTimer.singleShot(5000, app.quit)
     app.exec()
     probe.close()
+    from .process_lifecycle import drain_retired
+    drain_retired()
     assert points, "The independent overlay helper did not report the OS pointer: " + probe.last_error
     print("PASS: independent overlay helper and local stdin/stdout work", flush=True)
     print("No screen capture, mouse input or game-process interaction occurred.", flush=True)

@@ -105,6 +105,9 @@ class UpdateService(QObject):
 
     def start(self):
         if self.closed:return
+        if self.target.installable and hasattr(self.client,'prune_cache'):
+            try:self.client.prune_cache(__version__)
+            except (OSError,ValueError):pass
         self.configure()
         self.changed.emit()
         if self.previous_result:self.announce_result(self.previous_result)

@@ -446,6 +446,7 @@ class LensWindow(QMainWindow):
         self.exp_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.exp_scroll.setWidget(self.exp_panel)
         self.exp_tab_index = self.tabs.addTab(self.exp_scroll, "EXP/Meso Tracking")
+        self.exp_panel.set_presentation_active(False)
         self.translation_panel=TranslationPanel(self.chat_enabled,self,composer=self.composer,
             compose_shortcut=self.write_hotkey_description,configure_compose=self.configure_write_hotkey,
             scan_seconds=self.chat.scan_seconds,linger_seconds=self.chat.linger_seconds)
@@ -547,7 +548,7 @@ class LensWindow(QMainWindow):
         if QApplication.platformName() != "offscreen":
             QTimer.singleShot(700, self.initialize_hotkey)
         if self.chat_enabled:
-            QTimer.singleShot(800,lambda:self.set_chat_enabled(True))
+            self.set_chat_enabled(True)
 
     def build_settings(self):
         self.settings_dialog = SettingsDialog(self)
@@ -921,6 +922,7 @@ class LensWindow(QMainWindow):
             self.exp_panel.start()
 
     def on_tab_changed(self, index):
+        if hasattr(self,'exp_panel'):self.exp_panel.set_presentation_active(index==self.exp_tab_index)
         if hasattr(self,'database_panel'):self.database_panel.set_active(index==self.database_tab_index)
         self.update_reference_context()
         self.update_shortcut_footer()
@@ -935,7 +937,12 @@ class LensWindow(QMainWindow):
     def showEvent(self,event):
         super().showEvent(event)
         self._ever_shown=True
+        if hasattr(self,'exp_panel'):self.exp_panel.set_presentation_active(self.tabs.currentIndex()==self.exp_tab_index)
         if hasattr(self,'cards_layout'):QTimer.singleShot(0,self.render)
+
+    def hideEvent(self,event):
+        if hasattr(self,'exp_panel'):self.exp_panel.set_presentation_active(False)
+        super().hideEvent(event)
 
     def moveEvent(self,event):
         super().moveEvent(event)
@@ -1213,7 +1220,8 @@ class LensWindow(QMainWindow):
         self.monitor.setToolTip(self.monitor.currentText())
         self.share.setEnabled(valid and not self.capture_starting)
         self.share.setText("Starting reading…" if self.capture_starting else "Pause reading" if self.mode == "live" else "Resume reading" if self.mode == "paused" and self.session_available else "Start reading")
-        self.share.setToolTip("Choose a display first" if not valid else "Toggle screen reading")
+        self.share.setToolTip('Choose a display first' if not valid else
+            'Pause or resume screen capture, prices, tracking and Korean scans. Manual search and Database remain available. The Prices shortcut only toggles pricing.')
         self.monitor.setEnabled(not self.capture_starting)
         self.monitor.setVisible(True)
         self.cancel_setup.setVisible(self.capture_starting)

@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt,QCoreApplication,QEvent
 from PySide6.QtWidgets import QApplication
 
 from price_lens.annotations import AnnotationWindow
@@ -41,10 +41,22 @@ class MarketDeadlineTests(unittest.TestCase):
         self.fetch = self.enterContext(patch.object(self.updater.fetcher, 'start'))
         self.item = Item(4010000, 'Bronze Ore')
 
+    def accept(self,doc):
+        self.updater.accept(doc)
+        future=self.updater.storage.future
+        if future is not None:
+            future.result(timeout=3)
+            # Deliver only completion, leaving precise-timer boundary assertions
+            # independent of how long the shared test host took to persist rows.
+            deadline=time.monotonic()+3
+            while self.updater.busy and time.monotonic()<deadline:
+                QCoreApplication.sendPostedEvents(self.updater.storage,QEvent.Type.MetaCall);time.sleep(.001)
+            self.assertFalse(self.updater.busy)
+
     def test_hourly_refresh_uses_publication_expiry_instead_of_another_whole_hour(self):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-720)
-        self.updater.accept(doc)
+        self.accept(doc)
         self.assertEqual(self.updater.timer.interval(), 2_880_000)
         self.now += 120
         self.updater.set_interval(1800)
@@ -56,7 +68,7 @@ class MarketDeadlineTests(unittest.TestCase):
     def test_submillisecond_expiry_never_becomes_an_immediate_or_early_timer(self):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3600+.0004)
-        self.updater.accept(doc)
+        self.accept(doc)
         self.assertEqual(self.updater.timer.interval(), 1)
         self.assertEqual(self.updater.timer.timerType(), Qt.TimerType.PreciseTimer)
 
@@ -76,7 +88,7 @@ class MarketDeadlineTests(unittest.TestCase):
         doc['generated_at'] = iso(self.now-3601)
         published = self.now-3601
         for delay in (60, 300, 900, 900):
-            self.updater.accept(doc)
+            self.accept(doc)
             self.assertEqual(self.updater.timer.interval(), delay*1000)
             quote = self.store.quote(self.item)
             self.assertEqual(quote.published_at, published)
@@ -93,19 +105,19 @@ class MarketDeadlineTests(unittest.TestCase):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3601)
         for delay in (60, 300, 300):
-            self.updater.accept(doc)
+            self.accept(doc)
             self.assertEqual(self.updater.timer.interval(), delay*1000)
             self.now += delay
 
     def test_source_old_summary_keeps_publication_age_separate_from_successful_rechecks(self):
         doc=document(self.now);doc['generated_at']=iso(self.now-4200)
-        self.updater.accept(doc)
+        self.accept(doc)
         self.assertIn('checked 0s ago',self.updater.summary())
         self.assertIn('source snapshot old · published 1h 10m ago',self.updater.summary())
         self.assertIn('retry in 1m',self.updater.summary())
         published=self.store.meta['published_at']
         self.now+=61
-        self.updater.refresh();self.updater.accept(doc)
+        self.updater.refresh();self.accept(doc)
         summary=self.updater.summary()
         self.assertIn('checked 0s ago',summary)
         self.assertIn('published 1h 11m ago',summary)
@@ -116,7 +128,7 @@ class MarketDeadlineTests(unittest.TestCase):
 
     def test_source_retry_countdown_is_live_without_fetching_or_changing_the_deadline(self):
         doc=document(self.now);doc['generated_at']=iso(self.now-4200)
-        self.updater.accept(doc);deadline=self.updater.retry_at
+        self.accept(doc);deadline=self.updater.retry_at
         self.now+=17
         self.assertIn('checked 17s ago',self.updater.summary())
         self.assertIn('retry in 43s',self.updater.summary())
@@ -132,11 +144,11 @@ class MarketDeadlineTests(unittest.TestCase):
 
     def test_new_publication_clears_source_old_and_retry_status_without_changing_sale_age(self):
         old=document(self.now);old['generated_at']=iso(self.now-4200)
-        self.updater.accept(old)
+        self.accept(old)
         self.now+=60
         fresh=document(self.now)
         fresh['items'][0]['lastSold']=old['items'][0]['lastSold']
-        self.updater.accept(fresh)
+        self.accept(fresh)
         self.assertNotIn('source snapshot old',self.updater.summary())
         self.assertNotIn('retry',self.updater.summary())
         self.assertIn('checked 0s ago',self.updater.summary())
@@ -147,7 +159,7 @@ class MarketDeadlineTests(unittest.TestCase):
 
     def test_disabled_updater_does_not_claim_an_automatic_retry_is_scheduled(self):
         doc=document(self.now);doc['generated_at']=iso(self.now-4200)
-        self.updater.accept(doc);self.updater.set_enabled(False)
+        self.accept(doc);self.updater.set_enabled(False)
         self.assertIn('published 1h 10m ago',self.updater.summary())
         self.assertNotIn('retry',self.updater.summary())
 
@@ -159,13 +171,13 @@ class MarketDeadlineTests(unittest.TestCase):
         window.service.snapshot_updater=self.updater
         window.service.snapshot_summary=self.updater.summary
         doc=document(self.now);doc['generated_at']=iso(self.now-4200)
-        self.updater.accept(doc);window.update_price_status()
+        self.accept(doc);window.update_price_status()
         status=window.search_panel.market_status
         self.assertFalse(status.isHidden())
         self.assertIn('published 1h 10m ago',status.text())
         self.assertIn('retry in 1m',status.text())
         self.assertTrue(self.updater.source_old())
-        self.updater.accept(document(self.now));window.update_price_status()
+        self.accept(document(self.now));window.update_price_status()
         self.assertFalse(self.updater.source_old())
         self.assertTrue(status.isHidden())
         self.assertNotIn('source snapshot old',status.text())
@@ -173,7 +185,7 @@ class MarketDeadlineTests(unittest.TestCase):
     def test_interval_changes_preserve_pending_source_retry_instead_of_looping(self):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3601)
-        self.updater.accept(doc)
+        self.accept(doc)
         self.now += 10
         self.updater.set_interval(1800)
         self.assertEqual(self.updater.timer.interval(), 50_000)
@@ -182,7 +194,7 @@ class MarketDeadlineTests(unittest.TestCase):
     def test_source_and_transport_backoffs_do_not_change_each_others_counters(self):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3601)
-        self.updater.accept(doc)
+        self.accept(doc)
         self.now += 60
         self.updater.refresh()
         self.updater.failed('Offline')
@@ -190,7 +202,7 @@ class MarketDeadlineTests(unittest.TestCase):
         self.assertEqual((self.updater.failures, self.updater.stale_checks), (1, 1))
         self.now += 300
         self.updater.refresh()
-        self.updater.accept(doc)
+        self.accept(doc)
         self.assertEqual(self.updater.timer.interval(), 300_000)
         self.assertEqual((self.updater.failures, self.updater.stale_checks), (0, 2))
         self.assertEqual(self.updater.error, '')
@@ -199,14 +211,14 @@ class MarketDeadlineTests(unittest.TestCase):
         doc = document(self.now)
         doc['generated_at'] = iso(self.now-3601)
         for delay in (60, 300):
-            self.updater.accept(doc)
+            self.accept(doc)
             self.now += delay
         newer = document(self.now)
         newer['generated_at'] = iso(self.now-3601)
-        self.updater.accept(newer)
+        self.accept(newer)
         self.assertEqual((self.updater.stale_checks, self.updater.timer.interval()), (1, 60_000))
         self.assertFalse(self.store.quote(self.item).fresh(self.now, 3600))
-        self.updater.accept(document(self.now))
+        self.accept(document(self.now))
         self.assertEqual((self.updater.stale_checks, self.updater.stale_publication), (0, None))
         self.assertIsNone(self.updater.retry_at)
         self.assertEqual(self.updater.timer.interval(), 3_540_000)
@@ -292,8 +304,9 @@ class MarketRefreshPropagationTests(unittest.TestCase):
         before = len(states)
         service.snapshot_updater.accept(hat_document(now))
         self.assertEqual(len(states), before)  # Production state callbacks are queued.
-        for _ in range(4):
-            self.app.processEvents()
+        deadline=time.monotonic()+3
+        while len(states)==before and time.monotonic()<deadline:
+            self.app.processEvents();time.sleep(.001)
         self.assertGreater(len(states), before)
         self.assertEqual(window.quote_generation, service.snapshot.meta['checked_at'])
         self.assertIs(receiver.rows[0], active)

@@ -81,15 +81,18 @@ class Catalog:
         by_id = {}
         self.warning = None
         for row in document.get("items", []) + document.get("scrolls", []):
-            if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not row.get("name"):
+            if (not isinstance(row,dict) or type(row.get('id')) is not int or not 1<=row['id']<=99999999
+                    or not isinstance(row.get('name'),str) or not 1<=len(row['name'])<=200):
                 continue
             item_id = row["id"]
             by_id[item_id] = Item(item_id, row["name"], row.get("category") == "Equipment",
                                   item_id // 10000 in (207, 233), row.get("tier"), gender=row.get('gender'),
                                   sub_category=row.get('sub_category'))
         for category in (cash_document or {}).get("categories", []):
+            if not isinstance(category,dict) or not isinstance(category.get('items'),list):continue
             for row in category.get("items", []):
-                if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not row.get("name"):
+                if (not isinstance(row,dict) or type(row.get('id')) is not int or not 1<=row['id']<=99999999
+                        or not isinstance(row.get('name'),str) or not 1<=len(row['name'])<=200):
                     continue
                 by_id[row["id"]] = Item(row["id"], row["name"], row.get("category") == "Equipment",
                                         cash=True,gender=row.get('gender'),

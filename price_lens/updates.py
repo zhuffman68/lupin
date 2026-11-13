@@ -245,7 +245,8 @@ class ReleaseClient:
         package=offer['package'];release=offer['release']
         folder=self.cache/'packages';folder.mkdir(exist_ok=True)
         destination=folder/package['name']
-        if file_matches(destination,package):self.keep_base(destination,package);return destination
+        release_version=(offer.get('manifest') or {}).get('version')
+        if file_matches(destination,package):self.keep_base(destination,package,release_version);return destination
         temporary=destination.with_suffix(destination.suffix+'.part')
         try:
             for patch in package.get('patches',[]):
@@ -265,7 +266,7 @@ class ReleaseClient:
                         restore(source,delta,out,package['bytes'],cancelled)
                     if file_matches(temporary,package):
                         if package['name']=='Lupin-Windows-x64.zip':validate_portable(temporary)
-                        temporary.replace(destination);self.keep_base(destination,package);return destination
+                        temporary.replace(destination);self.keep_base(destination,package,release_version);return destination
                 except Cancelled:raise
                 except (OSError,ValueError,ImportError):pass
                 finally:patch_path.unlink(missing_ok=True)
@@ -273,18 +274,50 @@ class ReleaseClient:
             if not file_matches(temporary,package):raise ValueError('Downloaded package checksum mismatch')
             if package['name']=='Lupin-Windows-x64.zip':validate_portable(temporary)
             temporary.replace(destination)
-            self.keep_base(destination,package)
+            self.keep_base(destination,package,release_version)
             return destination
         finally:temporary.unlink(missing_ok=True)
 
-    def keep_base(self,path,package):
+    def keep_base(self,path,package,release_version=None):
         """Hard-link two verified bases; never copy another full model payload."""
         folder=path.parent;base=folder/('base-'+package['sha256'])
         if not base.exists():
             try:os.link(path,base)
-            except OSError:return
+            except OSError:
+                # Filesystems without hard links still keep only the current
+                # installer. Do not copy another complete model payload.
+                from .update_cache import files
+                for old,_ in files(folder):
+                    if old!=path and not old.name.startswith('base-') and not old.name.endswith('.part'):
+                        old.unlink(missing_ok=True)
+                return
         os.utime(base,None)
-        bases=sorted(folder.glob('base-*'),key=lambda p:p.stat().st_mtime,reverse=True)
-        for old in bases[2:]:old.unlink(missing_ok=True)
-        for old in folder.iterdir():
-            if old!=path and old.is_file() and not old.name.startswith('base-') and not old.name.endswith('.part'):old.unlink(missing_ok=True)
+        from .update_cache import files
+        owned=files(folder)
+        bases=sorted([(p,info) for p,info in owned if re.fullmatch(r'base-[0-9a-f]{64}',p.name)],key=lambda row:row[1].st_mtime,reverse=True)
+        for old,_ in bases[2:]:old.unlink(missing_ok=True)
+        for old,_ in owned:
+            if old!=path and not old.name.startswith('base-') and not old.name.endswith('.part'):old.unlink(missing_ok=True)
+        if isinstance(release_version,str) and re.fullmatch(r'\d+\.\d+\.\d+',release_version):
+            index=self.base_index();index[base.name]=release_version
+            index={p.name:index[p.name] for p,_ in bases[:2] if p.name in index}
+            atomic_json(self.cache/'base-index.json',index)
+
+    def base_index(self):
+        try:
+            with (self.cache/'base-index.json').open('rb') as stream:data=read_json(stream.read(8193))
+            return {name:value for name,value in data.items() if re.fullmatch(r'base-[0-9a-f]{64}',name)
+                    and isinstance(value,str) and re.fullmatch(r'\d+\.\d+\.\d+',value)}
+        except (OSError,ValueError,AttributeError,TypeError):return {}
+
+    def prune_cache(self,current):
+        """An installed upgrade no longer needs older, version-proven bases."""
+        from .update_cache import files
+        index=self.base_index();owned=files(self.cache/'packages')
+        obsolete={(info.st_dev,info.st_ino) for path,info in owned
+                  if path.name in index and version(index[path.name])<version(current)}
+        for path,info in owned:
+            if (info.st_dev,info.st_ino) in obsolete:path.unlink(missing_ok=True)
+        if obsolete:
+            remaining={path.name for path,_ in files(self.cache/'packages')}
+            atomic_json(self.cache/'base-index.json',{name:value for name,value in index.items() if name in remaining})

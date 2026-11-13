@@ -46,9 +46,9 @@ def restore(window, settings):
     geometry=screen.availableGeometry()
     position=settings.value('window-position-fractions',None)
     if isinstance(position,(list,tuple)) and len(position)==2 and all(type(n) in (int,float) and 0<=n<=1 for n in position):
-        offset=QPoint(round((geometry.width()-size.width())*position[0]),round((geometry.height()-size.height())*position[1]))
+        offset=QPoint(round((geometry.width()-size.width())*position[0]),round(max(0,geometry.height()-size.height()-32)*position[1]))
         window.move(geometry.topLeft()+offset)
-    else:window.move(geometry.right()-size.width()-23,geometry.top()+min(48,max(0,geometry.height()-size.height())))
+    else:window.move(geometry.right()-size.width()-23,geometry.top()+min(48,max(0,geometry.height()-size.height()-32)))
     window._normal_size = size
     window._normal_position=window.pos()
     window._size_timer = QTimer(window)
@@ -75,7 +75,7 @@ def save(window, settings):
         geometry=window.screen().availableGeometry();position=getattr(window,'_normal_position',window.pos())
         settings.setValue('window-position-fractions',[
             max(0,min(1,(position.x()-geometry.x())/max(1,geometry.width()-size.width()))),
-            max(0,min(1,(position.y()-geometry.y())/max(1,geometry.height()-size.height())))])
+            max(0,min(1,(position.y()-geometry.y())/max(1,geometry.height()-size.height()-32)))])
         screen=window.screen();settings.setValue('window-screen',screen.name())
         geometry=screen.geometry()
         settings.setValue('window-size-fractions',[size.width()/geometry.width(),size.height()/geometry.height()])

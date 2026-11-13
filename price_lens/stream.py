@@ -76,7 +76,7 @@ class StreamClient(QObject):
         self.pending_frame = None
         self.paused = False
         self.subscription = {"screen": list(screen.getRect()), "desktop": list(desktop.getRect()), "paused": False,
-                             "maximum_fps":min(10,1/max(.1,self.delivery_interval))}
+                             "maximum_fps":max(1,min(10,1/max(.1,self.delivery_interval)))}
         self.active = True
         if self.socket.state() == QLocalSocket.LocalSocketState.ConnectedState:
             self.send_subscription()

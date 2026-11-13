@@ -16,16 +16,19 @@ _frame_pixels=ContextVar('lupin-frame-pixels',default=None)
 
 def pixels(image):
     cached=_frame_pixels.get()
-    if cached is not None and cached[0]==image.cacheKey():return cached[1]
+    key=image.cacheKey()
+    if cached is not None and cached[0]==key and cached[1] is not None:return cached[1]
     image = image.convertToFormat(QImage.Format.Format_RGB888)
-    return np.frombuffer(bytes(image.constBits()), np.uint8).reshape(image.height(), image.bytesPerLine())[:, :image.width()*3].reshape(image.height(),image.width(),3)
+    result=np.frombuffer(bytes(image.constBits()), np.uint8).reshape(image.height(), image.bytesPerLine())[:, :image.width()*3].reshape(image.height(),image.width(),3)
+    if cached is not None and cached[0]==key:cached[1]=result
+    return result
 
 
 def with_frame_pixels(function):
     """One owned RGB representation for this call, never a cross-frame proof."""
     @wraps(function)
     def run(image,*args,**kwargs):
-        rgb=pixels(image);token=_frame_pixels.set((image.cacheKey(),rgb))
+        token=_frame_pixels.set([image.cacheKey(),None])
         try:return function(image,*args,**kwargs)
         finally:_frame_pixels.reset(token)
     return run
@@ -34,7 +37,7 @@ def with_frame_pixels(function):
 def region_pixels(image,area):
     cached=_frame_pixels.get()
     if cached is not None and cached[0]==image.cacheKey():
-        return cached[1][area.y():area.y()+area.height(),area.x():area.x()+area.width()]
+        return pixels(image)[area.y():area.y()+area.height(),area.x():area.x()+area.width()]
     return pixels(image.copy(area))
 
 
@@ -95,11 +98,18 @@ def text_regions(image,exclude=()):
     Existing Korean OCR confirms language and confidence; no detector model or
     whole-desktop read is introduced. Our own overlay rectangles are excluded.
     """
-    rgb=pixels(image);a=rgb.mean(2).astype('int16')
-    neighbours=[np.roll(a,d,axis=axis) for d in (-3,3) for axis in (0,1)]
-    low=np.minimum.reduce(neighbours);high=np.maximum.reduce(neighbours)
-    neutral=rgb.max(2).astype('int16')-rgb.min(2)<45
-    coloured=(rgb.max(2).astype('int16')-rgb.min(2)>45)&(rgb.max(2)>95)&((a-low>35)|(high-a>55))
+    rgb=pixels(image)
+    # Exact nonnegative integer mean, without a full float64 scene or a list
+    # retaining four full neighbour images. All downstream thresholds are fixed.
+    sums=rgb[:,:,0].astype('uint16');sums+=rgb[:,:,1];sums+=rgb[:,:,2];sums//=3;a=sums.view('int16')
+    low=high=None
+    for d,axis in ((-3,0),(-3,1),(3,0),(3,1)):
+        neighbour=np.roll(a,d,axis=axis)
+        if low is None:low=neighbour.copy();high=neighbour.copy()
+        else:np.minimum(low,neighbour,out=low);np.maximum(high,neighbour,out=high)
+    brightest=rgb.max(2);span=brightest.astype('int16')-rgb.min(2)
+    neutral=span<45
+    coloured=(span>45)&(brightest>95)&((a-low>35)|(high-a>55))
     masks=[neutral&(rgb.min(2)>185)&(a-low>50),neutral&(a<110)&(high-a>75),coloured]
     result=[]
     for ink in masks:

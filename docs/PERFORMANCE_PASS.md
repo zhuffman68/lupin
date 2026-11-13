@@ -81,9 +81,10 @@ have been changed. Storage migration has not started at this checkpoint.
 The first full run covered 1,362 tests and found eager-start assumptions in
 fixtures, synchronous-shutdown assertions, and two cleanup/late-callback issues.
 Fixtures now explicitly start the reader when testing OCR rather than startup;
-shutdown assertions verify the GUI never waits. Snapshot storage shares the
-catalog pool, preserving existing ownership/join semantics without another
-permanent thread. Overlay close is idempotent and queued renders ignore closed
+shutdown assertions verify the GUI never waits. At that checkpoint snapshot
+storage briefly shared the catalog pool; the final implementation separates it
+again so slow catalog networking cannot delay price adoption. Overlay close is
+idempotent and queued renders ignore closed
 or destroyed windows. Async direct image reads are kept independently of
 viewport download demand.
 
@@ -98,27 +99,109 @@ and 685 ms in the audit. A first batched drop replay reduced 63 connections to
 one but remained about 31 ms; it was then tightened to project only the needed
 identities within a consistent read transaction. Repeat timing is pending.
 
-These are single instrumented database runs on a shared machine, not live
-capture-to-overlay or physical Windows latency claims. Both model bundles are
-unchanged. No installer has been published or installed during this work.
+### Final source validation
 
-- [ ] Batch database lookups and move snapshot/availability preparation off the GUI thread.
-- [ ] Coalesce overlay submissions, bound pending commands, invalidate changed regions only.
-- [ ] Reduce frame copies and reuse per-frame analysis without weakening current-pixel proofs.
-- [ ] Defer unnecessary OCR initialization; evaluate a shared engine within the vendor pin.
-- [ ] Recover primary reader failures and avoid obsolete queued work.
-- [ ] Correct late translation accounting and add recoverable worker states.
-- [ ] Make incoming translation lazy with bounded idle retention; share frame analysis.
-- [ ] Limit presentation work to changed data and active pages; retain smooth numeric motion.
-- [ ] Clarify tracking coverage/state and validate pickup/session continuity.
-- [ ] Share thumbnail storage/demand and perform disk/decode work off the GUI thread.
-- [ ] Batch database navigation and precompute manual-search normalization.
-- [ ] Preserve last-good catalogs offline and defer unused reader processes.
-- [ ] Coordinate pause/shutdown and restore the intended display/position.
-- [ ] Trim release debug data, pin dependencies, and bound/clarify update-cache storage.
-- [ ] Extract orchestration/typed state and add bounded end-to-end diagnostics.
-- [ ] Archive or purge verified unnecessary development storage after committed checkpoints.
-- [ ] Update architecture, changelog, development instructions and verification results.
+The complete application suite passes **1,370 tests**, with three platform/opt-in
+skips, in 205.088 s. **75 Rust tests** and **39 release-tool tests** pass.
+The GNU reader and pinned-toolchain musl release reader both build. Checks use
+private Xvfb/D-Bus/HOME/XDG state, software rendering, two native build jobs and
+low scheduling priority. They do not automate game input or request sharing.
+
+The actual native/GUI replay also matches **all 26 saved inventory cases** with
+no wrong-item annotation commands. Its 20 positive cases have a 187.85 ms median
+first-correct command and 659.6 ms maximum, with three above 500 ms. It uses fake
+market/media/annotation sinks. This is a new unpaired fixture sample, not evidence
+of improved live response or a physical display timing.
+
+The final overlay regressions verify one latest pending state under real helper
+pipe backpressure, no duplicate state write, and an actual numeric paint callback
+acknowledgment. Snapshot storage is independent of catalog networking; a test
+blocks that network path and verifies cached catalog display, Qt responsiveness
+and a completed snapshot refresh. Disabling refresh suppresses late adoption.
+Invalid replacement catalogs cannot overwrite last-good local identities.
+
+The last read-only database replay still used **one connection/one statement**
+for 2,014 market rows and returned the same 1,487 release proofs. Its 49.984 ms
+under concurrent QA/build load differs from the earlier 25.735 ms; neither is a
+guaranteed latency. The largest drop list (32 displayable rows) now took
+**5.146 ms, one connection/five statements**, including its explicit read
+transaction. The original replay took 31.228 ms after initial batching and about
+32 ms before the pass. Query counts and current identity checks remain the
+stronger evidence than a single wall-clock sample.
+
+Hidden tracking pages continue model accounting, state/status and button updates;
+only numerical/clock presentation waits until visible. Hidden Prices pages keep
+observations and recent-item history without card layout. Reading Pause is
+explicit about holding screen-based prices, tracking and incoming translation;
+manual search/database access remains independent. Existing coverage/pickup,
+pause/identity/map, NPC/add-form and current-pixel regressions pass unchanged.
+
+Incoming translation preserves both model bundles and the user's enabled setting
+while releasing idle workers. Frame RGB conversion is lazy and scoped to one
+scan; text proposals use bounded integer arrays instead of full-scene float64
+temporaries and four retained neighbor arrays. Late text requires current exact
+source pixels, and only accepted rows count toward a successful scan.
+
+New update bases record their signed release version. After installation, older
+version-proven cached bases can be pruned without deleting unknown legacy data;
+Clear remains available. Tests cover inode accounting, unrelated files, symlinks,
+and filesystems where hard links are unavailable. Private QA also removes
+inherited diagnostic-export paths so test runs cannot write to host diagnostics.
+
+### Storage and runtime
+
+After committed checkpoint `604a7fd`, **19.83 GiB / 326 paths** were hash-verified
+and moved to `/mnt/sda1/lupin-archive/2026-11-13-performance/`. Original paths now
+point there; live-source compatibility links preserve old evidence scripts.
+Another **885.2 MiB** of verified obsolete update packages and **24.3 MiB** of
+retired app-only browser cache were purged. The manifest, purge record and restore
+procedure are described in [Storage maintenance](STORAGE_MAINTENANCE.md).
+
+Current 1.0.5 installers, installed files, both model bundles, useful toolchains,
+user settings/history, original recordings, live processes and the approved
+sharing session were retained. No new installer was installed or published.
+
+The separate Linux QA stage removes **69,148,113 bytes (65.95 MiB)** of
+non-allocated debug sections from CTranslate2 and PyYAML, with separate symbols
+archived by original SHA-256. The roughly 830 MiB stage retains both models and
+runtime libraries. The stripped runtime's self-test and both actual translation
+workers passed, including the final source/musl stage. Exact checks are recorded
+in VERIFICATION.md. These checks establish import/model/plugin/OCR/IPC behavior,
+not physical Windows screen capture or sustained busy-game CPU/RAM savings.
+
+### Deliberate limits
+
+The vendor remains pinned. Its private recognizer has no supported injection
+API, so full OCR-engine sharing was evaluated but not forced through a vendor
+change. Initialization and copies that could be removed safely were deferred or
+removed instead. Cross-process shared-memory frame transport also remains a
+future measured experiment: this pass reduces discarded-frame conversions and
+copies while retaining the existing owned-buffer protocol and handoff semantics.
+It does not claim zero-copy capture or a universal half-second response time.
+
+Physical Windows capture, live busy-game hover/scroll performance, compositor
+latency and monitor-power behavior were not exercised. Optional numeric timings
+now reach through the helper's paint callback, which enables a later comparison
+without recording chat, item names or screenshots. No game hooks, process access,
+input listeners or automated replies were introduced.
+
+- [x] Batch database lookups and move snapshot/availability preparation off the GUI thread.
+- [x] Coalesce overlay submissions, bound pending commands, invalidate changed regions only.
+- [x] Reduce frame copies and reuse per-frame analysis without weakening current-pixel proofs.
+- [x] Defer unnecessary OCR initialization; evaluate a shared engine within the vendor pin.
+- [x] Recover primary reader failures and avoid obsolete queued work.
+- [x] Correct late translation accounting and add recoverable worker states.
+- [x] Make incoming translation lazy with bounded idle retention; share frame analysis.
+- [x] Limit presentation work to changed data and active pages; retain smooth numeric motion.
+- [x] Clarify tracking coverage/state and validate pickup/session continuity.
+- [x] Share thumbnail storage/demand and perform disk/decode work off the GUI thread.
+- [x] Batch database navigation and precompute manual-search normalization.
+- [x] Preserve last-good catalogs offline and defer unused reader processes.
+- [x] Coordinate pause/shutdown and restore the intended display/position.
+- [x] Trim release debug data, pin dependencies, and bound/clarify update-cache storage.
+- [x] Extract orchestration/typed state and add bounded capture-to-paint diagnostics.
+- [x] Archive or purge verified unnecessary development storage after committed checkpoints.
+- [x] Update architecture, changelog, development instructions and verification results.
 
 ## Acceptance
 

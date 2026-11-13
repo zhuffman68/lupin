@@ -18,10 +18,9 @@ class LatestJob(QObject):
     completed = Signal(object)
     _finished = Signal(object)
 
-    def __init__(self, name, parent=None,*,pool=None):
+    def __init__(self, name, parent=None):
         super().__init__(parent)
-        self.owns_pool=pool is None
-        self.pool = pool or ThreadPoolExecutor(max_workers=1, thread_name_prefix=name)
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix=name)
         self.generation = 0
         self.closed = False
         self.active = None
@@ -82,4 +81,4 @@ class LatestJob(QObject):
             return
         self.closed = True
         self.cancel()
-        if self.owns_pool:self.pool.shutdown(wait=False, cancel_futures=True)
+        self.pool.shutdown(wait=False, cancel_futures=True)

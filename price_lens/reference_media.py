@@ -110,6 +110,11 @@ class ReferenceMedia(QObject):
 
     def _queue_io(self,url,work):
         if self.closed or (url==self.io_active and work[0]=='read'):return
+        if work[0]=='read' and url not in self.io_queue:
+            reads=[key for key,value in self.io_queue.items() if value[0]=='read']
+            if len(reads)>=128:
+                victim=next((key for key in reads if key not in self.demand),reads[-1])
+                self.io_queue.pop(victim,None);self.direct_reads.discard(victim)
         if url not in self.io_queue or work[0]!='read':self.io_queue[url]=work
         self._pump_io()
 

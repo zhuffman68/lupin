@@ -1,7 +1,9 @@
 //! Bind a horizontal native comparison pair to its captured inventory source.
 //! No names, market data, game state or input are used to choose the panel.
 use crate::tooltip_surface::{Dot, rgb, title_light};
-use minerva_core::{Frame, ItemCapture};
+use minerva_core::Frame;
+#[cfg(test)]
+use minerva_core::ItemCapture;
 use serde_json::{Value, json};
 pub(crate) use crate::tooltip_frame::{BoxRect, Panel, edge, panel_from_header};
 

@@ -1,4 +1,63 @@
-# Verification — 2026-11-08
+# Verification — 2026-11-13
+
+## Unreleased performance/resource pass — 2026-11-13
+
+This is source and isolated staging qualification, separate from published 1.0.5.
+The installed application and approved screen-sharing session were not replaced
+or restarted. See [the implementation ledger](docs/PERFORMANCE_PASS.md) and
+[storage record](docs/STORAGE_MAINTENANCE.md) for scope, checkpoints and limits.
+
+- The complete Python suite runs **1,370 tests: 1,367 pass, three skip**,
+  205.088 s. **75 Rust tests** and **39 packaging/release-tool tests** pass.
+  Tests use private Xvfb/D-Bus/HOME/XDG state and software rendering. Native builds
+  use two low-priority jobs; both GNU and pinned 1.98.1 musl readers build.
+- All **26 saved inventory cases** match their visual oracle through actual
+  native IPC, current-frame admission and GUI: 20 correct item cases and six
+  rejection cases, with **no wrong-item annotation commands**. Median first
+  correct command is **187.85 ms**, maximum **659.6 ms**; three exceed 500 ms.
+  Market/media/annotation sinks are fake. This unpaired sample does not prove a
+  latency improvement over the previous release or include capture/compositor
+  time; concurrent workloads were left running.
+- Market availability validation projects names in one query/connection rather
+  than 2,014. Two post-change local samples were 25.735 and 49.984 ms versus the
+  audit's 685 ms, returning the same 1,487 proofs for 2,014 rows. The largest drop
+  replay returns 32 rows in 5.146 ms using one connection/five statements versus
+  63 connections/65 statements before the pass. Reads were SQLite read-only,
+  query-only, without constructing a writable cache/store. Counts are stronger
+  evidence than single-run timings on the shared host.
+- New regressions cover cached catalog publication during a blocked network
+  refresh, independent snapshot preparation, cancellation/disabled adoption,
+  invalid-catalog preservation, replaceable pending jobs, primary-reader restart
+  bounds, lazy/idle translation, late source-pixel validation and accepted hits.
+  Existing shop scroll/hover, NPC/add-item, identity, pickup, rate/pause and UI
+  animation checks remain enabled.
+- A real annotation helper confirms latest-only output under simulated pipe
+  backpressure, duplicate suppression and numeric paint acknowledgment. The
+  acknowledgment is from completed painting, not a compositor presentation fence.
+  Diagnostics remain opt-in, bounded and free of recognized text/images; private
+  QA removes inherited diagnostic-export paths.
+- The separate **830.2 MiB Linux QA stage** retains both local model bundles,
+  capture/platform plugins and required libraries. Debug-only stripping removes
+  **69,148,113 bytes (65.95 MiB)** from CTranslate2/PyYAML. The original-file
+  hashes, archived symbols and transformation records are retained. The staged
+  self-test checks actual OCR, native Qt capture/platform plugin loading, TLS,
+  synthetic media and real annotation IPC without capturing a display. Both
+  actual translation workers also load/run from the stripped runtime.
+- **19.83 GiB / 326 archived paths** were hash-verified before removing their
+  NVMe originals, after committed checkpoint `604a7fd`. Old paths are preserved
+  with symlinks. Another 885.2 MiB of version-verified old installer caches and
+  24.3 MiB of retired app-only browser cache were purged. Current installers,
+  models, user databases/settings, original recordings and active processes were
+  retained. No package was installed, uploaded or published during this pass.
+
+Private evidence is under `evidence/performance-2026-11-13/`, including
+`full-python-final.log`, `native-final.log`, `release-tools-final.log`,
+`database-final.json`, `replay.json` and `staged-linux-final.log`. The private
+storage manifest lives on sda1 and is not included in packages. Physical Windows
+capture, live busy-game resource use, display-sleep handling and sustained
+capture-to-display latency remain unverified. Full shared-memory transport and
+one shared OCR engine are not claimed; the pinned vendor API does not expose a
+supported shared-recognizer boundary.
 
 ## 1.0.5 release qualification
 

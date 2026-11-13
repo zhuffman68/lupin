@@ -57,6 +57,13 @@ hard links once. Clearing is disabled during update work, ignores symlinks and
 unrelated files, and keeps signed feed metadata. A later update may need a full
 download if its reconstruction base was cleared.
 
+Each newly retained base records its signed release version. On a later launch,
+an installed build removes bases proven older than that installed version, along
+with managed installer names sharing their inode. Legacy bases without a known
+version remain until Clear; unknown files and symlinks are never removed. A
+filesystem without hard-link support retains the current named installer without
+copying another model payload, and retires older named installers.
+
 ## Native installation
 
 - **Windows:** the existing per-user Inno installer runs with

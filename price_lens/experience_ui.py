@@ -401,6 +401,10 @@ class ExperiencePanel(QWidget):
             meso_gaps=self.mesos.gaps)
         return self.numeric_snapshot
 
+    def set_presentation_active(self,active):
+        self.presentation_active=bool(active)
+        if active:self.refresh()
+
     def exp_waiting(self):
         if self.reacquiring:
             return 'Reading EXP bar · confirmed values are held.', 'Reacquiring' if self.tracker.current else 'Reading EXP'
@@ -418,7 +422,8 @@ class ExperiencePanel(QWidget):
         reading, run = tracker.current, tracker.run
         fresh = self.connected and tracker.fresh(time.monotonic())
         self.tick_mesos()
-        self.elapsed.setText(clock_text(self.mesos.seconds))
+        display=getattr(self,'presentation_active',True) and not self.window().isMinimized()
+        if display:self.elapsed.setText(clock_text(self.mesos.seconds))
         controls=(reading.character if reading else None,reading.level if reading else None,
                   self.enabled,self.user_paused,self.paused_context_ready,self.requested,self.connected,
                   run.map_name if run else '',self.map_input.text(),tracker.map_name)
@@ -443,7 +448,7 @@ class ExperiencePanel(QWidget):
             self.map_label.setText(display_map)
             self.map_label.setToolTip(map_name)
             self.map_label.setVisible(bool(map_name))
-        values=self.numeric_values();update=values is not self.rendered_numbers
+        values=self.numeric_values();update=display and values is not self.rendered_numbers
         if update:self.rendered_numbers=values;self.refresh_numbers(values)
         state=('' if not self.requested else
                "Screen reading is paused · tracking is held." if not self.connected else

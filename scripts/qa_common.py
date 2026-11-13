@@ -137,6 +137,8 @@ def wine_test_prefix(value, environ=None):
 def private_environment(folder, environ=None):
     folder = Path(folder)
     env = dict(os.environ if environ is None else environ)
+    for key in ('LUPIN_READER_DIAGNOSTICS','CLASSIC_LENS_METRICS'):
+        env.pop(key,None)  # Host diagnostics paths must not escape QA isolation.
     env[HOST_HOME] = env.get("HOME", str(Path.home()))
     for key in DESKTOP_ENV:
         env.pop(key, None)

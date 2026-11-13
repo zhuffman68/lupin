@@ -289,6 +289,8 @@ class DatabasePanel(QWidget):
         self.sync_kind();self.breadcrumb.set_path(self.kind,self.scope,self.selected);self.back.setEnabled(bool(self.history or self.selected or self.scope))
 
     def update_market(self):
+        if not self.active:self.market_dirty=True;return
+        self.market_dirty=False
         if self._entry:self._entry.update_market()
 
     def icon(self,url):return thumbnail(self.media,url,32,self.devicePixelRatioF())
@@ -325,6 +327,7 @@ class DatabasePanel(QWidget):
 
     def set_active(self,active):
         self.active=active;self.service.extra.select(self.selected if active else None)
+        if active:self.update_market()
         if not active:self.pause_sprite()
         QTimer.singleShot(0,self.observe_media);self.update_status()
 

@@ -1,6 +1,5 @@
 """Launch and selected-interval full-market refresh, independent of item views."""
 import time
-import sqlite3
 from math import ceil
 
 from PySide6.QtCore import QObject, QTimer, Signal, Qt
@@ -14,7 +13,7 @@ class SnapshotUpdater(QObject):
     updated = Signal()
     changed = Signal()
 
-    def __init__(self, store, parent=None,*,pool=None):
+    def __init__(self, store, parent=None):
         super().__init__(parent)
         self.store = store
         self.enabled = False
@@ -30,7 +29,7 @@ class SnapshotUpdater(QObject):
         self.fetcher = SnapshotFetcher(store.cache.path.parent / "market-webview", self)
         self.fetcher.ready.connect(self.accept)
         self.fetcher.failed.connect(self.failed)
-        self.storage=LatestJob('lupin-snapshot',self,pool=pool)
+        self.storage=LatestJob('lupin-snapshot',self)
         self.storage.completed.connect(self.accept_prepared)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
@@ -87,7 +86,8 @@ class SnapshotUpdater(QObject):
         if self.closed or not self.enabled:
             return
         self.busy=True
-        self.storage.submit(lambda token:self.store.prepare(document,guard=token.check))
+        checked_at=time.time()
+        self.storage.submit(lambda token:self.store.prepare(document,checked_at,guard=token.check))
 
     def accept_prepared(self,result):
         if self.closed or not self.enabled:return

@@ -270,12 +270,15 @@ class IsolationTests(unittest.TestCase):
     def test_private_environment_removes_host_desktop_and_uses_temporary_user_paths(self):
         host = dict(HOME="/host/home", DISPLAY=":0", XAUTHORITY="/host/auth",
                     WAYLAND_DISPLAY="wayland-0", WAYLAND_SOCKET="42",
-                    DBUS_SESSION_BUS_ADDRESS="unix:path=/host/bus", XDG_CACHE_HOME="/host/cache")
+                    DBUS_SESSION_BUS_ADDRESS="unix:path=/host/bus", XDG_CACHE_HOME="/host/cache",
+                    LUPIN_READER_DIAGNOSTICS="/host/private-metrics",CLASSIC_LENS_METRICS="1")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             env = qa_common.private_environment(root, host)
             for key in qa_common.DESKTOP_ENV:
                 self.assertNotIn(key, env)
+            self.assertNotIn('LUPIN_READER_DIAGNOSTICS',env)
+            self.assertNotIn('CLASSIC_LENS_METRICS',env)
             for key in ("HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR", "TMPDIR"):
                 self.assertTrue(Path(env[key]).is_relative_to(root), key)
                 self.assertEqual(Path(env[key]).stat().st_mode & 0o777, 0o700)

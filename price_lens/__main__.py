@@ -109,9 +109,8 @@ def main():
         drain_retired()
         # Keep installer IPC alive until in-flight network workers have exited.
         # Normal window closure has already stopped capture/OCR/annotations.
-        window.service.pool.shutdown(wait=True, cancel_futures=True)
+        window.service.wait_closed()
         window.updates.pool.shutdown(wait=True,cancel_futures=True)
-        if window.service.snapshot_updater:window.service.snapshot_updater.storage.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.extra.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.sources.pool.shutdown(wait=True,cancel_futures=True)

@@ -3,12 +3,12 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter
-from PySide6.QtWidgets import (QFrame,QHBoxLayout,QLabel,QListWidget,
+from PySide6.QtWidgets import (QFrame,QHBoxLayout,QListWidget,
     QListWidgetItem,QPushButton,QScrollArea,QVBoxLayout,QWidget)
 
 from .domain import key, item_words, unclipped_name
 from .ui_components import price_card, text_label
-from .motion import CardArea, reveal, fade_away
+from .motion import CardArea, reveal
 from .tls import catalog_error_text
 from .watchlist_ui import WatchedItems,WatchButton
 from .search_field import SearchField

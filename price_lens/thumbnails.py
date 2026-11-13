@@ -1,19 +1,12 @@
 """Bounded, cached Classic World item images. Separate from price API demand."""
-from collections import OrderedDict,deque
-import json
-from pathlib import Path
 import struct
-import time
 
-from PySide6.QtCore import QObject,QUrl,QTimer,Signal,QSize,QRectF,QVariantAnimation,Qt
-from PySide6.QtGui import QImage,QPainter,QColor,QPen
-from PySide6.QtNetwork import QNetworkAccessManager,QNetworkRequest,QNetworkReply
+from PySide6.QtCore import QObject,Signal,QSize,QRectF,QVariantAnimation,Qt
+from PySide6.QtGui import QImage,QPainter,QColor
 from PySide6.QtWidgets import QWidget
 from .motion import enabled
 
 BASE='https://osmsdataexplorer.com/data/current/images/items/'
-TTL=30*86400
-FAIL_TTL=6*3600
 MAX_BYTES=256*1024
 
 

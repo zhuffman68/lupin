@@ -60,12 +60,25 @@ class Cache:
 
 
 
+def cached_catalog(cache):
+    """A validated local identity catalog can display while refresh is pending."""
+    document=cache.get('catalog','osms')
+    if not isinstance(document,dict) or not (document.get('items') or document.get('scrolls')):return None
+    try:
+        cash=cache.get('catalog','osms-cash');catalog=Catalog(document,cash)
+        if not catalog.items:return None
+        catalog.warning=None
+        return catalog
+    except (ValueError,TypeError,KeyError,AttributeError):return None
+
+
 def load_catalog(cache):
     document = cache.get("catalog", "osms", 86400)
     if document is None:
         try:
             document = get_json(CATALOG_URL)
-            if not isinstance(document, dict) or not document.get("items") or not isinstance(document.get("scrolls"), list):
+            if (not isinstance(document,dict) or not isinstance(document.get('items'),list) or not document['items']
+                    or not isinstance(document.get('scrolls'),list) or not Catalog(document).items):
                 raise ValueError("Classic World catalog format changed")
             cache.put("catalog", "osms", document)
         except Exception:
@@ -77,7 +90,8 @@ def load_catalog(cache):
     if cash is None:
         try:
             cash = get_json(CASH_CATALOG_URL)
-            if not isinstance(cash, dict) or not isinstance(cash.get("categories"), list) or not cash["categories"]:
+            if (not isinstance(cash,dict) or not isinstance(cash.get('categories'),list) or not cash['categories']
+                    or not Catalog({'items':[]},cash).items):
                 raise ValueError("Classic World cash catalog format changed")
             cache.put("catalog", "osms-cash", cash)
         except Exception as error:
