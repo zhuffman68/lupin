@@ -156,7 +156,7 @@ class FakeHotkeys(QObject):
 
 class FakeThumbnails(QObject):
     ready=Signal(int)
-    def __init__(self,*args):super().__init__();self.items=[]
+    def __init__(self,*args,media=None):super().__init__();self.items=[]
     def image(self,item_id):return QImage()
     def observe(self,items):self.items=list(items)
     def close(self):pass
@@ -688,6 +688,7 @@ class ContextUiTests(unittest.TestCase):
                           ("data_directory", lambda: Path(self.exp_directory.name)),("ThumbnailCache",FakeThumbnails)]]
         for patcher in self.patchers:
             patcher.start()
+            self.addCleanup(patcher.stop)
         self.tray_show = patch("price_lens.tray.QSystemTrayIcon.show")
         self.tray_show.start()
         self.reference_start_patch=patch('price_lens.ui.ReferenceService.start');self.reference_start_patch.start()

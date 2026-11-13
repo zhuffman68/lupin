@@ -30,83 +30,52 @@ def decode(data):
 
 
 class ThumbnailCache(QObject):
+    """Exact-ID adapter to the shared disk/network/decoded-image service."""
     ready=Signal(int)
 
-    def __init__(self,folder,parent=None,base_url=None):
-        super().__init__(parent);self.folder=Path(folder);self.folder.mkdir(parents=True,exist_ok=True)
-        self.base_url=base_url;self.manager=QNetworkAccessManager(self)
-        self.memory=OrderedDict();self.queue=deque();self.active={};self.demand=set();self.closed=False
-        self.misses={}
-        try:
-            raw=json.loads((self.folder/'misses.json').read_text())
-            self.misses={int(k):float(v) for k,v in raw.items() if 0<=time.time()-float(v)<FAIL_TTL}
-        except (OSError,ValueError,TypeError,AttributeError):pass
+    def __init__(self,folder,parent=None,base_url=None,*,media=None):
+        super().__init__(parent)
+        from .reference_media import ReferenceMedia
+        from .reference_data import image_url
+        self.base_url=base_url;self.closed=False;self.owned=media is None
+        if base_url and not base_url.startswith('http://127.0.0.1:'):raise ValueError('Only isolated loopback image fixtures may override the source')
+        validator=(lambda url:url if url.startswith(base_url) else '') if base_url else image_url
+        self.media=media or ReferenceMedia(folder,self,validator=validator,concurrency=2)
+        self.media.ready.connect(self.on_ready)
+
+    def url(self,item_id):
+        source_url(item_id)  # Validate exactly the same IDs on either route.
+        return self.base_url+f'{item_id:08d}.png' if self.base_url else source_url(item_id)
 
     def image(self,item_id):
-        if item_id in self.memory:
-            self.memory.move_to_end(item_id);return self.memory[item_id][0]
-        path=self.folder/f'{item_id}.png'
-        try:
-            if path.stat().st_size>MAX_BYTES:return QImage()
-            image=decode(path.read_bytes())
-            if not image.isNull():self.remember(item_id,image,path.stat().st_mtime);return image
-        except OSError:pass
-        return QImage()
-
-    def remember(self,item_id,image,at):
-        self.memory[item_id]=(image,at);self.memory.move_to_end(item_id)
-        while len(self.memory)>96:self.memory.popitem(last=False)
+        return self.media.image(self.url(item_id))
 
     def observe(self,items):
-        if self.closed:return
-        ids=list(dict.fromkeys(item.game_id for item in items))[:16];self.demand=set(ids)
-        self.queue=deque(i for i in self.queue if i in self.demand)
-        now=time.time()
-        for item_id in ids:
-            if item_id in self.active or item_id in self.queue:continue
-            self.image(item_id)
-            if item_id in self.memory and 0<=now-self.memory[item_id][1]<TTL:continue
-            if 0<=now-self.misses.get(item_id,-FAIL_TTL)<FAIL_TTL:continue
-            self.queue.append(item_id)
-        self.pump()
+        if not self.closed:self.media.observe([self.url(item.game_id) for item in list(items)[:16]],owner='prices')
 
-    def pump(self):
-        while self.queue and len(self.active)<2 and not self.closed:
-            item_id=self.queue.popleft()
-            url=(self.base_url+f'{item_id:08d}.png') if self.base_url else source_url(item_id)
-            request=QNetworkRequest(QUrl(url));request.setTransferTimeout(8000)
-            request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader,'Lupin (Classic World item thumbnails)')
-            reply=self.manager.get(request);reply.setReadBufferSize(MAX_BYTES+1);reply._image_data=bytearray()
-            self.active[item_id]=reply
-            def receive(reply=reply):
-                reply._image_data.extend(bytes(reply.readAll()))
-                if len(reply._image_data)>MAX_BYTES:reply.abort()
-            reply.readyRead.connect(receive)
-            reply.finished.connect(lambda item_id=item_id,reply=reply:self.finish(item_id,reply))
+    @property
+    def active(self):
+        pending=dict(self.media.active)
+        for url in self.media.processing:pending[url]=True
+        if self.media.io_active and not self.media.io_active.startswith('@'):pending[self.media.io_active]=True
+        for url in self.media.io_queue:
+            if not url.startswith('@'):pending[url]=True
+        return pending
 
-    def finish(self,item_id,reply):
-        self.active.pop(item_id,None)
-        if self.closed:reply.deleteLater();return
-        data=bytes(reply._image_data)+bytes(reply.readAll())
-        image=decode(data) if reply.error()==QNetworkReply.NetworkError.NoError else QImage()
-        if image.isNull():
-            self.misses[item_id]=time.time()
-            self.misses=dict(sorted(self.misses.items(),key=lambda p:p[1],reverse=True)[:512])
-            try:(self.folder/'misses.json').write_text(json.dumps(self.misses))
-            except OSError:pass
-        else:
-            self.remember(item_id,image,time.time());self.misses.pop(item_id,None)
-            try:
-                path=self.folder/f'{item_id}.png';temporary=path.with_suffix('.tmp');temporary.write_bytes(data);temporary.replace(path)
-                files=sorted(self.folder.glob('*.png'),key=lambda p:p.stat().st_mtime,reverse=True)
-                for old in files[512:]:old.unlink(missing_ok=True)
-            except OSError:pass
-        reply.deleteLater();self.ready.emit(item_id);self.pump()
+    @property
+    def queue(self):return self.media.queue
+
+    def on_ready(self,url):
+        prefix=self.base_url or BASE
+        if not self.closed and url.startswith(prefix) and url.endswith('.png'):
+            name=url[len(prefix):-4]
+            if name.isdecimal():self.ready.emit(int(name))
 
     def close(self):
-        self.closed=True;self.queue.clear()
-        for reply in list(self.active.values()):reply.abort();reply.deleteLater()
-        self.active.clear()
+        if self.closed:return
+        self.closed=True
+        if self.owned:self.media.close()
+        else:self.media.observe([],owner='prices')
 
 
 class ItemImage(QWidget):

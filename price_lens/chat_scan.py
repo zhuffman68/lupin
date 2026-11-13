@@ -8,6 +8,7 @@ from PySide6.QtCore import QRect
 
 from .chat_text import HANGUL, normalize, supported_ocr_alternative
 from .chat_tracking import stamp, locate_offset, move_source
+from .chat_ocr import with_frame_pixels
 
 
 class ScanMemory:
@@ -203,6 +204,7 @@ def make_row(image,box,is_bubble,read,translator,contexts,role_for,cancelled):
     return row
 
 
+@with_frame_pixels
 def scan_frame(image,recognizer,translator,emit,role_for,*,budget=.75,cancelled=lambda:False,
                exclude=(),contexts=(),memory=None,hud=None):
     from .chat_ocr import bubbles, text_regions

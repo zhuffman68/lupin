@@ -1,5 +1,5 @@
 """Local, atomic Classic World price snapshots. No browser or capture dependencies."""
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 import re
 import time
@@ -66,6 +66,13 @@ def parse_snapshot(document, checked_at=None):
     return meta, rows
 
 
+@dataclass(frozen=True)
+class SnapshotGeneration:
+    """Owned by preparation until delivered; readers never mutate these rows."""
+    meta: dict
+    rows: dict
+
+
 class SnapshotStore:
     def __init__(self, cache):
         self.cache = cache
@@ -82,19 +89,31 @@ class SnapshotStore:
         self.rows = {identity: json.loads(payload) for identity, payload in rows}
 
     def save(self, document, checked_at=None):
+        generation=self.prepare(document,checked_at)
+        self.adopt(generation)
+        return generation.meta
+
+    def prepare(self, document, checked_at=None, guard=lambda:None):
+        """Validate/persist off-thread, without touching the GUI's active view."""
+        guard()
         meta, rows = parse_snapshot(document, checked_at)
-        if self.meta and meta["published_at"] < self.meta["published_at"]:
-            raise ValueError("Market snapshot is older than the saved copy")
         # Validate everything first, then replace the complete generation in one
         # transaction. A failed download/parse/write leaves the last good copy.
         encoded = [(WORLD, identity, json.dumps(row, allow_nan=False)) for identity, row in rows.items()]
         with self.cache.connect() as db:
+            guard()
+            saved=db.execute('SELECT payload FROM market_snapshot_meta WHERE world=?',(WORLD,)).fetchone()
+            if saved and meta['published_at']<json.loads(saved[0])['published_at']:
+                raise ValueError("Market snapshot is older than the saved copy")
             db.execute("DELETE FROM market_snapshot_rows WHERE world=?", (WORLD,))
             db.executemany("INSERT INTO market_snapshot_rows VALUES (?,?,?)", encoded)
             db.execute("INSERT OR REPLACE INTO market_snapshot_meta VALUES (?,?)",
                        (WORLD, json.dumps(meta, allow_nan=False)))
-        self.meta, self.rows = meta, rows
-        return meta
+            guard()
+        return SnapshotGeneration(meta,rows)
+
+    def adopt(self,generation):
+        self.meta,self.rows=generation.meta,generation.rows
 
     def lookup(self, item):
         """Return priced/no-sales/missing/variant-mismatch/unit-mismatch."""

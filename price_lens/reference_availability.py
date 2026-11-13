@@ -138,13 +138,13 @@ class AvailabilityLoader:
 def market_proofs(store,catalog,snapshot):
     """A catalog row alone proves nothing; a dated observed sale does."""
     if not snapshot or not getattr(snapshot,'meta',None) or not catalog:return []
-    result=[];items={item.game_id:item for item in catalog.items}
+    result=[];items={item.game_id:item for item in catalog.items};names=store.names('items')
     for identity,row in snapshot.rows.items():
-        item=items.get(identity);quote=row.get('quote') or {};record=store.entry('items',identity)
-        if not item or not record or record[0].name!=row.get('name') or name_key(item.name)!=name_key(record[0].name):continue
+        item=items.get(identity);quote=row.get('quote') or {};name=names.get(identity)
+        if not item or not name or name!=row.get('name') or name_key(item.name)!=name_key(name):continue
         sold=quote.get('observed_at');reports=quote.get('sample_count')
         if quote.get('game_id')!=identity or quote.get('world')!=WORLD or quote.get('basis')!='observed shop sales':continue
         founders=datetime(2026,10,6,18,tzinfo=timezone.utc).timestamp()
         if type(reports) is not int or reports<=0 or type(sold) not in (int,float) or not founders<=sold<=time.time()+300:continue
-        result.append(dict(kind='items',id=identity,name=record[0].name,detail={'label':'Observed in the Classic World market','url':'https://meso.watch/','observed_at':sold}))
+        result.append(dict(kind='items',id=identity,name=name,detail={'label':'Observed in the Classic World market','url':'https://meso.watch/','observed_at':sold}))
     return result

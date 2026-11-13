@@ -289,3 +289,16 @@ class UpdateService(QObject):
         self.closed=True;self.timer.stop();self.launch_timer.stop();self.auth_timer.stop();self.result_timer.stop();self.ready_notice_timer.stop()
         if not self.committed:self.cancelled.set();self.release_helper()
         self.pool.shutdown(wait=False,cancel_futures=True)
+
+    def cache_bytes(self):
+        from .update_cache import usage
+        return usage(self.cache/'packages')
+
+    def clear_cache(self):
+        if self.busy or self.committed:return False
+        from .update_cache import clear
+        try:clear(self.cache/'packages')
+        except OSError:
+            self.notice.emit('Could not clear cached installers','A cached file is still in use. Try again after the update finishes.')
+            return False
+        self.changed.emit();return True

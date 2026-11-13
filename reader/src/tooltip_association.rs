@@ -415,12 +415,13 @@ impl Selector {
 
     pub fn select_with_exclusions(&mut self,capture: &ItemCapture,markers: &[Dot],
         scale_hint: Option<f32>,exclude: &[BoxRect]) -> Association {
-        let (px, py) = (
-            capture.pointer.x - capture.origin.x,
-            capture.pointer.y - capture.origin.y,
-        );
-        let frame = &capture.frame;
-        let scope = (capture.origin.x, capture.origin.y, frame.width, frame.height);
+        self.select_frame(&capture.frame,capture.origin,capture.pointer,markers,scale_hint,exclude)
+    }
+
+    pub fn select_frame(&mut self,frame:&Frame,origin:minerva_core::ScreenPoint,
+        pointer:minerva_core::ScreenPoint,markers:&[Dot],scale_hint:Option<f32>,exclude:&[BoxRect]) -> Association {
+        let (px,py)=(pointer.x-origin.x,pointer.y-origin.y);
+        let scope = (origin.x, origin.y, frame.width, frame.height);
         let found = source(frame, px, py, self.inventory.as_ref(), scale_hint);
         self.inventory = found.clone();
         let Some(inv) = found else {
@@ -483,8 +484,8 @@ impl Selector {
         };
         let context = format!(
             "{}:{}:{}:{}:{}:{}:{}:{}:{}",
-            capture.origin.x,
-            capture.origin.y,
+            origin.x,
+            origin.y,
             frame.width,
             frame.height,
             inv.rect.x,
@@ -497,7 +498,7 @@ impl Selector {
             h: (45.0 * s).round() as u32,
             ..inv.rect
         };
-        let mut metadata = json!({"state":"normal","token":context,"source":inv.rect.global(capture),"slot":slot.map(|r|r.global(capture)),"guards":[header.global(capture)]});
+        let mut metadata = json!({"state":"normal","token":context,"source":inv.rect.global(origin),"slot":slot.map(|r|r.global(origin)),"guards":[header.global(origin)]});
         self.bound_source = Some((inv.rect, scope));
         if !valid {
             metadata["state"] = json!("rejected");
@@ -586,9 +587,9 @@ impl Selector {
             metadata["sourceKind"] = json!("inventory");
             metadata["sourceTab"] = json!(inv.tab);
             metadata["layout"] = json!(if single {"single"} else {"primary-left"});
-            metadata["panel"] = rect.global(capture);
-            metadata["comparison"] = if single {Value::Null} else {panels[1].rect.global(capture)};
-            metadata["pointer"] = json!({"x":capture.pointer.x,"y":capture.pointer.y});
+            metadata["panel"] = rect.global(origin);
+            metadata["comparison"] = if single {Value::Null} else {panels[1].rect.global(origin)};
+            metadata["pointer"] = json!({"x":pointer.x,"y":pointer.y});
             // The frontend compares the cell outside the union of old/new
             // cursor footprints. Exact whole-cell hashes would flicker merely
             // because a captured hand moves within an otherwise stable slot.
@@ -605,7 +606,7 @@ impl Selector {
                 y: cursor_y,
                 w: (32.0 * s).ceil().min((frame.width - cursor_x) as f32) as u32,
                 h: cursor_height.min(frame.height - cursor_y),
-            }.global(capture);
+            }.global(origin);
             // The source header/cell stay exact. Translucent frame rails are
             // verified structurally by the frontend, never byte-hashed against
             // moving scenery. The canonical title retains its own ink proof.

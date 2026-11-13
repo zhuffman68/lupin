@@ -159,6 +159,8 @@ class ChatSnapshotTests(unittest.TestCase):
         chat=ChatTranslation(ROOT);messages=[];chat.status.connect(messages.append)
         try:
             chat.enable(True)
+            self.assertIsNone(chat.process)
+            chat.start_scan()
             limit=time.monotonic()+15
             while not chat.ready and time.monotonic()<limit:QTest.qWait(10)
             self.assertTrue(chat.ready,messages)
@@ -170,6 +172,8 @@ class ChatSnapshotTests(unittest.TestCase):
             self.assertIn("hello",chat.cards[0]["text"].lower())
             process=chat.process;chat.enable(False)
             self.assertIsNone(chat.process)
-            self.assertEqual(process.state(),QProcess.ProcessState.NotRunning)
+            from shiboken6 import isValid
+            while isValid(process) and process.state()!=QProcess.ProcessState.NotRunning and time.monotonic()<limit:QTest.qWait(10)
+            self.assertTrue(not isValid(process) or process.state()==QProcess.ProcessState.NotRunning)
         finally:
             chat.close();chat.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()

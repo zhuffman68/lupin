@@ -31,6 +31,51 @@ evidence and Cargo outputs.
 
 Each implementation entry below must describe its validation and limitations.
 
+### Checkpoint 1
+
+Implemented the catalog-retention fix, batched name/entry/drop lookups, owned
+snapshot preparation plus GUI adoption, and one-running/one-pending cancellable
+background jobs. The snapshot and reference availability paths no longer perform
+bulk validation/writes on the GUI thread. Focused snapshot/reference/overlay
+regressions passed (63 tests), plus the first five new performance-path tests.
+
+Overlay states now suppress identical writes, keep one latest pending state under
+pipe backpressure, and invalidate changed label regions. Reading no longer builds
+the same overlay twice. Numeric opt-in paint acknowledgments extend the bounded
+diagnostics through the helper's paint callback, not physical display presentation.
+
+The primary reader is lazy, has bounded restart delays, and releases after an idle
+pause. Positive viewport changes can cancel obsolete native repair between OCR
+stages/rows without changing the original request deadline or interrupting every
+pointer movement. Native tooltip geometry borrows the submitted frame and copies
+only its analysis panel. The Minerva reader is initialized only on the fallback
+path. A single shared engine cannot be introduced through the pinned dependency's
+current public API; its private recognizer must not be bypassed or the vendor pin
+modified. Full engine consolidation remains an upstream API opportunity.
+
+Incoming translation is lazy, idle retention is configurable (default three
+minutes), worker recovery/loading is bounded, accepted rows alone count as hits,
+and late rows require fresh exact matching source pixels. One frame-scoped RGB
+representation is shared by scan passes; it cannot authorize another frame.
+
+Prices/history/watchlists and Database now use a common bounded image service.
+Disk reads, decoding, writes and cleanup run in a bounded background queue.
+Independent demand scopes prevent a hidden tab from cancelling another tab's
+images. Async image/lifecycle regressions required fixture timing updates; the
+broader suite is in progress. The 73 Rust tests passed after the native changes;
+final native replay awaits rebuilding the executable used by Python fixtures.
+
+Hidden Prices pages defer card layout while retaining observations/session
+history. Tracking controls update only on context changes; numeric/clock cadence
+is preserved. Saved display/position is restored without a later forced move.
+Process retirement is parallel and asynchronous, with a final bounded drain.
+Source dependencies now pin the release's Qt version. Linux runtime trimming
+archives non-loaded debug symbols outside the package. Update settings expose
+hard-link-aware cached installer usage and a busy-gated Clear action.
+
+No installed files, live sharing helper, user settings or original recordings
+have been changed. Storage migration has not started at this checkpoint.
+
 - [ ] Batch database lookups and move snapshot/availability preparation off the GUI thread.
 - [ ] Coalesce overlay submissions, bound pending commands, invalidate changed regions only.
 - [ ] Reduce frame copies and reuse per-frame analysis without weakening current-pixel proofs.

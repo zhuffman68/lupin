@@ -419,25 +419,30 @@ class ExperiencePanel(QWidget):
         fresh = self.connected and tracker.fresh(time.monotonic())
         self.tick_mesos()
         self.elapsed.setText(clock_text(self.mesos.seconds))
-        if reading:
-            self.character.setText(reading.character or 'Character')
-            self.level_label.setText(f'Level {reading.level}')
-        self.character.setVisible(reading is not None)
-        self.level_label.setVisible(reading is not None)
-        self.pause_button.setEnabled(self.enabled and (not self.user_paused or self.paused_context_ready))
-        self.pause_button.setText("Resume" if self.user_paused else "Pause")
-        self.start_button.setVisible(not self.requested)
-        self.start_button.setEnabled(self.connected)
-        self.pause_button.setVisible(self.requested)
-        self.stop_button.setVisible(self.requested)
-        self.stop_button.setEnabled(self.requested)
-        map_name = (run.map_name if run and run.map_name != 'Unlabelled map' else self.map_input.text().strip() or tracker.map_name)
-        display_map=map_name
-        if not self.map_input.text().strip() and map_name==tracker.map_name and ': ' in map_name:
-            display_map=map_name.split(': ',1)[1]
-        self.map_label.setText(display_map)
-        self.map_label.setToolTip(map_name)
-        self.map_label.setVisible(bool(map_name))
+        controls=(reading.character if reading else None,reading.level if reading else None,
+                  self.enabled,self.user_paused,self.paused_context_ready,self.requested,self.connected,
+                  run.map_name if run else '',self.map_input.text(),tracker.map_name)
+        if controls!=getattr(self,'_controls_key',None):
+            self._controls_key=controls
+            if reading:
+                self.character.setText(reading.character or 'Character')
+                self.level_label.setText(f'Level {reading.level}')
+            self.character.setVisible(reading is not None)
+            self.level_label.setVisible(reading is not None)
+            self.pause_button.setEnabled(self.enabled and (not self.user_paused or self.paused_context_ready))
+            self.pause_button.setText("Resume" if self.user_paused else "Pause")
+            self.start_button.setVisible(not self.requested)
+            self.start_button.setEnabled(self.connected)
+            self.pause_button.setVisible(self.requested)
+            self.stop_button.setVisible(self.requested)
+            self.stop_button.setEnabled(self.requested)
+            map_name = (run.map_name if run and run.map_name != 'Unlabelled map' else self.map_input.text().strip() or tracker.map_name)
+            display_map=map_name
+            if not self.map_input.text().strip() and map_name==tracker.map_name and ': ' in map_name:
+                display_map=map_name.split(': ',1)[1]
+            self.map_label.setText(display_map)
+            self.map_label.setToolTip(map_name)
+            self.map_label.setVisible(bool(map_name))
         values=self.numeric_values();update=values is not self.rendered_numbers
         if update:self.rendered_numbers=values;self.refresh_numbers(values)
         state=('' if not self.requested else

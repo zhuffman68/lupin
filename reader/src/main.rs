@@ -60,6 +60,13 @@ struct Request {
     progressive_shop: bool,
     #[serde(default)]
     progressive_tooltip: bool,
+    cancel_path: Option<String>,
+}
+
+impl Request {
+    fn cancelled(&self)->bool {
+        self.cancel_path.as_deref().is_some_and(|path|std::path::Path::new(path).is_file())
+    }
 }
 
 fn main() {
@@ -77,6 +84,7 @@ fn main() {
         let result = (|| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
             let request: Request = serde_json::from_str(&line?)?;
             let started = Instant::now();
+            if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
             let frame = if let (Some(width), Some(height)) = (request.width, request.height) {
                 if width == 0
                     || height == 0
@@ -196,6 +204,7 @@ fn main() {
                 writeln!(stdout,"{partial}")?;
                 stdout.flush()?;
             }
+            if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
             let shop_reader=reader.get_or_insert_with(PlayerShopReader::bundled);
             let shop_started=Instant::now();
             let scope=request.capture_generation.zip(request.shop_epoch);
@@ -225,8 +234,10 @@ fn main() {
                 stdout.flush()?;
             }
             let components_started=Instant::now();
-            let recovered=cached_components.unwrap_or_else(||name_recovery.apply(&capture,&mut shop_reading,
-                request.shop_area.filter(|_|request.shop_recovery.unwrap_or(true))));
+            if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
+            let recovered=cached_components.unwrap_or_else(||name_recovery.apply_with_cancel(&capture,&mut shop_reading,
+                request.shop_area.filter(|_|request.shop_recovery.unwrap_or(true)),&||request.cancelled()));
+            if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
             if !cache_hit {page_cache.store(&capture,scope,request.shop_area,&shop_reading,&recovered);}
             let component_ms=components_started.elapsed().as_secs_f64()*1000.0;
             let mut value = serde_json::to_value(shop_reading)?;

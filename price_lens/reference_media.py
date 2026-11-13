@@ -1,5 +1,7 @@
 """Bounded thumbnail prefetch and one source-timed visible monster animation."""
 from collections import OrderedDict,deque
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import hashlib
 import json
 from pathlib import Path
@@ -28,68 +30,68 @@ def decode(data):
 
 class ReferenceMedia(QObject):
     ready=Signal(str)
+    _io_done=Signal(object)
 
-    def __init__(self,folder,parent=None):
+    def __init__(self,folder,parent=None,*,validator=image_url,concurrency=4):
         super().__init__(parent);self.folder=Path(folder);self.folder.mkdir(parents=True,exist_ok=True)
+        self.validator=validator;self.concurrency=concurrency
         self.manager=QNetworkAccessManager(self);self.memory=OrderedDict();self.active={};self.queue=deque();self.closed=False
-        self.memory_bytes=0;self.disk_checked=0
-        self.disk_bytes=0;self.disk_files=set()
-        for path in (*self.folder.glob('*.png'),*self.folder.glob('*.webp')):
-            try:self.disk_bytes+=path.stat().st_size;self.disk_files.add(path.name)
-            except OSError:pass
-        self.demand=set();self.misses={}
-        try:
-            saved=json.loads((self.folder/'misses.json').read_text())
-            self.misses={url:at for url,at in saved.items() if image_url(url) and type(at) in (int,float) and 0<=time.time()-at<FAIL_TTL}
-        except (OSError,ValueError,TypeError,AttributeError):pass
+        self.memory_bytes=0;self.disk_checked=0;self.disk_bytes=0;self.disk_files=set()
+        self.demand=set();self.scopes={};self.misses={};self.disk_state=OrderedDict();self.processing=set()
+        self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='lupin-images')
+        self.io_queue=OrderedDict();self.io_active=None;self.cancelled=threading.Event()
+        self._io_done.connect(self.io_finished,Qt.ConnectionType.QueuedConnection)
+        self._queue_io('@maintenance',('maintenance',None,0))
 
     def filename(self,url):return self.folder/(hashlib.sha256(url.encode()).hexdigest()+Path(url).suffix)
 
     def image(self,url):
-        if not image_url(url):return QImage()
+        if not self.validator(url) or self.closed:return QImage()
         if url in self.memory:self.memory.move_to_end(url);return self.memory[url]
-        path=self.filename(url)
-        try:
-            if path.stat().st_size>MAX_BYTES:return QImage()
-            image=decode(path.read_bytes())
-            if not image.isNull():self.remember(url,image);return self.memory[url]
-        except OSError:pass
+        if url not in self.disk_state or self.disk_state[url] is not None:
+            self._queue_io(url,('read',None,0))
         return QImage()
 
     def path(self,url):
-        return self.filename(url) if image_url(url) and not self.image(url).isNull() else None
+        return self.filename(url) if self.validator(url) and not self.image(url).isNull() else None
 
     def remember(self,url,image):
-        # Keep source pixels: rescaling every icon to 64 and then down to 32
-        # unnecessarily damaged small, non-square monster sprites.
         old=self.memory.pop(url,None)
         if old is not None:self.memory_bytes-=old.sizeInBytes()
-        self.memory[url]=image;self.memory_bytes+=image.sizeInBytes()
-        self.memory.move_to_end(url)
+        self.memory[url]=image;self.memory_bytes+=image.sizeInBytes();self.memory.move_to_end(url)
         while len(self.memory)>128 or self.memory_bytes>8*1024*1024:
             self.memory_bytes-=self.memory.popitem(last=False)[1].sizeInBytes()
 
-    def observe(self,urls):
+    def observe(self,urls,*,owner='database'):
         if self.closed:return
-        urls=list(dict.fromkeys(url for url in urls if image_url(url)))[:80];self.demand=set(urls)
-        # The caller orders visible rows before nearby rows. Reorder queued work
-        # on every scroll so yesterday's viewport cannot block today's icons.
-        self.queue=deque()
-        now=time.time()
+        self.scopes[owner]=list(dict.fromkeys(url for url in urls if self.validator(url)))[:80]
+        urls=list(dict.fromkeys(url for group in self.scopes.values() for url in group))[:128]
+        self.demand=set(urls)
+        for key,work in list(self.io_queue.items()):
+            if work[0]=='read' and key not in self.demand:self.io_queue.pop(key,None)
+        # Reorder waiting disk reads as well as downloads on viewport changes.
+        pending=self.io_queue;self.io_queue=OrderedDict()
         for url in urls:
-            if url in self.active:continue
-            path=self.path(url)
-            if path is not None and 0<=now-path.stat().st_mtime<TTL:continue
+            if url in pending:self.io_queue[url]=pending.pop(url)
+        self.io_queue.update(pending)
+        self.queue.clear();now=time.time()
+        for url in urls:
+            if url in self.active or url in self.processing:continue
+            self.image(url)
+            if url not in self.disk_state or url==self.io_active or url in self.io_queue:continue
+            saved=self.disk_state[url]
+            if saved is not None and 0<=now-saved<TTL:continue
             if 0<=now-self.misses.get(url,-FAIL_TTL)<FAIL_TTL:continue
             self.queue.append(url)
         for url,reply in list(self.active.items()):
-            if url not in self.demand:
-                reply._reference_cancelled=True;reply.abort()
+            if url not in self.demand:reply._reference_cancelled=True;reply.abort()
         self.pump()
 
     def pump(self):
-        while self.queue and len(self.active)<4 and not self.closed:
-            url=self.queue.popleft();request=QNetworkRequest(QUrl(url));request.setTransferTimeout(10000)
+        while self.queue and len(self.active)+len(self.processing)<self.concurrency and not self.closed:
+            url=self.queue.popleft()
+            if url not in self.demand or url in self.active or url in self.processing:continue
+            request=QNetworkRequest(QUrl(url));request.setTransferTimeout(10000)
             request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,QNetworkRequest.RedirectPolicy.SameOriginRedirectPolicy)
             request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader,'Lupin (Classic World reference images)')
             reply=self.manager.get(request);reply.setReadBufferSize(MAX_BYTES+1);reply._reference_data=bytearray();self.active[url]=reply
@@ -101,36 +103,88 @@ class ReferenceMedia(QObject):
     def finish(self,url,reply):
         self.active.pop(url,None)
         if self.closed:reply.deleteLater();return
-        if getattr(reply,'_reference_cancelled',False):
-            reply.deleteLater();self.pump();return
-        data=bytes(reply._reference_data)+bytes(reply.readAll())
-        image=decode(data) if reply.error()==QNetworkReply.NetworkError.NoError else QImage()
-        if image.isNull():
-            self.misses[url]=time.time();self.misses=dict(sorted(self.misses.items(),key=lambda r:r[1],reverse=True)[:512])
+        if getattr(reply,'_reference_cancelled',False):reply.deleteLater();self.pump();return
+        data=bytes(reply._reference_data)+bytes(reply.readAll()) if reply.error()==QNetworkReply.NetworkError.NoError else b''
+        reply.deleteLater();self.processing.add(url);self._queue_io(url,('store',data,time.time()));self.pump()
+
+    def _queue_io(self,url,work):
+        if self.closed or (url==self.io_active and work[0]=='read'):return
+        if url not in self.io_queue or work[0]!='read':self.io_queue[url]=work
+        self._pump_io()
+
+    def _pump_io(self):
+        if self.closed or self.io_active is not None or not self.io_queue:return
+        url,work=self.io_queue.popitem(last=False);self.io_active=url
+        future=self.pool.submit(self._disk_work,url,work)
+        future.add_done_callback(lambda result:self._io_done.emit(result.result()) if not self.closed else None)
+
+    def _disk_work(self,url,work):
+        kind,data,saved=work
+        try:
+            if self.cancelled.is_set():return url,kind,QImage(),None,{}
+            if kind=='maintenance':
+                try:misses=json.loads((self.folder/'misses.json').read_text())
+                except (OSError,ValueError):misses={}
+                return url,kind,QImage(),None,misses
+            if kind=='save':
+                misses,cleanup,protected=data
+                try:
+                    temporary=self.folder/'misses.tmp';temporary.write_text(json.dumps(misses));temporary.replace(self.folder/'misses.json')
+                    if cleanup:
+                        files=sorted([*self.folder.glob('*.png'),*self.folder.glob('*.webp')],key=lambda path:path.stat().st_mtime,reverse=True);total=0
+                        for index,path in enumerate(files):
+                            total+=path.stat().st_size
+                            if (index>=1024 or total>64*1024*1024) and path.name not in protected:path.unlink(missing_ok=True)
+                except OSError:pass
+                return url,kind,QImage(),None,{}
+            path=self.filename(url)
+            if kind=='read':
+                try:
+                    saved=path.stat().st_mtime
+                    data=path.read_bytes() if path.stat().st_size<=MAX_BYTES else b''
+                except OSError:data=b'';saved=None
+                image=decode(data)
+                return url,kind,image,saved if not image.isNull() else None,{}
+            image=decode(data)
+            if not image.isNull() and not self.cancelled.is_set():
+                try:
+                    temporary=path.with_suffix('.tmp');temporary.write_bytes(data);temporary.replace(path)
+                except OSError:pass
+            return url,kind,image,saved if not image.isNull() else None,{}
+        except Exception:return url,kind,QImage(),None,{}
+
+    def io_finished(self,result):
+        url,kind,image,saved,misses=result;self.io_active=None
+        if self.closed:return
+        if kind in ('maintenance','save'):
+            now=time.time()
+            self.misses.update({url:at for url,at in misses.items() if self.validator(url) and type(at) in (int,float) and 0<=now-at<FAIL_TTL})
         else:
-            self.remember(url,image);self.misses.pop(url,None)
-            try:
-                path=self.filename(url);old_size=path.stat().st_size if path.exists() else 0
-                temporary=path.with_suffix('.tmp');temporary.write_bytes(data);temporary.replace(path)
-                self.disk_bytes+=len(data)-old_size;self.disk_files.add(path.name)
-                if self.disk_bytes>64*1024*1024 or len(self.disk_files)>1024 or time.monotonic()-self.disk_checked>30:
-                    self.disk_checked=time.monotonic()
-                    files=sorted([*self.folder.glob('*.png'),*self.folder.glob('*.webp')],key=lambda p:p.stat().st_mtime,reverse=True)
-                    total=0;kept=set()
-                    for index,path in enumerate(files):
-                        total+=path.stat().st_size
-                        if index>=1024 or total>64*1024*1024:path.unlink(missing_ok=True)
-                        else:kept.add(path.name)
-                    self.disk_files=kept;self.disk_bytes=sum(path.stat().st_size for path in files if path.name in kept)
-            except OSError:pass
-        try:(self.folder/'misses.json').write_text(json.dumps(self.misses))
-        except OSError:pass
-        reply.deleteLater();self.ready.emit(url);self.pump()
+            self.disk_state[url]=saved;self.disk_state.move_to_end(url)
+            while len(self.disk_state)>1024:self.disk_state.popitem(last=False)
+            if not image.isNull():self.remember(url,image);self.misses.pop(url,None)
+            elif kind=='store':self.misses[url]=time.time()
+            if kind=='store':
+                self.processing.discard(url)
+                self.misses=dict(sorted(self.misses.items(),key=lambda row:row[1],reverse=True)[:512])
+                self._persist_misses()
+            if not image.isNull() or kind=='store':self.ready.emit(url)
+        self._pump_io()
+        # No GUI-thread stat/read/decode. Re-evaluate network eligibility once
+        # local disk evidence has arrived, preserving per-owner demand.
+        self.observe(self.scopes.get('database',()),owner='database')
+
+    def _persist_misses(self):
+        misses=dict(self.misses);cleanup=time.monotonic()-self.disk_checked>30
+        if cleanup:self.disk_checked=time.monotonic()
+        protected={self.filename(url).name for url in self.demand}
+        self._queue_io('@save',('save',(misses,cleanup,protected),0))
 
     def close(self):
-        self.closed=True;self.queue.clear()
+        if self.closed:return
+        self.closed=True;self.cancelled.set();self.queue.clear();self.io_queue.clear()
         for reply in list(self.active.values()):reply.abort();reply.deleteLater()
-        self.active.clear()
+        self.active.clear();self.pool.shutdown(wait=False,cancel_futures=True)
 
 
 class ReferenceSprite(QWidget):

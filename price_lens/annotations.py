@@ -95,6 +95,11 @@ class AnnotationWindow(QWidget):
                 self.writer.apply(state['writer'])
                 if 'rows' not in state:return
             self.last_command = time.monotonic()
+            trace=state.get('trace')
+            if (isinstance(trace,dict) and type(trace.get('id')) is int
+                    and all(type(trace.get(key)) in (int,float) for key in ('sent_at','captured_at'))):
+                self.pending_trace=trace
+            previous_motion=self.reduce_motion
             self.reduce_motion = bool(state.get("reduce_motion"))
             if state.get("hover_enabled") and not self.pointer_timer.isActive():
                 self.last_pointer = None
@@ -103,6 +108,8 @@ class AnnotationWindow(QWidget):
                 self.pointer_timer.stop()
             previous = {self.row_key(row): row for row in self.rows + self.retiring}
             previous_boxes = {key: self.label_rect(row, QCursor.pos()) for key, row in previous.items()}
+            previous_geometry=self.geometry()
+            changed_keys=set()
             viewport=state.get('shop_viewport_epoch')
             viewport=viewport if type(viewport) is int else None
             viewport_pending=bool(state.get('shop_viewport_pending'))
@@ -127,6 +134,8 @@ class AnnotationWindow(QWidget):
                         and supplied['notice_until']<=time.monotonic()):continue
                 key = self.row_key(supplied)
                 old = previous.pop(key, None)
+                if old is None or old.get('_source_state')!=supplied:changed_keys.add(key)
+                source_state=dict(supplied)
                 old_notice=self.notice_layers(old) if old and old.get('kind')=='notification' else []
                 old_notice_target=self.notice_content(old) if old_notice else None
                 old_target = (old["x"], old["y"]) if old else None
@@ -144,6 +153,7 @@ class AnnotationWindow(QWidget):
                 if 'follow_pointer' not in supplied:
                     for field in ('follow_pointer','pointer_region','_cursor_offset'):row.pop(field,None)
                 row.update(supplied)
+                row['_source_state']=source_state
                 row["watched"] = bool(supplied.get("watched"))
                 row.pop("_retired_rect", None)
                 row["_width"] = min(350, max(230,metrics.horizontalAdvance(row["text"])+20,
@@ -211,7 +221,18 @@ class AnnotationWindow(QWidget):
                 self.raise_()
             else:
                 self.hide()
-            self.update()
+            if self.geometry()!=previous_geometry or previous_motion!=self.reduce_motion:
+                self.update()
+            else:
+                dirty=QRegion()
+                for key in changed_keys|set(previous):
+                    old_box=previous_boxes.get(key)
+                    if old_box is not None:dirty|=QRegion(old_box.adjusted(-4,-4,4,4))
+                for row in self.rows+self.retiring:
+                    if self.row_key(row) in changed_keys|set(previous):
+                        box=self.label_rect(row,QCursor.pos())
+                        if box is not None:dirty|=QRegion(box.adjusted(-4,-4,4,4))
+                if not dirty.isEmpty():self.update(dirty)
             if hasattr(self,'listener'):
                 boxes=[]
                 for row in self.rows+self.retiring:
@@ -585,6 +606,15 @@ class AnnotationWindow(QWidget):
         return label_rectangle(row,point,self.rect(),self.pos())
 
     def paintEvent(self, event):
+        self.paint_annotations(event)
+        trace=getattr(self,'pending_trace',None)
+        if trace and hasattr(self,'listener'):
+            import time
+            self.pending_trace=None
+            sys.stdout.buffer.write((json.dumps({'painted':dict(trace,painted_at=time.monotonic())})+'\n').encode())
+            sys.stdout.buffer.flush()
+
+    def paint_annotations(self,event):
         painter = QPainter(self)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         painter.fillRect(event.rect(), Qt.GlobalColor.transparent)

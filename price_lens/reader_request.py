@@ -26,6 +26,7 @@ class SubmittedRequest:
     locate_game: bool = False
     deadline_at: float | None = None
     annotations: tuple = ()
+    cancel_path: str | None = None
 
     def __post_init__(self):
         if self.mode not in ('prices','location','tracking-location','experience'):raise ValueError('Invalid reader request mode')

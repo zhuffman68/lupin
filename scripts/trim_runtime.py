@@ -5,6 +5,7 @@ bindings/plugins. All non-Qt native libraries and platform/media/TLS plugins
 remain, including software OpenGL, FFmpeg and Wayland helpers.
 """
 import ast
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -14,6 +15,23 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 QT_MODULES={'QtCore','QtGui','QtWidgets','QtNetwork','QtMultimedia','QtSvg','QtTest'}
 DEV_PLUGINS={'designer','qmltooling','assetimporters','geometryloaders','renderers','sceneparsers','geoservices','position','sensors','texttospeech','sqldrivers','webview'}
+
+
+def strip_debug(site,symbols):
+    """Keep native runtime code/exports; archive only non-loaded ELF debug data."""
+    result=[]
+    for path in sorted(site.rglob('*.so')):
+        if path.is_symlink() or path.stat().st_size<1024*1024:continue
+        sections=subprocess.run(['readelf','-SW',str(path)],capture_output=True,text=True,check=True).stdout
+        if not re.search(r'\s\.debug_(?:info|line)\s',sections):continue
+        before=path.stat().st_size
+        with path.open('rb') as source:digest=hashlib.file_digest(source,'sha256').hexdigest()
+        destination=symbols/(digest+'.debug');destination.parent.mkdir(parents=True,exist_ok=True)
+        if not destination.exists():subprocess.run(['objcopy','--only-keep-debug',str(path),str(destination)],check=True)
+        subprocess.run(['strip','--strip-debug',str(path)],check=True)
+        result.append(dict(path=path.relative_to(site).as_posix(),bytesRemoved=before-path.stat().st_size,
+                           originalSha256=digest,debugFile=destination.name))
+    return result
 
 
 def imported_modules():
@@ -68,5 +86,7 @@ def trim(out,platform):
         for relative in ('pip','pip-26.2.dist-info'):
             remove(site/relative,'Build-time package installer')
         remove(out/'runtime/lib/python3.14/ensurepip','Build-time package installer bootstrap')
-    report=out/'runtime-trim.json';report.write_text(json.dumps({'platform':platform,'bytesRemoved':sum(p['bytes'] for p in removed),'removed':removed,'retainedQtBindings':sorted(QT_MODULES)},indent=2)+'\n')
-    print('Trimmed',platform,round(sum(p['bytes'] for p in removed)/1048576,1),'MiB; capture/plugins/model bundles retained',flush=True)
+    debug=strip_debug(site,ROOT/'.build-tools/debug-symbols/linux') if platform=='linux' else []
+    total=sum(p['bytes'] for p in removed)+sum(p['bytesRemoved'] for p in debug)
+    report=out/'runtime-trim.json';report.write_text(json.dumps({'platform':platform,'bytesRemoved':total,'removed':removed,'debugSymbols':debug,'retainedQtBindings':sorted(QT_MODULES)},indent=2)+'\n')
+    print('Trimmed',platform,round(total/1048576,1),'MiB; capture/plugins/model bundles retained',flush=True)

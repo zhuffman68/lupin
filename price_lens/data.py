@@ -29,7 +29,10 @@ class Cache:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.execute("CREATE TABLE IF NOT EXISTS entries (world TEXT, kind TEXT, identity TEXT, saved REAL, payload TEXT, PRIMARY KEY(world, kind, identity))")
-            db.execute("DELETE FROM entries WHERE saved < ?", (time.time() - 7 * 86400,))
+            # A stale catalog is still the last-good offline fallback. Only a
+            # validated replacement may retire it; expiry controls refresh, not
+            # whether its exact identities remain usable without a connection.
+            db.execute("DELETE FROM entries WHERE kind != 'catalog' AND saved < ?", (time.time() - 7 * 86400,))
 
     @contextmanager
     def connect(self):

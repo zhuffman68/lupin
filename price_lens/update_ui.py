@@ -69,6 +69,11 @@ class UpdatePanel(QWidget):
         if settings:
             self.actions.addWidget(self.check);self.actions.addWidget(self.cancel)
             self.actions.addStretch();self.actions.addWidget(self.notes)
+            cache_row=QHBoxLayout();self.cache_size=MotionLabel('')
+            self.clear_cache=QPushButton('Clear');self.clear_cache.setObjectName('ghost')
+            self.clear_cache.setToolTip('Remove downloaded installers. A later update may need a full download.')
+            self.clear_cache.clicked.connect(service.clear_cache)
+            cache_row.addWidget(self.cache_size,1);cache_row.addWidget(self.clear_cache);layout.addLayout(cache_row)
         else:
             self.actions.addWidget(self.notes);self.actions.addStretch()
             for button in (self.check,self.cancel,self.install):
@@ -81,6 +86,11 @@ class UpdatePanel(QWidget):
 
     def refresh(self):
         s=self.service;offer=s.offer;new=offer['manifest']['version'] if offer else ''
+        if self.settings_mode:
+            if not s.busy:self.cached_bytes=s.cache_bytes()
+            size=getattr(self,'cached_bytes',0)
+            self.cache_size.setText(f'Cached installers · {size/1048576:,.0f} MiB')
+            self.clear_cache.setEnabled(bool(size) and not s.busy and not s.committed)
         value=(f'Lupin {__version__} → {new}' if self.settings_mode else f'Lupin {new}') if offer else f'Lupin {__version__}'
         if s.state=='checking':value='Checking for updates…'
         elif s.state=='downloading':value='Downloading Lupin '+new+'…'

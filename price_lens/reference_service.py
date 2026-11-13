@@ -10,6 +10,7 @@ from .reference_availability import AvailabilityLoader,market_proofs,screen_proo
 from .reference_recipes import RecipeAvailability
 from .reference_geometry import MapGeometry
 from .reference_sources import ItemSources
+from .background_job import LatestJob
 
 
 class ReferenceService(QObject):
@@ -27,6 +28,8 @@ class ReferenceService(QObject):
         self.busy=False;self.closed=False;self.error='';self.drop_error='';self.availability_error='';self.token=None
         self.core_changed=False;self.manifest_before=None
         self.market_signature=None
+        self.market_work=LatestJob('lupin-availability',self)
+        self.market_work.completed.connect(self.market_finished)
         self.screen_known=set();self.screen_notification_pending=False
         proofs=user_confirmed_proofs(self.store)
         if proofs:self.store.confirm(proofs,'user-confirmed')
@@ -105,6 +108,7 @@ class ReferenceService(QObject):
 
     def close(self):
         self.closed=True;self.timer.stop()
+        self.market_work.close()
         self.extra.close()
         self.sources.close()
         self.geometry.close()
@@ -112,12 +116,28 @@ class ReferenceService(QObject):
         self.pool.shutdown(wait=False,cancel_futures=True)
 
     def observe_market(self,catalog,snapshot,*,notify=True):
-        signature=((snapshot.meta or {}).get('checked_at'),id(catalog),self.store.metadata().get('generation')) if snapshot and catalog else None
+        state=self.store.metadata() if snapshot and catalog else {}
+        signature=((snapshot.meta or {}).get('checked_at'),id(catalog),state.get('manifest')) if snapshot and catalog else None
         if signature is None or signature==self.market_signature:return False
-        self.market_signature=signature;proofs=market_proofs(self.store,catalog,snapshot)
-        changed=bool(proofs and self.store.confirm(proofs,'market'))
-        if changed and notify:self.updated.emit()
-        return changed
+        self.market_signature=signature
+        # Snapshot dictionaries are owned immutable generations. Capture their
+        # references before queuing, never read a later generation in the worker.
+        from types import SimpleNamespace
+        generation=SimpleNamespace(meta=snapshot.meta,rows=snapshot.rows)
+        def validate(token):
+            proofs=market_proofs(self.store,catalog,generation);token.check()
+            return bool(proofs and self.store.confirm(proofs,'market',guard=token.check,manifest=state.get('manifest')))
+        self.market_work.submit(validate)
+        return False
+
+    def market_finished(self,result):
+        if self.closed:return
+        if result.error is not None:
+            self.market_signature=None
+            return
+        # Availability changes must reach both tabs even when the caller was
+        # already handling an earlier reference notification.
+        if result.value:self.updated.emit()
 
     def observe_screen(self,catalog,*,game_id,visible_name,tier,surface,captured_at,game_verified,panel_verified,
                        mode='live',notify=True):

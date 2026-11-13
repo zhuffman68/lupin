@@ -861,12 +861,8 @@ impl NameRecovery {
         value
     }
 
-    pub fn apply(
-        &mut self,
-        capture: &ShopCapture,
-        reading: &mut ShopReading,
-        hint: Option<ScreenRect>,
-    ) -> Vec<RecoveredComponents> {
+    pub fn apply_with_cancel(&mut self,capture:&ShopCapture,reading:&mut ShopReading,
+        hint:Option<ScreenRect>,cancelled:&dyn Fn()->bool) -> Vec<RecoveredComponents> {
         let Some(table) = hint else {
             return Vec::new();
         };
@@ -877,6 +873,7 @@ impl NameRecovery {
             .is_some_and(|shop| !same_table(table, shop.area));
         let mut fresh = Vec::new();
         for candidate in candidates {
+            if cancelled(){break;}
             let previous = reading.shop.as_ref().and_then(|shop| {
                 if !same_table(table, shop.area) {
                     return None;

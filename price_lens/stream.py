@@ -5,6 +5,7 @@ from pathlib import Path
 import struct
 import sys
 import time
+from math import isfinite
 
 from PySide6.QtCore import QObject, QLockFile, QProcess, QRect, QStandardPaths, QTimer, Signal, Slot
 from shiboken6 import isValid
@@ -74,7 +75,8 @@ class StreamClient(QObject):
     def start(self, screen, desktop):
         self.pending_frame = None
         self.paused = False
-        self.subscription = {"screen": list(screen.getRect()), "desktop": list(desktop.getRect()), "paused": False}
+        self.subscription = {"screen": list(screen.getRect()), "desktop": list(desktop.getRect()), "paused": False,
+                             "maximum_fps":min(10,1/max(.1,self.delivery_interval))}
         self.active = True
         if self.socket.state() == QLocalSocket.LocalSocketState.ConnectedState:
             self.send_subscription()
@@ -162,13 +164,15 @@ class StreamClient(QObject):
             size = self.metadata["width"] * self.metadata["height"] * 4
             if self.socket.bytesAvailable() < size:
                 break
-            pixels = bytes(self.socket.read(size))
+            pixels = self.socket.read(size)
             captured_at = self.metadata["captured_at"]
             wrong_monitor = self.metadata.get("screen") is not None and self.metadata["screen"] != self.subscription["screen"]
-            image = None if self.paused or wrong_monitor else QImage(pixels, self.metadata["width"], self.metadata["height"], QImage.Format.Format_RGBA8888).copy()
+            dimensions=(self.metadata['width'],self.metadata['height'])
             self.header_size = self.metadata = None
             if self.active and not self.paused and not wrong_monitor:
-                self.pending_frame = image, captured_at
+                # QByteArray owns the raw packet. Convert only the newest frame
+                # when it is actually delivered; skipped packets need no QImage.
+                self.pending_frame = pixels, dimensions, captured_at
         self.deliver_pending()
 
     def deliver_pending(self):
@@ -180,11 +184,14 @@ class StreamClient(QObject):
             if not self.delivery_timer.isActive():
                 self.delivery_timer.start(max(1, round(delay * 1000)))
             return
-        image,captured_at = self.pending_frame
+        packet = self.pending_frame
         self.pending_frame = None
         self.delivery_timer.stop()
         self.next_delivery = time.monotonic() + self.delivery_interval
-        if self.active and not self.paused:self.frame.emit(image,captured_at)
+        if self.active and not self.paused:
+            pixels,dimensions,captured_at=packet
+            image=QImage(memoryview(pixels),*dimensions,QImage.Format.Format_RGBA8888).copy()
+            self.frame.emit(image,captured_at)
 
     def set_paused(self, paused):
         self.paused = paused
@@ -217,6 +224,7 @@ class CaptureServer(QObject):
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
         self.server.newConnection.connect(self.accept)
         self.clients = {}
+        self.client_rates={}
         self.paused_clients = set()
         self.closing = False
         self.last_frame = 0.0
@@ -249,6 +257,7 @@ class CaptureServer(QObject):
     def accept(self):
         socket = self.server.nextPendingConnection()
         self.clients[socket] = None
+        self.client_rates[socket]=10.0
         self.idle.stop()
         socket.readyRead.connect(self.client_ready)
         socket.disconnected.connect(self.client_disconnected)
@@ -268,6 +277,8 @@ class CaptureServer(QObject):
     def command(self, socket):
         while socket.canReadLine():
             data = json.loads(bytes(socket.readLine()))
+            rate=data.get('maximum_fps')
+            if type(rate) in (int,float) and isfinite(rate) and 1<=rate<=10:self.client_rates[socket]=float(rate)
             if data.get("stop"):
                 self.capture.stop()
                 self.app.quit()
@@ -286,6 +297,7 @@ class CaptureServer(QObject):
                     self.send(socket, {"error": "OS capture: The selected display is no longer available. Choose a connected display and start reading again."})
                     return
                 self.clients[socket] = (target, QRect(*data["desktop"]))
+                self.update_frame_rate()
                 if not self.capture.isActive():
                     # Constructor errors happen before errorOccurred is wired.
                     error = self.capture.error()
@@ -301,6 +313,7 @@ class CaptureServer(QObject):
 
     def disconnect(self, socket):
         self.clients.pop(socket, None)
+        self.client_rates.pop(socket,None)
         self.paused_clients.discard(socket)
         self.update_frame_rate()
         if isValid(socket):
@@ -314,7 +327,8 @@ class CaptureServer(QObject):
             return
         if hasattr(self.capture, "setMaximumFrameRate"):
             paused = bool(self.clients) and all(socket in self.paused_clients for socket in self.clients)
-            self.capture.setMaximumFrameRate(1.0 if paused else 10.0)
+            rates=[self.client_rates.get(socket,10.0) for socket,target in self.clients.items() if target and socket not in self.paused_clients]
+            self.capture.setMaximumFrameRate(1.0 if paused else max(rates,default=10.0))
         if hasattr(self.capture, "setPaused"):
             self.capture.setPaused(not self.clients or all(socket in self.paused_clients for socket in self.clients))
 

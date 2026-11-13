@@ -2,7 +2,7 @@
 //! A repeated interior stroke is not a boundary: a positive frame needs the
 //! horizontal cap to terminate at both corners. No text/market identity is used.
 use crate::tooltip_surface::{Dot, rgb, title_light};
-use minerva_core::{Frame, ItemCapture, ScreenPoint};
+use minerva_core::{Frame, ScreenPoint};
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -23,8 +23,8 @@ impl BoxRect {
         other.x >= self.x && other.y >= self.y && other.right() <= self.right()
             && other.bottom() <= self.bottom()
     }
-    pub(crate) fn global(self, c: &ItemCapture) -> Value {
-        json!({"x":i64::from(self.x)+i64::from(c.origin.x),"y":i64::from(self.y)+i64::from(c.origin.y),"width":self.w,"height":self.h})
+    pub(crate) fn global(self, origin: minerva_core::ScreenPoint) -> Value {
+        json!({"x":i64::from(self.x)+i64::from(origin.x),"y":i64::from(self.y)+i64::from(origin.y),"width":self.w,"height":self.h})
     }
 }
 

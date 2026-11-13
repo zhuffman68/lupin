@@ -130,7 +130,7 @@ def history_regions(image,hud,exclude=()):
     """
     from PySide6.QtCore import QRect
     import numpy as np
-    from .chat_ocr import pixels,components
+    from .chat_ocr import region_pixels,components
     if not isinstance(hud,(list,tuple)) or len(hud)!=4 or any(type(v) is not int for v in hud):return [],[]
     footer=QRect(*hud)
     if not image.rect().contains(footer) or footer.width()<240 or footer.height()<8:return [],[]
@@ -139,7 +139,7 @@ def history_regions(image,hud,exclude=()):
     left=footer.x();top=max(0,footer.y()-round(400*scale));bottom=max(top,footer.y()-round(18*scale))
     area=QRect(left,top,min(footer.width(),image.width()-left),bottom-top)
     if area.width()<120 or area.height()<20:return [],[]
-    rgb=pixels(image.copy(area));r,g,b=(rgb[:,:,i].astype('int16') for i in range(3))
+    rgb=region_pixels(image,area);r,g,b=(rgb[:,:,i].astype('int16') for i in range(3))
     blue=(b-r>35)&(g-r>20)&(b>110)&(g>75)
     buttons=[]
     for (x,y,right,end),count in components(blue,min_run=1):
@@ -169,7 +169,7 @@ def history_regions(image,hud,exclude=()):
     inset=max(3,round(4*scale))
     panel=QRect(area.x()+inset,area.y()+max(0,uy-1),max(0,ux-2*inset),y+h-max(0,uy-1))
     if panel.width()<100 or panel.height()<10:return [],[]
-    data=pixels(image.copy(panel));background=np.median(data,axis=1).astype('int16')
+    data=region_pixels(image,panel);background=np.median(data,axis=1).astype('int16')
     ink=np.max(np.abs(data.astype('int16')-background[:,None,:]),axis=2)>55
     margin=max(3,round(3*scale));ink[:,:margin]=False;ink[:,-margin:]=False
     gutter=ink[:,:min(panel.width(),round(60*scale))]

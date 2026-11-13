@@ -19,6 +19,7 @@ from .pickup_capture import PickupWorker
 from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
 from .reader_metrics import ReaderMetrics
+from .reader_process import ReaderProcess
 from .npc_shop import find_npc_shop,suppress_npc_rows,suppress_npc_prices
 from .shop_source import cursor_rectangle
 
@@ -110,17 +111,12 @@ class PixelReader(QObject):
         self.stream = StreamClient(root, self)
         self.stream.frame.connect(self.on_stream_frame)
         self.stream.status.connect(self.status)
-        self.process = QProcess(self)
-        env = QProcessEnvironment.systemEnvironment()
-        env.insert("RAYON_NUM_THREADS", "2")
-        env.insert("OMP_NUM_THREADS", "2")
-        env.insert("RTEN_NUM_THREADS", "1")
-        self.process.setProcessEnvironment(env)
+        self.reader_process=ReaderProcess(reader_binary(self.root),self)
+        self.process=self.reader_process.process
+        self.reader_process.lost.connect(self.reader_lost)
         self.process.readyReadStandardOutput.connect(self.on_output)
         self.process.readyReadStandardError.connect(self.on_stderr)
-        self.process.errorOccurred.connect(lambda error: self.status.emit("Reader could not start; run ./setup.sh"))
         self.process.finished.connect(self.on_finished)
-        self.process.start(str(reader_binary(self.root)))
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.scan)
@@ -166,13 +162,18 @@ class PixelReader(QObject):
     def submit(self,payload,*,mode,now=None,analysis_rect=None,using_roi=False,local_roi=False):
         """Bind response authority and timeout to the pixels actually sent."""
         started=time.monotonic() if now is None else now
+        cancel_path=None
+        if mode=='prices' and getattr(self,'temp',None) is not None:
+            self.request_serial=getattr(self,'request_serial',0)+1
+            cancel_path=str(Path(self.temp.name)/f'cancel-{self.request_serial}')
+            payload['cancel_path']=cancel_path
         request=SubmittedRequest(mode,self.image,self.pointer,self.image_sequence,self.generation,started,
             shop_epoch=self.shop_browsing.epoch if mode=='prices' else None,
             tracking_epoch=self.tracking_epoch if mode in ('experience','tracking-location') else None,
             crop=self.crop.getRect() if self.crop is not None else None,
             analysis_rect=analysis_rect.getRect() if analysis_rect is not None else None,
             using_roi=using_roi,local_roi=local_roi,locate_game=bool(payload.get('auto_game')),
-            annotations=tuple(tuple(rect[key] for key in ('x','y','width','height'))
+            cancel_path=cancel_path,annotations=tuple(tuple(rect[key] for key in ('x','y','width','height'))
                               for rect in payload.get('annotations',[])[:64]))
         self.active_request=self.submitted_request=request
         metrics=getattr(self,'metrics',None)
@@ -188,6 +189,7 @@ class PixelReader(QObject):
         self.process.write((json.dumps(payload)+'\n').encode())
 
     def pause(self, keep_stream=False):
+        self.reader_process.pause()
         self.generation += 1
         self.paused = True
         self.timer.stop()
@@ -429,10 +431,21 @@ class PixelReader(QObject):
                 and now-self.last_pickup >= .2 and self.last_frame > self.last_pickup_frame):
             self.scan_pickups(now)
         if self.pending:
+            request=self.active_request;viewport=getattr(self,'shop_browsing',None)
+            if (request.mode=='prices' and request.cancel_path and viewport is not None
+                    and request.shop_epoch!=viewport.epoch):
+                # Positive scrolling alone cancels shop repair. Ordinary cursor
+                # movement must never starve inventory recognition.
+                Path(request.cancel_path).touch(exist_ok=True)
             if now > self.active_request.deadline_at:
-                self.process.kill()
-                self.status.emit("Screen reader timed out; restart the app")
+                lifecycle=getattr(self,'reader_process',None)
+                if lifecycle is not None:lifecycle.restart('Screen reader timed out; restoring it…')
+                else:
+                    self.process.kill();self.status.emit('Screen reader timed out')
             return
+        if not self.image.isNull() and self.process.state()!=QProcess.ProcessState.Running:
+            lifecycle=getattr(self,'reader_process',None)
+            if lifecycle is not None:lifecycle.ensure()
         if self.image.isNull() or self.process.state() != QProcess.ProcessState.Running:
             return
         if (self.live_source and self.crop is not None and
@@ -671,6 +684,11 @@ class PixelReader(QObject):
             metrics=getattr(self,'metrics',None)
             try:
                 result = json.loads(line)
+                if result.get('cancelled') is True:
+                    if metrics is not None:metrics.record('prices.superseded')
+                    if request.cancel_path:Path(request.cancel_path).unlink(missing_ok=True)
+                    QTimer.singleShot(0,self.scan)
+                    continue
                 tooltip_partial=request.mode=='prices' and result.get('tooltipPartial') is True
                 partial=request.mode=='prices' and (result.get('shopPartial') is True or tooltip_partial)
                 if partial:self.active_request=request
@@ -692,9 +710,12 @@ class PixelReader(QObject):
                         metrics.record(event,duration_ms=(result.get('readerStages') or {}).get(key))
                 if self.paused or request.generation != self.generation:
                     continue
+                if not partial and request.cancel_path:Path(request.cancel_path).unlink(missing_ok=True)
                 if result.get("error"):
                     self.status.emit("Reader: " + result["error"])
                 else:
+                    lifecycle=getattr(self,'reader_process',None)
+                    if lifecycle is not None:lifecycle.accepted()
                     if request.mode=='tracking-location':
                         if request.tracking_epoch==self.tracking_epoch:self.accept_tracking_location(result,request)
                         continue
@@ -853,6 +874,7 @@ class PixelReader(QObject):
                                          "ocr_ms": round(result.get("ocrMs", 0), 1),
                                          "rows": len((result.get("shop") or {}).get("rows", []))})
                     result["pointerAtRead"] = list(request.pointer) if request.pointer is not None else None
+                    self.last_price_capture_at=result['atMs']/1000
                     self.reading.emit(result)
                     metrics = os.environ.get("CLASSIC_LENS_METRICS")
                     if metrics and time.monotonic() - self.last_metrics > 1:
@@ -871,8 +893,12 @@ class PixelReader(QObject):
 
     def on_finished(self, code, status):
         self.active_request = None
-        if code:
-            self.status.emit(f"Screen reader stopped ({code}); restart the app")
+
+    def reader_lost(self,message):
+        self.generation+=1;self.active_request=self.submitted_request=None;self.buffer=b''
+        self.rescan_requested=True;self.submitted_sequence=-1;self.shop_fingerprint=None
+        self.metrics.record('reader.recovery')
+        self.status.emit(message)
 
     def close(self, keep_stream=False):
         self.paused=True
@@ -884,12 +910,10 @@ class PixelReader(QObject):
             self.pickup_worker=None
         if self.screenshot.state() != QProcess.ProcessState.NotRunning:
             self.screenshot.kill()
-            self.screenshot.waitForFinished(1000)
+            from .process_lifecycle import retire_process
+            retire_process(self.screenshot,0)
         self.stream.stop(keep_session=keep_stream)
-        self.process.closeWriteChannel()
-        if not self.process.waitForFinished(1500):
-            self.process.kill()
-            self.process.waitForFinished(1000)
+        self.reader_process.close()
         self.temp.cleanup()
 
 

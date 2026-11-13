@@ -129,6 +129,5 @@ class PickupWorker(QObject):
         self.watchdog.stop()
         self.context = None
         self.process.closeWriteChannel()
-        if not self.process.waitForFinished(400):
-            self.process.kill()
-            self.process.waitForFinished(600)
+        from .process_lifecycle import retire_process
+        retire_process(self.process,400)

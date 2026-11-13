@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject,QProcess,QProcessEnvironment,QRect,Signal,Qt,
 from PySide6.QtGui import QImage
 
 from .chat_tracking import stamp, difference, visible, locate_offset, move_source
+from .process_lifecycle import retire_process
 
 
 class ChatTranslation(QObject):
@@ -22,10 +23,17 @@ class ChatTranslation(QObject):
         self.events=[];self.batch_identity=None
         self.watching=False;self.waiting=False;self.until=0;self.hits=0;self.serial=0
         self.notice='';self.notice_until=0;self.last_track=0;self.last_image=None
+        self.current_frame=QImage();self.current_frame_at=0
+        self.idle_seconds=180;self.recovery_attempts=0;self.late_rows=0
         self.cadence=QTimer(self);self.cadence.setSingleShot(True);self.cadence.setInterval(250);self.cadence.timeout.connect(self.want_frame)
         self.window_timer=QTimer(self);self.window_timer.setSingleShot(True);self.window_timer.timeout.connect(self.finish_scan)
         self.deadline=QTimer(self);self.deadline.setSingleShot(True);self.deadline.setInterval(4000);self.deadline.timeout.connect(self.timeout)
         self.notice_timer=QTimer(self);self.notice_timer.setSingleShot(True);self.notice_timer.timeout.connect(self.clear_notice)
+        self.load_timer=QTimer(self);self.load_timer.setSingleShot(True);self.load_timer.setInterval(60000)
+        self.load_timer.timeout.connect(lambda:self.worker_failed('Local translator took too long to load.'))
+        self.idle_timer=QTimer(self);self.idle_timer.setSingleShot(True);self.idle_timer.timeout.connect(self.release_idle)
+        self.retry_timer=QTimer(self);self.retry_timer.setSingleShot(True);self.retry_timer.setInterval(500)
+        self.retry_timer.timeout.connect(self.start_worker)
 
     @property
     def active(self):return self.watching or self.waiting or self.busy and self.batch_identity==self.identity
@@ -50,6 +58,10 @@ class ChatTranslation(QObject):
     def enable(self,enabled):
         self.enabled=enabled
         if not enabled:self.close();return
+        self.status.emit('Ready · translator loads when scanning')
+
+    def start_worker(self):
+        if not self.enabled:return
         if self.process is not None:return
         models=self.root/'models/korean-chat'
         if not (models/'rec.onnx').is_file():
@@ -60,19 +72,23 @@ class ChatTranslation(QObject):
         for name,value in (('OPENBLAS_NUM_THREADS','1'),('OMP_NUM_THREADS','2'),('OMP_WAIT_POLICY','PASSIVE')):env.insert(name,value)
         process.setProcessEnvironment(env);process.readyReadStandardOutput.connect(self.receive)
         process.readyReadStandardError.connect(lambda:process.readAllStandardError())
-        process.errorOccurred.connect(lambda *_:self.abort_scan('The local Korean worker could not start.'))
+        process.errorOccurred.connect(lambda *_:self.worker_failed('The local Korean worker could not start.'))
         process.finished.connect(self.finished)
         self.status.emit('Loading local Korean translator…')
+        self.load_timer.start()
         process.start(sys.executable,['-B','-m','price_lens.chat_worker',str(models)])
 
     def start_scan(self):
+        if not self.enabled:return
+        self.idle_timer.stop();self.recovery_attempts=0;self.late_rows=0
         self.identity+=1
         if self.busy and self.process is not None:
             self.process.write((json.dumps({'cancel_before':self.identity})+'\n').encode())
         self.hits=0;self.notice='';self.notice_until=0;self.notice_timer.stop()
         if not self.ready:
             if self.process is None:
-                self.announce('The local translator is unavailable. Enable translation to retry.');return
+                self.waiting=True;self.start_worker()
+                if self.process is None:self.waiting=False;return
             self.waiting=True;self.status.emit('Loading translator…');self.changed.emit();return
         self.waiting=False;self.watching=True;self.until=time.monotonic()+self.scan_seconds
         self.status.emit('Scanning Korean…')
@@ -90,11 +106,13 @@ class ChatTranslation(QObject):
             if not self.hits:self.announce('No readable Korean found')
             else:self.status.emit('Scan complete · recent messages remain below');self.changed.emit()
         else:self.status.emit(self.phase_message());self.changed.emit()
+        self.arm_idle()
 
     def abort_scan(self,message):
         self.identity+=1
         if self.busy and self.process is not None:self.process.write((json.dumps({'cancel_before':self.identity})+'\n').encode())
         self.watching=self.waiting=False;self.cadence.stop();self.window_timer.stop();self.announce(message)
+        self.arm_idle()
 
     def announce(self,message):
         self.notice=message;self.notice_until=time.monotonic()+2.5;self.notice_timer.start(2500)
@@ -102,12 +120,34 @@ class ChatTranslation(QObject):
 
     def clear_notice(self):
         self.notice='';self.notice_until=0
-        self.status.emit('Ready · local Korean translation' if self.enabled and self.ready else 'Translation disabled')
+        self.status.emit(('Ready · local Korean translation' if self.ready else 'Ready · translator loads when scanning') if self.enabled else 'Translation disabled')
         self.changed.emit()
 
     def finished(self,*_):
-        self.ready=self.busy=False;self.deadline.stop()
-        if self.enabled:self.abort_scan('Local translator stopped. Toggle translation off and on to restart.')
+        self.worker_failed('Local translator stopped.')
+
+    def worker_failed(self,message):
+        retry=self.enabled and self.active and self.recovery_attempts<1
+        self.release_worker();self.busy=self.ready=False;self.frame=QImage()
+        if retry:
+            self.recovery_attempts+=1;self.identity+=1
+            self.watching=False;self.waiting=True;self.cadence.stop();self.window_timer.stop()
+            self.status.emit('Restoring local translator…');self.retry_timer.start();self.changed.emit()
+        else:self.abort_scan(message+' Press the scan shortcut to retry.')
+
+    def arm_idle(self):
+        if self.process is not None and not self.active:self.idle_timer.start(round(self.idle_seconds*1000))
+
+    def release_idle(self):
+        if self.active:return
+        self.release_worker();self.ready=False
+        self.status.emit('Ready · translator loads when scanning');self.changed.emit()
+
+    def release_worker(self):
+        self.load_timer.stop();self.deadline.stop();self.idle_timer.stop()
+        process,self.process=self.process,None
+        retire_process(process)
+        self.buffer=b''
 
     def receive(self):
         if self.process is None:return
@@ -118,8 +158,12 @@ class ChatTranslation(QObject):
             try:message=json.loads(line)
             except ValueError:continue
             if message.get('ready'):
+                self.load_timer.stop()
                 self.ready=True;self.status.emit('Ready · local Korean translation')
-                if self.waiting:self.start_scan()
+                if self.waiting:
+                    # Preserve the bounded recovery count until this scan ends.
+                    retries=self.recovery_attempts;self.start_scan();self.recovery_attempts=retries
+                else:self.arm_idle()
                 continue
             if message.get('error'):
                 if message.get('id') is not None and message.get('id')!=self.identity:
@@ -132,18 +176,32 @@ class ChatTranslation(QObject):
                 if message.get('done'):
                     self.busy=False;self.deadline.stop();self.frame=QImage()
                     if self.watching:self.cadence.start(0)
+                    else:self.arm_idle()
                 continue
-            if message.get('row') and time.monotonic()-self.started<2.5:self.accept_row(message['row'])
+            if message.get('row'):
+                if time.monotonic()-self.started<2.5 or self.late_row_current(message['row']):
+                    if self.accept_row(message['row']):self.hits+=1
+                else:self.late_rows+=1
             if message.get('done'):
-                self.busy=False;self.deadline.stop();self.frame=QImage();self.hits+=message['done']['count']
+                self.busy=False;self.deadline.stop();self.frame=QImage()
                 if self.watching:
                     self.status.emit('Scanning Korean…')
                     # A slow OCR pass has already used the cadence interval.
                     # Keep a small floor; cached passes still run at <=4 Hz.
                     self.cadence.start(max(50,round((.25-(time.monotonic()-self.started))*1000)))
-                elif not self.hits:self.announce('No readable Korean found')
+                elif not self.hits:self.announce('Text changed before translation finished. Scan again.' if self.late_rows else 'No readable Korean found')
                 else:self.status.emit('Scan complete · recent messages remain below')
+                self.arm_idle()
                 self.changed.emit()
+
+    def late_row_current(self,row):
+        """Late results need fresh, exact source pixels, not just worker counts."""
+        box=row.get('box') if isinstance(row,dict) else None
+        if (not isinstance(box,(list,tuple)) or len(box)!=4 or any(type(n) is not int for n in box)
+                or time.monotonic()-self.current_frame_at>1):return False
+        local=QRect(*box);current=local.translated(self.region.topLeft())
+        return bool(not local.isEmpty() and self.frame.rect().contains(local) and self.current_frame.rect().contains(current)
+                    and self.frame.copy(local)==self.current_frame.copy(current))
 
     def accept_row(self,supplied):
         if not isinstance(supplied,dict):return
@@ -219,6 +277,7 @@ class ChatTranslation(QObject):
             if event['id'] not in active:
                 for source in event['sources']:source['pixels']=source['track_pixels']=None
         self.last_track=0;self.changed.emit()
+        return True
 
     @staticmethod
     def overlap(first,second):
@@ -272,6 +331,7 @@ class ChatTranslation(QObject):
         region=region.intersected(image.rect())
         if region.width()<16 or region.height()<16:return False
         if region.width()*region.height()*3>32*1024*1024:self.abort_scan('Limit the translation reading area in Settings.');return False
+        self.current_frame=QImage(image);self.current_frame_at=time.monotonic();self.idle_timer.stop()
         if not self.region.isEmpty() and self.region!=region:self.cards=[];self.events=[]
         self.frame=image.copy(region);self.region=QRect(region);crop=self.frame.convertToFormat(QImage.Format.Format_RGB888)
         data=bytes(crop.constBits());self.identity+=1
@@ -293,7 +353,7 @@ class ChatTranslation(QObject):
         self.status.emit(self.phase_message());self.changed.emit();return True
 
     def timeout(self):
-        if self.busy:self.close();self.announce('Local scan timed out. Toggle translation off and on to retry.')
+        if self.busy:self.worker_failed('Local scan timed out.')
 
     def locate(self,image,card):
         offset=locate_offset(image,card)
@@ -303,6 +363,7 @@ class ChatTranslation(QObject):
 
     def annotations(self,image,sx,sy,bounds,occupied=(),rectangles=()):
         rows=[];now=time.monotonic()
+        self.current_frame=QImage(image);self.current_frame_at=now
         if now-self.last_track>=.2 and image.cacheKey()!=self.last_image:
             self.last_track=now;self.last_image=image.cacheKey();keep=[]
             for card in self.cards:
@@ -342,9 +403,6 @@ class ChatTranslation(QObject):
 
     def close(self):
         self.enabled=False;self.clear();self.ready=self.busy=False;self.deadline.stop();self.frame=QImage()
-        if self.process is not None:
-            process=self.process;self.process=None;process.blockSignals(True);process.closeWriteChannel()
-            if not process.waitForFinished(200):process.kill();process.waitForFinished(1000)
-            process.setParent(None)
-            process.deleteLater()
+        self.retry_timer.stop();self.release_worker()
+        self.current_frame=QImage()
         self.buffer=b''

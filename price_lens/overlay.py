@@ -18,6 +18,7 @@ class Overlay(QObject):
     writer_event = Signal(dict)
     writer_lost = Signal()
     status = Signal(str)
+    painted = Signal(dict)
 
     def __init__(self, root, parent=None):
         super().__init__(parent)
@@ -25,6 +26,13 @@ class Overlay(QObject):
         self.process = QProcess(self)
         self.buffer = b''
         self.last_state = None
+        self.sent_state = None
+        self.presentation_id=0;self.capture_at=0;self.last_capture_considered=0;self.pending_capture_at=0
+        self.diagnostics=bool(os.environ.get('LUPIN_READER_DIAGNOSTICS'))
+        self.state_pending = False
+        self.state_timer=QTimer(self);self.state_timer.setSingleShot(True)
+        self.state_timer.timeout.connect(self.flush_labels)
+        self.process.bytesWritten.connect(lambda *_:self.schedule_labels())
         self.writer_state = None
         self.last_error = ''
         self.layout_boxes = []
@@ -52,6 +60,7 @@ class Overlay(QObject):
         if self.closed or self.process.state() != QProcess.ProcessState.NotRunning:
             return
         self.ready = False
+        self.sent_state=None
         self.loss_handled = False
         self.failure_reason = ''
         self.buffer = b''
@@ -125,8 +134,8 @@ class Overlay(QObject):
         self.start()
 
     def flush_state(self):
-        if self.last_state is not None and self.process.state() == QProcess.ProcessState.Running:
-            self.process.write((json.dumps(self.last_state) + '\n').encode())
+        self.state_pending=self.last_state is not None
+        self.flush_labels()
         if self.writer_state is not None and self.writer_available:
             if self.writer_state.get('operation') == 'open':
                 self.allow_writer_foreground()
@@ -176,6 +185,9 @@ class Overlay(QObject):
                     self.status.emit('')
                 if isinstance(report.get('writer'), dict):
                     self.writer_event.emit(report['writer'])
+                painted=report.get('painted')
+                if isinstance(painted,dict) and type(painted.get('id')) is int and 0<painted['id']<=self.presentation_id:
+                    self.painted.emit(painted)
                 if isinstance(report.get('layout'), list):
                     self.layout_boxes = report['layout'][:48]
                 point = report.get('pointer')
@@ -186,22 +198,47 @@ class Overlay(QObject):
                 pass
 
     def update(self, geometry, rows, hover_enabled=False):
-        self.last_state = dict(geometry=geometry, rows=rows, hover_enabled=hover_enabled,
+        state = dict(geometry=geometry, rows=rows, hover_enabled=hover_enabled,
                                reduce_motion=getattr(self, 'reduce_motion', False),
                                shop_viewport_epoch=getattr(self, 'shop_viewport_epoch', 0),
                                shop_viewport_pending=getattr(self, 'shop_viewport_pending', False))
-        if self.process.state() == QProcess.ProcessState.Running:
-            self.process.write((json.dumps(self.last_state) + '\n').encode())
+        new_capture=self.capture_at if self.capture_at!=self.last_capture_considered else 0
+        self.last_capture_considered=self.capture_at
+        if state==self.last_state:return
+        if new_capture:self.pending_capture_at=new_capture
+        self.last_state=state
+        self.state_pending=True
+        # First useful annotations need not wait for the control panel's card
+        # layout. Repeated state is suppressed; a busy pipe retains only latest.
+        if self.process.state()==QProcess.ProcessState.Running and not self.process.bytesToWrite():self.flush_labels()
+        else:self.schedule_labels()
+
+    def schedule_labels(self):
+        if (not self.closed and self.state_pending and not self.state_timer.isActive()
+                and self.process.state()==QProcess.ProcessState.Running and not self.process.bytesToWrite()):
+            self.state_timer.start(0)
+
+    def flush_labels(self):
+        if (not self.state_pending or self.process.state()!=QProcess.ProcessState.Running
+                or self.process.bytesToWrite()):return
+        self.state_timer.stop();self.state_pending=False
+        if self.last_state==self.sent_state:return
+        self.presentation_id+=1;state=self.last_state
+        if self.diagnostics:
+            state=dict(state,trace=dict(id=self.presentation_id,sent_at=time.monotonic(),captured_at=self.pending_capture_at))
+        self.process.write((json.dumps(state,separators=(',',':'))+'\n').encode())
+        self.sent_state=self.last_state
+        self.pending_capture_at=0
 
     def close(self):
         self.closed = True
         self.ready = False
         self.retry_timer.stop()
         self.startup_timer.stop()
+        self.state_timer.stop()
         if self.process.state() == QProcess.ProcessState.NotRunning:
             return
-        self.update([0, 0, 1, 1], [])
-        self.process.closeWriteChannel()
-        if not self.process.waitForFinished(1000):
-            self.process.kill()
-            self.process.waitForFinished(1000)
+        # Close the input stream directly: the helper retires its own surfaces
+        # at EOF. Do not queue an otherwise deferred state during shutdown.
+        from .process_lifecycle import retire_process
+        retire_process(self.process,1000)

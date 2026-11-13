@@ -1,5 +1,7 @@
 """Local game-text OCR. Imported only inside the bounded chat worker."""
 from collections import OrderedDict
+from contextvars import ContextVar
+from functools import wraps
 import hashlib
 from pathlib import Path
 import re
@@ -9,9 +11,31 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QImage
 
 
+_frame_pixels=ContextVar('lupin-frame-pixels',default=None)
+
+
 def pixels(image):
+    cached=_frame_pixels.get()
+    if cached is not None and cached[0]==image.cacheKey():return cached[1]
     image = image.convertToFormat(QImage.Format.Format_RGB888)
     return np.frombuffer(bytes(image.constBits()), np.uint8).reshape(image.height(), image.bytesPerLine())[:, :image.width()*3].reshape(image.height(),image.width(),3)
+
+
+def with_frame_pixels(function):
+    """One owned RGB representation for this call, never a cross-frame proof."""
+    @wraps(function)
+    def run(image,*args,**kwargs):
+        rgb=pixels(image);token=_frame_pixels.set((image.cacheKey(),rgb))
+        try:return function(image,*args,**kwargs)
+        finally:_frame_pixels.reset(token)
+    return run
+
+
+def region_pixels(image,area):
+    cached=_frame_pixels.get()
+    if cached is not None and cached[0]==image.cacheKey():
+        return cached[1][area.y():area.y()+area.height(),area.x():area.x()+area.width()]
+    return pixels(image.copy(area))
 
 
 def components(mask,*,min_run=2):

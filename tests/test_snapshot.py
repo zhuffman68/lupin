@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
 
 from price_lens.data import Cache
 from price_lens.domain import Catalog, Item, Quote, compare
@@ -43,6 +44,11 @@ class SnapshotTests(unittest.TestCase):
         self.store = SnapshotStore(self.cache)
         self.item = Item(4010000, "Bronze Ore")
         self.now = round(time.time(), 6)
+
+    def wait_storage(self,updater):
+        deadline=time.monotonic()+3
+        while updater.busy and time.monotonic()<deadline:QTest.qWait(5)
+        self.assertFalse(updater.busy)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -238,6 +244,7 @@ class SnapshotTests(unittest.TestCase):
                 updater.refresh();updater.set_enabled(True)
                 self.assertEqual(start.call_count, 1)
                 updater.accept(document(self.now))
+                self.wait_storage(updater)
                 self.assertGreater(updater.timer.interval(),895000)
                 self.assertLessEqual(updater.timer.interval(),900000)
                 updater.set_interval(300)
@@ -256,6 +263,7 @@ class SnapshotTests(unittest.TestCase):
             updater.enabled = True
             doc = document(self.now);doc["generated_at"] = iso(self.now-3601)
             updater.accept(doc)
+            self.wait_storage(updater)
             self.assertGreater(updater.timer.interval(), 59000)
             self.assertLessEqual(updater.timer.interval(), 60000)
             self.assertFalse(self.store.quote(self.item).fresh(self.now))

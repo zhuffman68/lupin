@@ -16,6 +16,7 @@ from .reference_details import EntryDetails
 from .market_lookup import market_lookup_reason
 from .widget_lifetime import retire_widget
 from .market_status_ui import MarketStatus
+from .catalog_search import CatalogSearch
 
 
 class PriceSearch(QWidget):
@@ -298,15 +299,8 @@ class PriceSearch(QWidget):
 
     def find_items(self):
         query = item_words(unclipped_name(self.query.text()))
-        found = []
-        if self.catalog and len(query) >= 2:
-            exact=self.catalog.by_id.get(int(query)) if query.isdecimal() else None
-            terms = query.split()
-            found = [exact] if exact else [item for item in self.catalog.items if all(term in item_words(item.name) for term in terms)]
-            found.sort(key=lambda item:(item_words(item.name)!=query,not item_words(item.name).startswith(query),item.name.casefold(),item.game_id))
-            groups = {}
-            for item in found:groups.setdefault(key(item.name),[]).append(item)
-            found = list(groups.values())
+        if not hasattr(self,'search_index'):self.search_index=CatalogSearch()
+        found=self.search_index.find(self.catalog,query)
         was_hidden=self.results.isHidden()
         tokens=tuple(tuple(item.game_id for item in candidates) for candidates in found[:40])
         if tokens!=tuple(self.result_rows) or bool(found)!=(not was_hidden):

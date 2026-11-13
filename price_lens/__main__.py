@@ -91,12 +91,7 @@ def main():
     control.prices.connect(window.toggle_prices)
     control.exp.connect(window.on_exp_hotkey)
     control.compose.connect(window.open_composer)
-    # Place our own window on the middle display, without touching other windows.
-    screens = app.screens()
-    if len(screens) > 1:
-        screen = sorted(screens, key=lambda s: s.geometry().x())[len(screens) // 2]
-        geometry = screen.availableGeometry()
-        window.move(geometry.right() - window.width() - 24, geometry.y() + 48)
+    # window_size restores the saved display and clamps our own window there.
     window.show()
     if startup:
         window.updates.watch_result(startup.job.name)
@@ -110,12 +105,19 @@ def main():
         signal.signal(signal.SIGUSR1, handoff)
     try:
         result = app.exec()
+        from .process_lifecycle import drain_retired
+        drain_retired()
         # Keep installer IPC alive until in-flight network workers have exited.
         # Normal window closure has already stopped capture/OCR/annotations.
         window.service.pool.shutdown(wait=True, cancel_futures=True)
+        window.updates.pool.shutdown(wait=True,cancel_futures=True)
+        if window.service.snapshot_updater:window.service.snapshot_updater.storage.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.extra.pool.shutdown(wait=True,cancel_futures=True)
         window.reference.sources.pool.shutdown(wait=True,cancel_futures=True)
+        window.image_cache.pool.shutdown(wait=True,cancel_futures=True)
+        window.reference.geometry.pool.shutdown(wait=True,cancel_futures=True)
+        window.reference.market_work.pool.shutdown(wait=True,cancel_futures=True)
         return result
     finally:
         control.close()

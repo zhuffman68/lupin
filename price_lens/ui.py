@@ -42,6 +42,7 @@ from .composer_ui import ComposerDialog
 from .composer_overlay import ComposerOverlayController
 from .overlay_layout import tracking_rows,writer_placement,corner_offset
 from .thumbnails import ThumbnailCache
+from .reference_media import ReferenceMedia
 from .shortcut_defaults import load as load_shortcuts, label as shortcut_label
 from . import window_size
 from .capture_platform import uses_system_picker
@@ -156,6 +157,7 @@ class LensWindow(QMainWindow):
         self.ocr_ms = None
         self.overlay = Overlay(root, self)
         if hasattr(self.overlay,'status'):self.overlay.status.connect(self.on_overlay_status)
+        if hasattr(self.overlay,'painted'):self.overlay.painted.connect(self.on_overlay_painted)
         self.screens = sorted(QApplication.screens(), key=lambda screen: (screen.geometry().x(), screen.geometry().y()))
         self.owned_capture=OwnedCapture()
         self.screen_index = None
@@ -197,6 +199,7 @@ class LensWindow(QMainWindow):
         self.hotkeys.status.connect(self.on_hotkey_status)
         self.chat_enabled=self.settings.value("korean-chat",False,type=bool)
         self.chat=ChatTranslation(self.root,self)
+        self.chat.idle_seconds=max(30,min(1800,self.settings.value('korean-idle-seconds',180,type=int)))
         self.chat.configure(self.settings.value('chat-scan-seconds',4.0,type=float),self.settings.value('chat-linger-seconds',1.5,type=float))
         self.chat.changed.connect(self.on_chat_changed)
         self.chat.status.connect(self.on_chat_status)
@@ -254,7 +257,8 @@ class LensWindow(QMainWindow):
         self.hover_enabled = self.settings.value("tooltip-prices", True, type=bool)
         self.tooltip_result = None
         self.service = PriceService(cache_path, self)
-        self.thumbnails=ThumbnailCache(Path(cache_path).parent/'item-thumbnails-v1',self)
+        self.image_cache=ReferenceMedia(data_directory()/'reference-images-v1',self)
+        self.thumbnails=ThumbnailCache(Path(cache_path).parent/'item-thumbnails-v1',self,media=self.image_cache)
         self.reference=ReferenceService(data_directory()/'reference-v1.sqlite',self)
         self.reference.changed.connect(self.update_database_settings)
         self.service.refresh_snapshot = True
@@ -451,7 +455,7 @@ class LensWindow(QMainWindow):
         self.chat_check=self.translation_panel.enabled_check
         self.chat_status_label=self.translation_panel.status_label
         self.translation_tab_index=self.tabs.addTab(self.translation_panel,"Translation")
-        self.database_panel=DatabasePanel(self.reference,data_directory()/'reference-images-v1',self)
+        self.database_panel=DatabasePanel(self.reference,data_directory()/'reference-images-v1',self,media=self.image_cache)
         self.database_panel.set_watchlist(self.watchlist)
         self.database_panel.set_market(self.service,self.ttl)
         self.database_panel.source_requested.connect(self.open_source)
@@ -924,6 +928,17 @@ class LensWindow(QMainWindow):
             panel = self.search_panel
             self.service.set_manual(panel.selected if index == self.search_tab_index else None)
         self.update_capture_controls()
+        if index==self.search_tab_index:
+            self.render();self.search_panel.render()
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        self._ever_shown=True
+        if hasattr(self,'cards_layout'):QTimer.singleShot(0,self.render)
+
+    def moveEvent(self,event):
+        super().moveEvent(event)
+        window_size.remember(self)
 
     def update_shortcut_footer(self, *_):
         if not hasattr(self, 'shortcut_footer'):return
@@ -1786,7 +1801,7 @@ class LensWindow(QMainWindow):
             # The independent canvas can paint already cached references
             # before the control panel lays out item cards and recent history.
             self.draw_labels(time.time(),time.time()-self.last_screen>3)
-            self.render()
+            self.render(update_overlay=False)
 
     def observe_native_availability(self,result,image,latest,*,rows=(),description=None,association=None):
         """Promote fresh, exact native item identities after independent pixel guards."""
@@ -2057,7 +2072,7 @@ class LensWindow(QMainWindow):
             layout.addWidget(retry)
         return frame
 
-    def render(self):
+    def render(self,*,update_overlay=True):
         if not hasattr(self, "cards_layout"):
             return
         if not self.prices_active():
@@ -2085,6 +2100,12 @@ class LensWindow(QMainWindow):
         if self.catalog:
             if self.mode in ('live','screenshot') and not screen_old and self.prices_enabled:self.recent_items.observe(observations,self.catalog,now,active=active)
             else:self.recent_items.active=active
+        paint_prices=(self.tabs.currentIndex()==self.search_tab_index and not self.isMinimized()
+                      and (not getattr(self,'_ever_shown',False) or self.isVisible()))
+        if not paint_prices:
+            if update_overlay:self.draw_labels(now,screen_old)
+            return
+        if self.catalog:
             self.recent_items.refresh(self.service,self.ttl,now)
         structure=tuple((hovered,item.game_id if (item:=self.item_for(row)) else row.get('name'))
                         for row,hovered in card_rows)
@@ -2197,9 +2218,10 @@ class LensWindow(QMainWindow):
             self.card_area.complete()
             self.scroll.verticalScrollBar().setValue(position)
         self.update_price_layout()
-        self.draw_labels(now, screen_old)
+        if update_overlay:self.draw_labels(now, screen_old)
 
     def draw_labels(self, now, screen_old):
+        self.overlay.capture_at=getattr(self.reader,'last_price_capture_at',0)
         self.writer_overlay.context(self.composer_placement(),reduced=self.reduce_motion)
         if self.screen_index is None:
             self.watch_encounters.apply([], self.watchlist.ids)
@@ -2381,6 +2403,15 @@ class LensWindow(QMainWindow):
         self.overlay.shop_viewport_epoch = self.shop_browsing.epoch
         self.overlay.shop_viewport_pending = self.shop_browsing.pending
         self.overlay.update(list(geometry.getRect()), annotations, hover_enabled=self.prices_enabled and self.labels_enabled and self.mode == "live" and game_visible and screen_matches and not screen_old)
+
+    def on_overlay_painted(self,report):
+        metrics=getattr(self.reader,'metrics',None)
+        if metrics is None:return
+        painted=report.get('painted_at');sent=report.get('sent_at');captured=report.get('captured_at')
+        if type(painted) in (int,float) and type(sent) in (int,float) and 0<=painted-sent<10:
+            metrics.record('overlay.send_to_paint',duration_ms=(painted-sent)*1000)
+        if type(painted) in (int,float) and type(captured) in (int,float) and captured>0 and 0<=painted-captured<10:
+            metrics.record('overlay.capture_to_paint',duration_ms=(painted-captured)*1000)
         if (annotations and ready_price and not self.first_price_seen):
             self.first_price_seen = True
             self.settings.setValue("first-price-seen", True)

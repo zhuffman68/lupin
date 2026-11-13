@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Qt
 
 from .domain import MAX_SNAPSHOT_AGE, age_text
 from .snapshot_fetcher import SnapshotFetcher
+from .background_job import LatestJob
 
 
 class SnapshotUpdater(QObject):
@@ -29,6 +30,8 @@ class SnapshotUpdater(QObject):
         self.fetcher = SnapshotFetcher(store.cache.path.parent / "market-webview", self)
         self.fetcher.ready.connect(self.accept)
         self.fetcher.failed.connect(self.failed)
+        self.storage=LatestJob('lupin-snapshot',self)
+        self.storage.completed.connect(self.accept_prepared)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         # A coarse timer can fire before publication expiry and repeatedly
@@ -45,6 +48,7 @@ class SnapshotUpdater(QObject):
             self.startup_pending = True
             self.timer.start(0)
         else:
+            self.storage.cancel()
             self.timer.stop()
             self.fetcher.stop()
             self.busy = False
@@ -82,12 +86,16 @@ class SnapshotUpdater(QObject):
     def accept(self, document):
         if self.closed or not self.enabled:
             return
-        try:
-            self.store.save(document)
-        except (ValueError, TypeError, OSError, sqlite3.Error) as error:
+        self.busy=True
+        self.storage.submit(lambda token:self.store.prepare(document,guard=token.check))
+
+    def accept_prepared(self,result):
+        if self.closed or not self.enabled:return
+        if result.error is not None:
             self.fetcher.record_failure('validation')
-            self.failed(f"Market snapshot could not be saved: {error}", transient=False)
+            self.failed(f"Market snapshot could not be saved: {result.error}", transient=False)
             return
+        self.store.adopt(result.value)
         self.busy = False
         self.failures = 0
         self.error = ""
@@ -149,4 +157,5 @@ class SnapshotUpdater(QObject):
     def close(self):
         self.closed = True
         self.timer.stop()
+        self.storage.close()
         self.fetcher.close()

@@ -275,8 +275,13 @@ class ReferenceMediaTests(unittest.TestCase):
             reply=FakeReply();self.replies.append((request.url().toString(),reply));return reply
         self.cache.manager.get=get
 
+    def wait(self,predicate):
+        deadline=time.monotonic()+3
+        while not predicate() and time.monotonic()<deadline:QTest.qWait(5)
+        self.assertTrue(predicate())
+
     def tearDown(self):
-        self.cache.close();self.cache.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents();self.folder.cleanup()
+        self.cache.close();self.cache.pool.shutdown(wait=True);self.cache.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents();self.folder.cleanup()
 
     def test_actual_png_and_animated_webp_decoders_reject_invalid_and_oversized_images(self):
         self.assertFalse(decode(png()).isNull());self.assertFalse(decode(ANIMATION).isNull())
@@ -284,29 +289,31 @@ class ReferenceMediaTests(unittest.TestCase):
 
     def test_downloads_are_bounded_coalesced_and_reused_from_disk(self):
         urls=[ICON,MOVIE,*[ICON.replace('1001',str(n)) for n in (1002,1003,1004)]]
-        self.cache.observe(urls);self.assertEqual(len(self.replies),4);self.cache.observe(urls);self.assertEqual(len(self.replies),4)
-        self.replies[0][1].complete(png());self.assertEqual(len(self.replies),5)
+        self.cache.observe(urls);self.wait(lambda:len(self.replies)==4);self.cache.observe(urls);self.assertEqual(len(self.replies),4)
+        self.replies[0][1].complete(png());self.wait(lambda:len(self.replies)==5)
         self.replies[1][1].complete(ANIMATION)
         for _,reply in self.replies[2:]:reply.complete(png())
+        self.wait(lambda:not self.cache.processing)
         self.cache.observe(urls);self.assertEqual(len(self.replies),5);self.assertFalse(self.cache.image(MOVIE).isNull())
         disk=ReferenceMedia(self.folder.name)
-        try:self.assertFalse(disk.image(ICON).isNull());self.assertIsNotNone(disk.path(MOVIE))
-        finally:disk.close();disk.deleteLater()
+        try:
+            disk.observe([ICON,MOVIE]);self.wait(lambda:not disk.image(ICON).isNull() and disk.path(MOVIE) is not None)
+        finally:disk.close();disk.pool.shutdown(wait=True);disk.deleteLater()
 
     def test_misses_and_oversized_responses_do_not_repeat_until_the_negative_cache_expires(self):
-        self.cache.observe([ICON]);self.replies[0][1].complete(b'invalid');self.cache.observe([ICON]);self.assertEqual(len(self.replies),1)
-        self.cache.observe([MOVIE]);reply=self.replies[-1][1];reply.data=b'x'*(4*1024*1024+1);reply.readyRead.emit()
+        self.cache.observe([ICON]);self.wait(lambda:len(self.replies)==1);self.replies[0][1].complete(b'invalid');self.cache.observe([ICON]);self.assertEqual(len(self.replies),1)
+        self.cache.observe([MOVIE]);self.wait(lambda:len(self.replies)==2);reply=self.replies[-1][1];reply.data=b'x'*(4*1024*1024+1);reply.readyRead.emit()
         self.assertTrue(reply.aborted);self.assertIsNone(self.cache.path(MOVIE))
 
     def test_obsolete_downloads_yield_to_the_current_viewport_without_caching_a_miss(self):
         old=[ICON.replace('1001',str(n)) for n in range(1001,1006)];new=ICON.replace('1001','9000')
-        self.cache.observe(old);self.assertEqual(len(self.replies),4)
-        self.cache.observe([new]);self.assertEqual(len(self.cache.active),1);self.assertEqual(self.replies[-1][0],new)
+        self.cache.observe(old);self.wait(lambda:len(self.replies)==4)
+        self.cache.observe([new]);self.wait(lambda:len(self.cache.active)==1 and len(self.replies)==5);self.assertEqual(self.replies[-1][0],new)
         self.assertTrue(all(reply.aborted for _,reply in self.replies[:4]));self.assertTrue(all(url not in self.cache.misses for url in old))
         self.replies[-1][1].complete(png());self.cache.observe([new]);self.assertEqual(len(self.replies),5)
 
     def test_native_thumbnail_pixels_and_memory_budget_are_preserved(self):
-        self.cache.filename(ICON).write_bytes(png(37,26));image=self.cache.image(ICON)
+        self.cache.filename(ICON).write_bytes(png(37,26));self.wait(lambda:not self.cache.image(ICON).isNull());image=self.cache.image(ICON)
         self.assertEqual((image.width(),image.height()),(37,26))
         for n in range(16):
             large=QImage(512,512,QImage.Format.Format_RGBA8888);large.fill(QColor('orange'));self.cache.remember(str(n),large)
@@ -316,6 +323,7 @@ class ReferenceMediaTests(unittest.TestCase):
         self.cache.filename(MOVIE).write_bytes(ANIMATION);self.cache.filename(ICON).write_bytes(png())
         sprite=ReferenceSprite(self.cache);sprite.set_source(ICON,MOVIE);sprite.active=True;self.app.setProperty('reduceMotion',False);sprite.show();self.app.processEvents();sprite.sync()
         try:
+            self.wait(lambda:sprite.movie is not None)
             self.assertTrue(sprite.movie.isValid());self.assertEqual(sprite.movie.frameCount(),2);self.assertEqual(sprite.movie.speed(),100)
             self.assertEqual(sprite.movie.state(),QMovie.MovieState.Running)
             self.app.setProperty('reduceMotion',True);sprite.sync();self.assertEqual(sprite.movie.state(),QMovie.MovieState.Paused)

@@ -202,11 +202,12 @@ class DatabasePanel(QWidget):
             self.tiles.populate(groups);self.pages.setCurrentWidget(self.tiles);self.summary.setText(f'{len(groups)} categories');self.sort_row.hide()
         else:
             records=[]
+            details=self.store.entries(self.kind,[entry.id for entry in entries]) if self.kind in ('maps','quests') else {}
             for entry in entries:
                 subtitle=entry.job+' · '+entry.category if entry.kind=='skills' else entry.category
                 if entry.kind=='items' and entry.category=='Equipment':subtitle=entry.job
                 if entry.kind in ('maps','quests'):
-                    record=self.store.entry(*entry.key);subtitle=record[1].get('region') or entry.category
+                    record=details[entry.id];subtitle=record[1].get('region') or entry.category
                 if entry.level is not None:subtitle+=f' · Lv. {entry.level}'
                 records.append(dict(key=entry.key,target=entry.key,name=entry.name,subtitle=subtitle,icon=entry.icon))
             self.results.populate(records);self.pages.setCurrentWidget(self.list_page);self.more.setVisible(count>len(entries));self.summary.setText(f'{count:,} results')

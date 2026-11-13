@@ -293,17 +293,34 @@ class ReferenceStore:
         where.append(expression+' IS NOT NULL');where.append(expression+"!=''")
         with self.connect() as db:
             rows=db.execute('SELECT '+expression+",COUNT(*),COALESCE(MIN(CASE WHEN COALESCE(e.icon,'')!='' THEN e.id END),MIN(e.id)) FROM entities e WHERE "+' AND '.join(where)+' GROUP BY '+expression,params).fetchall()
-        return [{'value':value,'count':count,'entry':self.entry(kind,identity)[0]} for value,count,identity in rows]
+        entries=self.entries(kind,[identity for _,_,identity in rows])
+        return [{'value':value,'count':count,'entry':entries[identity][0]} for value,count,identity in rows if identity in entries]
+
+    def names(self,kind):
+        """One generation-consistent name projection, without decoding bodies."""
+        with self.connect() as db:
+            return dict(db.execute('SELECT id,name FROM entities WHERE kind=?',(kind,)))
+
+    def entries(self,kind,identities):
+        """Read a bounded set together; SQLite parameter limits apply per chunk."""
+        identities=tuple(dict.fromkeys(identities));result={}
+        if not identities:return result
+        with self.connect() as db:
+            for offset in range(0,len(identities),500):
+                chunk=identities[offset:offset+500]
+                query=('SELECT e.kind,e.id,e.name,e.category,e.level,'+CLASS_LABEL+
+                       ',e.icon,e.body FROM entities e WHERE e.kind=? AND e.id IN ('+
+                       ','.join('?' for _ in chunk)+')')
+                for row in db.execute(query,(kind,*chunk)):
+                    body=json.loads(row[7])
+                    if kind=='items':
+                        from .reference_items import normalize
+                        body=normalize(body)
+                    result[row[1]]=(Entry(*row[:7]),body)
+        return result
 
     def entry(self,kind,identity):
-        with self.connect() as db:
-            row=db.execute('SELECT e.kind,e.id,e.name,e.category,e.level,'+CLASS_LABEL+',e.icon,e.body FROM entities e WHERE e.kind=? AND e.id=?',(kind,identity)).fetchone()
-        if not row:return None
-        body=json.loads(row[7])
-        if kind=='items':
-            from .reference_items import normalize
-            body=normalize(body)
-        return Entry(*row[:7]),body
+        return self.entries(kind,[identity]).get(identity)
 
     def available(self,kind,identity):
         if kind=='npcs':
@@ -467,6 +484,7 @@ class ReferenceStore:
         with self.connect() as db:
             rows=[{**json.loads(r[0]),'source':'wiki'} for r in db.execute(f'SELECT body FROM drops WHERE {field}=? ORDER BY category,item_id,monster_id',(identity,))]
             names={(kind,identity):name for kind,identity,name in db.execute('SELECT kind,id,name FROM entities')}
+            available=set(db.execute("SELECT DISTINCT e.kind,e.id FROM entities e JOIN availability a ON a.kind=e.kind AND a.id=e.id AND a.name=e.name WHERE e.kind IN ('items','monsters')"))
             combined={(r['monster_id'],r['item_id'],r['category'] if r['item_id'] is None else ''):r for r in rows}
             for record, in db.execute(f'SELECT body FROM community_reports WHERE {field}=?',(identity,)):
                 r=json.loads(record)
@@ -474,7 +492,7 @@ class ReferenceStore:
                 key=(r['monster_id'],r['item_id'],'')
                 if key in combined:combined[key]['also_reported']=True
                 else:combined[key]=r
-        return [r for r in combined.values() if self.available('monsters',r['monster_id']) and (r['item_id'] is None or self.available('items',r['item_id']))]
+        return [r for r in combined.values() if ('monsters',r['monster_id']) in available and (r['item_id'] is None or ('items',r['item_id']) in available)]
 
     def community_check(self,kind,identity):
         with self.connect() as db:

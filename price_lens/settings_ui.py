@@ -230,6 +230,12 @@ class SettingsDialog(QDialog):
             spin.valueChanged.connect(lambda *_:w.set_chat_timing(self.scan.value(), self.linger.value()))
         field(layout, 'Keep checking for', self.scan)
         field(layout, 'Keep after disappearance', self.linger)
+        idle=QDoubleSpinBox();idle.setRange(.5,30);idle.setSingleStep(.5);idle.setDecimals(1)
+        idle.setSuffix(' min');idle.setFixedWidth(100);idle.setAlignment(Qt.AlignmentFlag.AlignRight)
+        idle.setValue(w.chat.idle_seconds/60)
+        def set_idle(value):
+            w.chat.idle_seconds=round(value*60);w.settings.setValue('korean-idle-seconds',w.chat.idle_seconds);w.chat.arm_idle()
+        idle.valueChanged.connect(set_idle);field(layout,'Release idle translator after',idle)
         layout = self.card('Translation', 'Write Korean', 'Translate a draft and copy it to the clipboard. The writer works independently of incoming translation.')
         layout.addWidget(button('Open Korean writer', lambda:self.open_translation(1)))
         layout.addWidget(button('Open translation results', lambda:self.open_translation(0), quiet=True))

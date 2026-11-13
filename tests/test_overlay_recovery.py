@@ -12,6 +12,7 @@ from unittest.mock import patch
 from PySide6.QtCore import QCoreApplication,QEvent,QProcess,Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication,QWidget
+from shiboken6 import isValid
 from price_lens import __version__
 from price_lens.annotations import AnnotationWindow
 from price_lens.overlay import Overlay
@@ -106,7 +107,7 @@ class OverlayRecoveryTests(unittest.TestCase):
         self.wait(lambda:not overlay.layout_boxes)
         self.assertFalse((self.path/'cache'/'overlay-startup.json').exists())
         overlay.close();self.assertFalse(overlay.ready)
-        self.assertEqual(overlay.process.state(),QProcess.ProcessState.NotRunning)
+        self.wait(lambda:not isValid(overlay.process) or overlay.process.state()==QProcess.ProcessState.NotRunning)
 
     def test_two_automatic_retries_then_manual_retry_restores_own_helper(self):
         root=self.helper("""
@@ -156,7 +157,7 @@ if n==1:raise SystemExit(7)
         self.wait(lambda:overlay.retry_timer.isActive())
         overlay.close();self.assertFalse(overlay.retry_timer.isActive());self.assertFalse(overlay.startup_timer.isActive())
         QTest.qWait(550);overlay.retry();QTest.qWait(50)
-        self.assertEqual(overlay.process.state(),QProcess.ProcessState.NotRunning);self.assertFalse(overlay.ready)
+        self.wait(lambda:not isValid(overlay.process) or overlay.process.state()==QProcess.ProcessState.NotRunning);self.assertFalse(overlay.ready)
 
     def test_failed_to_start_is_bounded_and_records_only_a_fixed_reason(self):
         root=self.helper(READY+READ_LOOP)

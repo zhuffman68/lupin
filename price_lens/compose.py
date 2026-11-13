@@ -153,9 +153,8 @@ class KoreanComposer(QObject):
     def unload(self):
         self.idle.stop();self.deadline.stop();self.ready=False;self.inflight=self.queued=None;self.buffer=b''
         if self.process is not None:
-            process=self.process;self.process=None;process.blockSignals(True);process.closeWriteChannel()
-            if not process.waitForFinished(200):process.kill();process.waitForFinished(1000)
-            process.deleteLater()
+            from .process_lifecycle import retire_process
+            process,self.process=self.process,None;retire_process(process)
         self.changed.emit()
 
     def close(self):
