@@ -73,7 +73,7 @@ checks for explicit shortage/negation, alongside existing protected names and
 numeric-unit checks. Freeform output remains approximate; these checks are not
 a general proof of translation accuracy. Neither model bundle is replaced.
 
-## Validation in progress
+## Validation
 
 - The routing test reproduces failure before the change.
 - 75 native tests pass; the updated GNU release reader builds.
@@ -83,11 +83,27 @@ a general proof of translation accuracy. Neither model bundle is replaced.
 - All 26 saved inventory cases also match with a forced shop routing rectangle
   over the pointer, with no wrong-item annotations. This is a controlled routing
   stress test, not a claim that the synthetic rectangle is a verified live shop.
-- Saved-screen Korean recognition replay and the broader suite are complete;
-  preview handoff is recorded below. Detailed private results live under
+- Saved-screen Korean recognition replay and the broader suite are complete.
+  Detailed private results live under
   `evidence/performance-2026-11-13/inventory-followup/` and are not packaged.
 
-The full suite before the final liveness correction passes **1,385 tests** with
-three platform/opt-in skips, in 193.193 s. The later helper/canvas, Korean and
-routing checks pass **149 tests**. No installer has been built, installed or
-published during this follow-up.
+The final full suite passes **1,386 tests**, with three platform/opt-in skips,
+in **198.024 s**. The focused helper/canvas, Korean and routing checks pass
+149 tests; 75 Rust tests and 39 packaging-tool tests also pass. The GNU reader
+was rebuilt for the preview. No installer was built, installed or published.
+
+## User preview
+
+The source preview at `7250e8c` is open as **Lupin — inventory and Korean preview**.
+The original sharing helper retains its PID/start identity. Fresh frames, game
+identification and a ready annotation helper were verified after handoff. Tracking
+still starts stopped; incoming Korean models still load only on a requested scan.
+
+For up to 30 minutes, this private preview overwrites one small diagnostic file
+every two seconds with numerical state, recent timings and rejection counts.
+It records neither messages/player names nor images and cannot drive game input.
+This gives later inconsistent behavior an investigation trail without requiring
+the user to prepare a recording. No live inventory-hover or Korean-message
+demonstration was requested or automated during this follow-up. Actual remaining
+recognition/placement misses therefore remain possible despite the passing
+fixtures and the two confirmed overlay failure paths addressed here.

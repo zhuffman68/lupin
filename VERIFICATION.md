@@ -4,12 +4,14 @@
 
 The [follow-up record](docs/INVENTORY_AND_KOREAN_FOLLOWUP.md) distinguishes the
 inventory/shop routing defect, annotation-watchdog regression and Korean
-recognition/output changes. Before the final liveness fix the full suite runs
-**1,385 tests, three skipped, 193.193 s**. The subsequent helper/canvas, inventory
-and Korean checks pass **149 tests**; all **75 Rust tests** and **39 release-tool
+recognition/output changes. The final full suite runs **1,386 tests, three
+skipped, 198.024 s**. The focused helper/canvas, inventory and Korean checks pass
+**149 tests**; all **75 Rust tests** and **39 release-tool
 tests** pass. Both original and forced-overlap 26-case inventory replays have no
-wrong-item annotations. Full qualification of the final source is recorded in
-that follow-up. This is not an installed or published release.
+wrong-item annotations. The updated source preview is open with fresh game frames,
+a ready annotation helper and the same approved sharing helper. Physical Windows
+and live-hover/Korean-message stress acceptance were not exercised. This is not
+an installed or published release.
 
 ## Unreleased performance/resource pass — 2026-11-13
 
