@@ -52,6 +52,11 @@ for each cache filename. The first update normally needs a full download because
 an existing installation does not contain its own installer. Both translation
 models remain included and unchanged.
 
+Settings shows cached installer storage and a Clear action. Accounting counts
+hard links once. Clearing is disabled during update work, ignores symlinks and
+unrelated files, and keeps signed feed metadata. A later update may need a full
+download if its reconstruction base was cleared.
+
 ## Native installation
 
 - **Windows:** the existing per-user Inno installer runs with

@@ -37,7 +37,7 @@ class ReferenceMedia(QObject):
         self.validator=validator;self.concurrency=concurrency
         self.manager=QNetworkAccessManager(self);self.memory=OrderedDict();self.active={};self.queue=deque();self.closed=False
         self.memory_bytes=0;self.disk_checked=0;self.disk_bytes=0;self.disk_files=set()
-        self.demand=set();self.scopes={};self.misses={};self.disk_state=OrderedDict();self.processing=set()
+        self.demand=set();self.scopes={};self.misses={};self.disk_state=OrderedDict();self.processing=set();self.direct_reads=set()
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='lupin-images')
         self.io_queue=OrderedDict();self.io_active=None;self.cancelled=threading.Event()
         self._io_done.connect(self.io_finished,Qt.ConnectionType.QueuedConnection)
@@ -45,10 +45,11 @@ class ReferenceMedia(QObject):
 
     def filename(self,url):return self.folder/(hashlib.sha256(url.encode()).hexdigest()+Path(url).suffix)
 
-    def image(self,url):
+    def image(self,url,*,scoped=False):
         if not self.validator(url) or self.closed:return QImage()
         if url in self.memory:self.memory.move_to_end(url);return self.memory[url]
         if url not in self.disk_state or self.disk_state[url] is not None:
+            if not scoped:self.direct_reads.add(url)
             self._queue_io(url,('read',None,0))
         return QImage()
 
@@ -68,7 +69,7 @@ class ReferenceMedia(QObject):
         urls=list(dict.fromkeys(url for group in self.scopes.values() for url in group))[:128]
         self.demand=set(urls)
         for key,work in list(self.io_queue.items()):
-            if work[0]=='read' and key not in self.demand:self.io_queue.pop(key,None)
+            if work[0]=='read' and key not in self.demand and key not in self.direct_reads:self.io_queue.pop(key,None)
         # Reorder waiting disk reads as well as downloads on viewport changes.
         pending=self.io_queue;self.io_queue=OrderedDict()
         for url in urls:
@@ -77,7 +78,7 @@ class ReferenceMedia(QObject):
         self.queue.clear();now=time.time()
         for url in urls:
             if url in self.active or url in self.processing:continue
-            self.image(url)
+            self.image(url,scoped=True)
             if url not in self.disk_state or url==self.io_active or url in self.io_queue:continue
             saved=self.disk_state[url]
             if saved is not None and 0<=now-saved<TTL:continue
@@ -160,6 +161,7 @@ class ReferenceMedia(QObject):
             now=time.time()
             self.misses.update({url:at for url,at in misses.items() if self.validator(url) and type(at) in (int,float) and 0<=now-at<FAIL_TTL})
         else:
+            self.direct_reads.discard(url)
             self.disk_state[url]=saved;self.disk_state.move_to_end(url)
             while len(self.disk_state)>1024:self.disk_state.popitem(last=False)
             if not image.isNull():self.remember(url,image);self.misses.pop(url,None)

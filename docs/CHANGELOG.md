@@ -5,6 +5,28 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## Unreleased — performance and resource improvements
+
+- Market refreshes prepare saved prices and availability in the background,
+  keeping the interface responsive. Older catalogs remain available offline.
+- Screen reading avoids discarded-frame conversions and unnecessary tooltip
+  copies. The reader starts when needed, recovers from failures, and stops
+  obsolete shop repair after scrolling.
+- Price overlays skip duplicate updates and repaint changed areas. Hidden
+  pages and unchanged tracking controls do less work while timers and rolling
+  numbers keep their normal cadence.
+- Prices and Database share image downloads and caches; disk reads and decoding
+  no longer run on the interface thread. Search reuses normalized item names.
+- Korean reading loads on first scan, can release after a configurable idle
+  period, and recovers without requiring an off/on toggle. Late translations
+  require current matching pixels and no longer count discarded results.
+- Window placement is remembered, helper shutdown runs in parallel, Settings
+  shows clearable installer-cache storage, and Linux packages retain both
+  translation models while omitting non-loaded debug data.
+
+Implementation, validation and platform limits are recorded in
+[the performance work log](PERFORMANCE_PASS.md). This entry is not a published release.
+
 ## 1.0.5
 
 See [the patch record](PATCH_1.0.5.md) for installation and verification details.

@@ -6,6 +6,18 @@ The Translation tab has independent **Read Korean** and **Write Korean** pages. 
 
 Enable **Korean translation** under Read Korean, or press **Super/Win+F11** to enable it and begin a scan. All four shortcuts use the same configuration flow: the OS shortcut chooser on Wayland, or one shared editor on Windows/X11. A desktop shortcut can also run `lupin --translate`. Disabling reading unloads its worker; writing remains independent.
 
+Enabling alone does not load models. The first scan loads/warms the worker;
+Settings controls idle retention (three minutes by default). It releases after
+that period while the feature stays enabled. Loading has a separate 60-second
+deadline. A failed active scan may restart the worker once; another failure
+offers an explicit retry without requiring the checkbox to be toggled.
+
+Only accepted rows count as results. After 2.5 seconds a result requires fresh,
+byte-identical source pixels; otherwise the scan reports changed text instead
+of claiming success from an emitted count. Full-window detectors share one owned
+RGB representation per scan call, never as proof for another frame. Shutdown
+does not wait for model processes on the GUI thread.
+
 Each activation scans the full detected Classic World window for four seconds by default, without requiring the pointer near a message. The scan alternates visible speech bubbles with high-confidence text-line candidates, including colored chat, shop text and megaphones. Source roles require structural or explicit prefix/context evidence; unidentified prose stays ordinary text. It has one worker and no overlapping frame jobs. Pressing the shortcut again restarts the scan window, cancels older work between model operations and rejects late results. Scan time is adjustable from 1 to 10 seconds. The GUI and overlay distinguish scanning from finishing an outstanding translation.
 
 Attached chat history has a separate row detector. The captured HUD supplies a

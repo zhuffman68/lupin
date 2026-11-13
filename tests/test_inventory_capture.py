@@ -25,6 +25,7 @@ class InventoryCaptureTests(unittest.TestCase):
 
     def setUp(self):
         self.reader=PixelReader(ROOT);self.reader.timer.stop();self.reader.auto_enabled=False
+        self.reader.reader_process.ensure()
         self.assertTrue(self.reader.process.waitForStarted(3000))
         self.frame=QImage(800,600,QImage.Format.Format_RGBA8888);self.frame.fill(QColor('#24384b'))
         painter=QPainter(self.frame)

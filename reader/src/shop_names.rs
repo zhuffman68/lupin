@@ -861,7 +861,7 @@ impl NameRecovery {
         value
     }
 
-    pub fn apply_with_cancel(&mut self,capture:&ShopCapture,reading:&mut ShopReading,
+    pub fn apply(&mut self,capture:&ShopCapture,reading:&mut ShopReading,
         hint:Option<ScreenRect>,cancelled:&dyn Fn()->bool) -> Vec<RecoveredComponents> {
         let Some(table) = hint else {
             return Vec::new();
@@ -1086,6 +1086,14 @@ mod tests {
                 near_miss: None,
             },
         )
+    }
+
+    #[test]
+    fn obsolete_page_repair_stops_before_recognition_or_row_mutation() {
+        let (capture,table,mut reading)=sample(None);
+        let mut recovery=NameRecovery::default();
+        assert!(recovery.apply(&capture,&mut reading,Some(table),&||true).is_empty());
+        assert!(reading.shop.is_none());assert!(recovery.cache.is_empty());
     }
 
     fn row(table: ScreenRect) -> ScreenRect {

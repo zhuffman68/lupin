@@ -67,7 +67,7 @@ class PriceService(QObject):
         self.refresh_snapshot=bool(enabled)
         if self.closed:return
         if self.snapshot_updater is None:
-            self.snapshot_updater=SnapshotUpdater(self.snapshot,self)
+            self.snapshot_updater=SnapshotUpdater(self.snapshot,self,pool=self.pool)
             self.snapshot_updater.set_interval(self.interval)
             self.snapshot_updater.updated.connect(self._snapshot_updated)
             self.snapshot_updater.changed.connect(self.state_changed.emit)

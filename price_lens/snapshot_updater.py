@@ -14,7 +14,7 @@ class SnapshotUpdater(QObject):
     updated = Signal()
     changed = Signal()
 
-    def __init__(self, store, parent=None):
+    def __init__(self, store, parent=None,*,pool=None):
         super().__init__(parent)
         self.store = store
         self.enabled = False
@@ -30,7 +30,7 @@ class SnapshotUpdater(QObject):
         self.fetcher = SnapshotFetcher(store.cache.path.parent / "market-webview", self)
         self.fetcher.ready.connect(self.accept)
         self.fetcher.failed.connect(self.failed)
-        self.storage=LatestJob('lupin-snapshot',self)
+        self.storage=LatestJob('lupin-snapshot',self,pool=pool)
         self.storage.completed.connect(self.accept_prepared)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)

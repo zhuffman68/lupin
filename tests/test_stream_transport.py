@@ -181,7 +181,7 @@ class LocalFrameTransportTests(unittest.TestCase):
         self.until(lambda: not self.server.paused_clients)
         self.server.on_frame(FakeFrame(self.image()))
         self.until(lambda: len(self.received) == 1)
-        self.assertEqual(self.fake_capture.frame_rate, 10)
+        self.assertAlmostEqual(self.fake_capture.frame_rate, min(10,1/max(.1,self.client.delivery_interval)))
         self.assertEqual(self.fake_capture.starts, 1)
 
     def test_constructor_failure_is_reported_without_waiting_for_a_missing_signal(self):

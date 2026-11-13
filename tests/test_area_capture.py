@@ -18,8 +18,9 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class AreaCaptureTests(unittest.TestCase):
     def test_writer_exclusions_convert_full_display_to_manual_crop_before_roi(self):
-        reader=PixelReader(ROOT);reader.timer.stop()
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.timer.stop()
         try:
+            reader.reader_process.ensure()
             self.assertTrue(reader.process.waitForStarted(3000))
             reader.image=QImage(1000,800,QImage.Format.Format_RGBA8888);reader.image.fill(QColor('#cccccc'))
             reader.crop=QRect(100,80,600,500)
@@ -37,7 +38,7 @@ class AreaCaptureTests(unittest.TestCase):
             reader.close();reader.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
 
     def test_empty_blue_npc_table_does_not_suppress_inventory_tooltip_requests(self):
-        reader=PixelReader(ROOT);reader.timer.stop();reader.tooltip_enabled=True
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.timer.stop();reader.tooltip_enabled=True
         frame=QImage(800,800,QImage.Format.Format_RGBA8888);frame.fill(QColor('#cccccc'))
         reader.image=frame;reader.pointer=(450,250)
         reader.active_request=reader.submitted_request=SubmittedRequest('prices',frame,reader.pointer,
@@ -45,6 +46,7 @@ class AreaCaptureTests(unittest.TestCase):
         reader.shop_context=QRect(400,200,200,300)
         table=dict(x=400,y=200,width=200,height=300)
         try:
+            reader.reader_process.ensure()
             self.assertTrue(reader.process.waitForStarted(3000))
             message=json.dumps(dict(atMs=0,shop=dict(area=table,rows=[]),tooltip=None))+'\n'
             with patch.object(reader.process,'readAllStandardOutput',return_value=message.encode()):reader.on_output()
@@ -56,7 +58,7 @@ class AreaCaptureTests(unittest.TestCase):
         finally:
             reader.close();reader.deleteLater();QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
     def test_inventory_hover_reads_alongside_an_open_shop_without_roi_clipping(self):
-        reader=PixelReader(ROOT);reader.live_source=True;reader.tooltip_enabled=True
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.live_source=True;reader.tooltip_enabled=True
         readings=[];reader.reading.connect(readings.append)
         def wait_for(predicate):
             deadline=time.monotonic()+10
@@ -85,7 +87,7 @@ class AreaCaptureTests(unittest.TestCase):
         cls.app=QApplication.instance() or QApplication([])
 
     def test_slightly_moved_shop_recovers_prices_from_partially_clipped_crop(self):
-        reader=PixelReader(ROOT);reader.live_source=True
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.live_source=True
         readings=[];reader.reading.connect(readings.append)
         def wait_for(predicate):
             deadline=time.monotonic()+10
@@ -108,7 +110,7 @@ class AreaCaptureTests(unittest.TestCase):
             QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
 
     def test_pixel_tracker_rejects_old_coordinates_and_stops_when_covered(self):
-        reader=PixelReader(ROOT)
+        reader=PixelReader(ROOT);reader.reader_process.ensure()
         reader.live_source=True
         results=[]
         reader.reading.connect(results.append)
@@ -144,7 +146,7 @@ class AreaCaptureTests(unittest.TestCase):
             self.app.processEvents()
 
     def test_focus_colours_keep_game_location_without_reacquisition(self):
-        reader=PixelReader(ROOT);reader.live_source=True
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.live_source=True
         def wait_for(predicate):
             deadline=time.monotonic()+10
             while not predicate():
@@ -167,7 +169,7 @@ class AreaCaptureTests(unittest.TestCase):
             QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
 
     def test_tooltip_hiding_first_rows_cannot_shrink_the_recovery_crop(self):
-        reader=PixelReader(ROOT);reader.live_source=True;readings=[];reader.reading.connect(readings.append)
+        reader=PixelReader(ROOT);reader.reader_process.ensure();reader.live_source=True;readings=[];reader.reading.connect(readings.append)
         def wait_for(predicate):
             deadline=time.monotonic()+10
             while not predicate():
@@ -193,7 +195,7 @@ class AreaCaptureTests(unittest.TestCase):
             QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
 
     def test_stationary_shop_skips_ocr_until_geometry_check_is_due(self):
-        reader=PixelReader(ROOT)
+        reader=PixelReader(ROOT);reader.reader_process.ensure()
         reader.live_source=True
         results=[]
         reader.reading.connect(results.append)

@@ -413,6 +413,7 @@ impl Selector {
         self.select_with_exclusions(capture,markers,scale_hint,&[])
     }
 
+    #[cfg(test)]
     pub fn select_with_exclusions(&mut self,capture: &ItemCapture,markers: &[Dot],
         scale_hint: Option<f32>,exclude: &[BoxRect]) -> Association {
         self.select_frame(&capture.frame,capture.origin,capture.pointer,markers,scale_hint,exclude)

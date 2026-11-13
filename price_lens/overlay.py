@@ -231,6 +231,7 @@ class Overlay(QObject):
         self.pending_capture_at=0
 
     def close(self):
+        if self.closed:return
         self.closed = True
         self.ready = False
         self.retry_timer.stop()

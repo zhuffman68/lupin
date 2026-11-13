@@ -43,6 +43,7 @@ from .composer_overlay import ComposerOverlayController
 from .overlay_layout import tracking_rows,writer_placement,corner_offset
 from .thumbnails import ThumbnailCache
 from .reference_media import ReferenceMedia
+from shiboken6 import isValid
 from .shortcut_defaults import load as load_shortcuts, label as shortcut_label
 from . import window_size
 from .capture_platform import uses_system_picker
@@ -2073,6 +2074,7 @@ class LensWindow(QMainWindow):
         return frame
 
     def render(self,*,update_overlay=True):
+        if not isValid(self) or getattr(self,'closing',False):return
         if not hasattr(self, "cards_layout"):
             return
         if not self.prices_active():

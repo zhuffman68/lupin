@@ -5,6 +5,14 @@ Start with the [README](../README.md) for installation and the
 before changing the source. Run the commands below from a repository checkout;
 installing a release does not require a compiler or Python installation.
 
+Source requirements pin the release's Qt version, matching the hashed platform
+runtime manifests. [PERFORMANCE_PASS.md](PERFORMANCE_PASS.md) records the resource
+refactor, benchmarks, migration checkpoint and remaining physical test limits.
+Linux staging strips non-loaded ELF debug sections and archives symbols under
+`.build-tools/debug-symbols/linux`; both models and native exports remain intact.
+`runtime-trim.json` records the transformation. Test the staged runtime after
+trimming; compressed-download savings differ from installed-byte savings.
+
 ## Source setup
 
 Use Python 3.11 or newer supported by `requirements.txt`, Rust 1.90 or newer,

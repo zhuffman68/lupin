@@ -482,12 +482,23 @@ class ReferenceStore:
     def drops_for(self,kind,identity):
         field='monster_id' if kind=='monsters' else 'item_id'
         with self.connect() as db:
+            db.execute('BEGIN')
             rows=[{**json.loads(r[0]),'source':'wiki'} for r in db.execute(f'SELECT body FROM drops WHERE {field}=? ORDER BY category,item_id,monster_id',(identity,))]
-            names={(kind,identity):name for kind,identity,name in db.execute('SELECT kind,id,name FROM entities')}
-            available=set(db.execute("SELECT DISTINCT e.kind,e.id FROM entities e JOIN availability a ON a.kind=e.kind AND a.id=e.id AND a.name=e.name WHERE e.kind IN ('items','monsters')"))
+            community=[json.loads(record) for record, in db.execute(f'SELECT body FROM community_reports WHERE {field}=?',(identity,))]
+            keys={('monsters',r['monster_id']) for r in rows+community}
+            keys.update(('items',r['item_id']) for r in rows+community if r.get('item_id') is not None)
+            names={};available=set()
+            for entity_kind in ('items','monsters'):
+                identities=[number for k,number in keys if k==entity_kind and type(number) is int]
+                for offset in range(0,len(identities),500):
+                    chunk=identities[offset:offset+500]
+                    query=('SELECT e.id,e.name,EXISTS(SELECT 1 FROM availability a WHERE a.kind=e.kind AND a.id=e.id AND a.name=e.name) '
+                           'FROM entities e WHERE e.kind=? AND e.id IN ('+','.join('?' for _ in chunk)+')')
+                    for number,name,released in db.execute(query,(entity_kind,*chunk)):
+                        names[entity_kind,number]=name
+                        if released:available.add((entity_kind,number))
             combined={(r['monster_id'],r['item_id'],r['category'] if r['item_id'] is None else ''):r for r in rows}
-            for record, in db.execute(f'SELECT body FROM community_reports WHERE {field}=?',(identity,)):
-                r=json.loads(record)
+            for r in community:
                 if names.get(('monsters',r['monster_id']))!=r['monster_name'] or names.get(('items',r['item_id']))!=r['item_name']:continue
                 key=(r['monster_id'],r['item_id'],'')
                 if key in combined:combined[key]['also_reported']=True

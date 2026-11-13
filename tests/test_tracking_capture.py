@@ -59,6 +59,7 @@ class TrackingCaptureTests(unittest.TestCase):
     def located_reader(self,*,manual=False):
         reader=PixelReader(ROOT);reader.timer.stop()
         self.addCleanup(self.dispose_reader,reader)
+        reader.reader_process.ensure()
         self.assertTrue(reader.process.waitForStarted(3000))
         reader.live_source=True;reader.prices_enabled=False
         if manual:reader.crop=QRect(70,50,1300,780)
@@ -83,6 +84,7 @@ class TrackingCaptureTests(unittest.TestCase):
 
     def test_manual_selection_without_caption_and_hud_never_establishes_tracking(self):
         reader=PixelReader(ROOT);reader.timer.stop();self.addCleanup(self.dispose_reader,reader)
+        reader.reader_process.ensure()
         self.assertTrue(reader.process.waitForStarted(3000))
         reader.live_source=True;reader.prices_enabled=False
         reader.crop=QRect(150,150,800,400)
@@ -239,12 +241,11 @@ class PickupWorkerTests(unittest.TestCase):
         worker.on_finished(0,QProcess.ExitStatus.NormalExit)
         self.assertFalse(worker.pending);self.assertFalse(worker.watchdog.isActive())
 
-    def test_close_uses_bounded_waits_and_prevents_restart(self):
+    def test_close_does_not_block_qt_and_prevents_restart(self):
         worker=self.worker
-        with patch.object(worker.process,'waitForFinished',side_effect=[False,True]) as wait,patch.object(worker.process,'kill') as kill:
+        with patch.object(worker.process,'waitForFinished',side_effect=AssertionError('GUI shutdown must not wait')):
             worker.close()
-        self.assertEqual([call.args for call in wait.call_args_list],[(400,),(600,)])
-        kill.assert_called_once();self.assertTrue(worker.closed)
+        self.assertTrue(worker.closed);self.assertFalse(worker.watchdog.isActive())
         self.assertFalse(worker.submit(self.frame('#292929'),time.monotonic(),1,2))
 
 

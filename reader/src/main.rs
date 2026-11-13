@@ -235,7 +235,7 @@ fn main() {
             }
             let components_started=Instant::now();
             if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
-            let recovered=cached_components.unwrap_or_else(||name_recovery.apply_with_cancel(&capture,&mut shop_reading,
+            let recovered=cached_components.unwrap_or_else(||name_recovery.apply(&capture,&mut shop_reading,
                 request.shop_area.filter(|_|request.shop_recovery.unwrap_or(true)),&||request.cancelled()));
             if request.cancelled(){return Ok(serde_json::json!({"cancelled":true}));}
             if !cache_hit {page_cache.store(&capture,scope,request.shop_area,&shop_reading,&recovered);}
@@ -318,6 +318,14 @@ fn mask_regions(frame: &mut Frame, origin: ScreenPoint, regions: &[Rect],limit: 
 
 #[cfg(test)]
 mod writer_mask_tests {
+    #[test]
+    fn cancelled_request_uses_only_its_owned_marker() {
+        let path=std::env::temp_dir().join(format!("lupin-cancel-{}-{}",std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let request:super::Request=serde_json::from_value(serde_json::json!({"path":"never-opened.png","cancel_path":path})).unwrap();
+        assert!(!request.cancelled());std::fs::write(&path,b"").unwrap();
+        assert!(request.cancelled());std::fs::remove_file(path).unwrap();
+    }
     use super::*;
 
     #[test]

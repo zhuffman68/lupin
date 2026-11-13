@@ -32,13 +32,35 @@ flowchart LR
 
 The main Qt process owns settings, layouts, market state and session accounting. Capture and annotations use separate helpers. The Rust reader accepts only local RGBA/PNG input through its own JSON stdin/stdout. Translation workers communicate over bounded local pipes and load their verified models on demand. All portal callbacks enter the Qt GUI thread through signals.
 
+`background_job.py` owns cancellation-guarded jobs: at most one running and one
+latest pending job. `SnapshotGeneration` and `JobResult` carry owned results back
+to Qt. Snapshot validation/persistence shares the catalog's single worker; Qt
+adopts a complete generation without exposing partial rows. Market availability
+uses its own bounded job and a single name projection, then checks the current
+manifest during confirmation. Drop navigation projects relevant identities and
+release evidence in one read transaction. Workers do not mutate live snapshot
+dictionaries.
+
+`reader_process.py` owns lazy startup, three bounded recovery retries, and
+three-minute idle release after capture is paused. Loss revokes the submitted
+request/generation before restarting only our reader. `process_lifecycle.py`
+retires explicitly owned processes in parallel without GUI-thread waits. The
+entry point drains them with a shared final budget and joins cancelled background
+workers before releasing installer IPC. Screen-sharing handoff remains separate.
+
 ## Capture and recognition
 
 Linux retains its approved PipeWire/portal sharing session. SIGUSR1 hands the capture helper to a replacement UI without another chooser. Normal Quit ends sharing. The explicit KDE screenshot fallback remains available for troubleshooting.
 
 Windows captures the selected OS display with `QScreen.grabWindow(0)`, using desktop GDI rather than Direct3D desktop duplication. It never obtains a game window handle. The dropdown contains real displays; geometry changes update the selected display. Capture runs at most ten times per second, pauses without demand, and skips work while its local output is busy.
 
-Frame dimensions and local buffers are bounded. The client drains packets promptly and retains one newest completed frame; the display interval applies to delivery, not socket reads. Superseded frames are discarded. Pause, stop and display changes clear pending delivery.
+Frame dimensions and local buffers are bounded. The client drains packets and
+retains one newest owned raw packet, constructing an owned QImage at delivery.
+New clients advertise their consumer frame rate (normally 6.67 Hz); a new helper
+uses the highest active demand up to 10 Hz. Old helpers remain compatible.
+Superseded frames are discarded. Pause/display changes clear pending delivery.
+Linux retains its portal session at a reduced capture limit; Windows also stops
+its grab timer. Actual backend power savings require physical measurement.
 
 `SubmittedRequest` in `reader_request.py` captures each job's mode, implicitly
 shared source image, pointer, crop/analysis coordinates, generation, relevant
@@ -46,6 +68,14 @@ shop or tracking epoch and timeout deadline. Result handling uses that submitted
 context rather than mutable current-frame flags. EXP-only work does not consume
 an unread shop sequence. `PixelReader.request_rescan()` requests newest-frame
 work without changing the deadline of an already running request.
+
+Price requests can carry an app-owned cancellation marker path. Positive viewport
+changes mark obsolete shop work; native recognition checks between stages and
+component rows. Its explicit cancellation response schedules newest pixels and
+never supplies replacement identity/offer evidence. Ordinary pointer movement
+does not cancel in-flight OCR. Native tooltip association borrows the original
+frame and owns only its analysis panel. The pinned vendor is unchanged; its
+fallback reader initializes only when used.
 
 New shop/viewport work receives the next primary-reader slot while the previous
 EXP submission was less than 2.5 seconds ago; ordinary shop work yields after
@@ -291,6 +321,12 @@ cannot access deleted Qt children.
 ## One full-market cache
 
 `PriceService` loads the Classic World regular/cash catalog and manages a single `SnapshotStore`/`SnapshotUpdater`. There is no individual-price provider, per-item HTTP queue or provider-ID index.
+
+Catalog expiry requests refresh without deleting the offline fallback. Snapshot
+preparation and SQLite replacement run off the GUI thread; only the accepted
+current job adopts its owned generation. Failed/older publications preserve the
+original ages of previous references. `CatalogSearch` caches normalized names per
+catalog object, preserving exact IDs and explicit duplicate-name ambiguity.
 
 Item identification precedes market lookup. `item_identity.py` keeps an exact ID
 local to the currently observed row or inventory source; market presence cannot
@@ -629,6 +665,30 @@ or a running helper, the existing standalone writer remains available. Live
 Wayland/XWayland and native Windows focus acceptance require platform testing.
 
 ## Presentation, persistence and packaging
+
+Overlay producers skip identical states and retain one latest pending state
+under pipe backpressure. A first useful label is sent before control-panel card
+layout; the same reading does not construct it twice. The helper invalidates
+changed label rectangles while its existing numeric/watch/fade motion continues.
+With developer diagnostics enabled, a numeric presentation ID and monotonic
+capture/send/paint-callback times measure delivery; they do not measure physical
+compositor/display latency and contain no item names or chat.
+
+Hidden Prices pages retain their observation/history models but defer widget
+layout and age refresh until displayed. Tracking controls change with context;
+elapsed clocks remain one-second and numeric snapshots two-second. Saved position
+and display fractions are restored/clamped by `window_size.py`, without a later
+move to a different display.
+
+`ReferenceMedia` is the shared network/disk/decoded-image service. `ThumbnailCache`
+adapts exact item IDs to it; Prices and Database keep independent demand scopes.
+One bounded disk worker reads/decodes/persists images and coalesces maintenance.
+Visible/nearby demand orders downloads and queued reads. Negative caches and
+decoded/disk budgets remain bounded. QImages cross back to Qt; QPixmaps and
+widget updates remain on the GUI thread. Animated sprites still pause offscreen.
+Release requirements match the pinned Qt runtime. Linux staging archives and
+strips non-loaded ELF debug sections; the transformation report and separate
+symbols preserve diagnostic/reproducibility evidence without shipping them.
 
 Inter is bundled for consistent interface/price typography. The GUI uses a small coin for currency words, except MESO on the tracking panel and EXP/Meso Tracking on its tab. Market-price overlays remain plain; the tracking gain uses the same coin asset. Tracking unit coins appear only alongside available numbers. The larger, left-aligned rolling tracking timer shares a borderless row with the tracking controls above both metric panels. The timer adds hours while retaining seconds; its reserved width prevents the adjacent buttons from shifting. Digit-place animation keeps surrounding text/columns steady. Page slides and section transitions are interruptible and respect Reduce motion.
 

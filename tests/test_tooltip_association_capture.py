@@ -35,6 +35,7 @@ class AssociationCaptureTests(unittest.TestCase):
                 'guards':[dict(x=300,y=150,width=230,height=20)]}}
         received=[];reader.reading.connect(received.append)
         try:
+            reader.reader_process.ensure()
             self.assertTrue(reader.process.waitForStarted(3000))
             # Prevent the usual next-frame scheduler; this test supplies IPC only.
             with patch('price_lens.capture.QTimer.singleShot'):

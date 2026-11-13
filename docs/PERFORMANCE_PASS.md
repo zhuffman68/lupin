@@ -76,6 +76,32 @@ hard-link-aware cached installer usage and a busy-gated Clear action.
 No installed files, live sharing helper, user settings or original recordings
 have been changed. Storage migration has not started at this checkpoint.
 
+### Checkpoint 2
+
+The first full run covered 1,362 tests and found eager-start assumptions in
+fixtures, synchronous-shutdown assertions, and two cleanup/late-callback issues.
+Fixtures now explicitly start the reader when testing OCR rather than startup;
+shutdown assertions verify the GUI never waits. Snapshot storage shares the
+catalog pool, preserving existing ownership/join semantics without another
+permanent thread. Overlay close is idempotent and queued renders ignore closed
+or destroyed windows. Async direct image reads are kept independently of
+viewport download demand.
+
+The rebuilt Linux reader passed the 75 Rust tests, including explicit obsolete
+request/repair cancellation. The focused native capture, transport, scheduler,
+media, overlay and performance suite passed 94 tests in 11.626 s. The next full
+suite is running against the corrected source and rebuilt reader.
+
+Read-only post-change validation on the current saved 2,014-row snapshot used
+one connection/one statement and 25.735 ms, versus 2,014 connections/statements
+and 685 ms in the audit. A first batched drop replay reduced 63 connections to
+one but remained about 31 ms; it was then tightened to project only the needed
+identities within a consistent read transaction. Repeat timing is pending.
+
+These are single instrumented database runs on a shared machine, not live
+capture-to-overlay or physical Windows latency claims. Both model bundles are
+unchanged. No installer has been published or installed during this work.
+
 - [ ] Batch database lookups and move snapshot/availability preparation off the GUI thread.
 - [ ] Coalesce overlay submissions, bound pending commands, invalidate changed regions only.
 - [ ] Reduce frame copies and reuse per-frame analysis without weakening current-pixel proofs.

@@ -31,6 +31,7 @@ class PriceSchedulingTests(unittest.TestCase):
             self.assertEqual(browser.call_count,1)
             self.assertEqual(self.service.delivered[self.item.game_id].price,100)
             self.assertIsNone(self.service.delivered[9999999].price)
+            self.until(lambda:not self.service.snapshot_updater.busy)
             self.assertGreater(self.service.snapshot_updater.timer.interval(),295000)
             self.assertLessEqual(self.service.snapshot_updater.timer.interval(),300000)
             self.service.snapshot_updater.timer.timeout.emit()

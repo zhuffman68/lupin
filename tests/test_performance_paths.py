@@ -25,6 +25,9 @@ from price_lens.snapshot import SnapshotStore
 from price_lens.snapshot_updater import SnapshotUpdater
 from price_lens.chat import ChatTranslation
 from price_lens.chat_ocr import pixels,with_frame_pixels
+from price_lens.reader_process import ReaderProcess
+from price_lens.process_lifecycle import drain_retired
+from price_lens.update_cache import usage,clear
 from test_reference import generation
 from test_snapshot import document
 
@@ -133,3 +136,29 @@ class PerformancePathTests(unittest.TestCase):
             edited=QImage(frame);edited.fill(QColor('#222222'));self.assertIsNot(first,pixels(edited))
             return first
         first=check(image);self.assertIsNot(first,pixels(image))
+
+    def test_reader_starts_lazily_recovers_and_stops_retrying_when_paused(self):
+        import sys
+        from PySide6.QtCore import QProcess
+        worker=ReaderProcess(sys.executable);self.addCleanup(drain_retired);self.addCleanup(worker.close)
+        counter=Path(self.folder.name)/'attempts'
+        program="import pathlib,sys;p=pathlib.Path(sys.argv[1]);n=int(p.read_text())+1 if p.exists() else 1;p.write_text(str(n));sys.exit(1) if n<3 else None;print('ready',flush=True);sys.stdin.read()"
+        worker.process.setArguments(['-B','-c',program,str(counter)])
+        self.assertEqual(worker.process.state(),QProcess.ProcessState.NotRunning)
+        losses=[];worker.lost.connect(losses.append);worker.ensure()
+        self.wait_for(lambda:counter.exists() and counter.read_text()=='3' and worker.process.state()==QProcess.ProcessState.Running)
+        self.assertEqual(len(losses),2);worker.accepted();self.assertEqual(worker.attempts,0)
+        worker.restart('Fixture timeout');worker.pause();QTest.qWait(100)
+        self.assertFalse(worker.retry.isActive());self.assertEqual(counter.read_text(),'3')
+
+    def test_update_cache_counts_links_once_and_never_deletes_unowned_files_or_symlink_targets(self):
+        import os
+        folder=Path(self.folder.name);package=folder/'lupin-1.0.5-1-x86_64.pkg.tar.zst';package.write_bytes(b'x'*256)
+        os.link(package,folder/('base-'+'a'*64))
+        keep=folder/'notes.txt';keep.write_text('keep')
+        outside=folder/'outside';outside.mkdir();target=outside/'keep';target.write_text('keep')
+        try:(folder/'Lupin-fixture.exe').symlink_to(target);linked=True
+        except OSError:linked=False  # Windows may disallow symlinks without Developer Mode.
+        self.assertEqual(usage(folder),256);clear(folder)
+        self.assertTrue(keep.exists());self.assertEqual(target.read_text(),'keep')
+        if linked:self.assertTrue((folder/'Lupin-fixture.exe').is_symlink())
