@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QTest,QSignalSpy
 from PySide6.QtWidgets import QPushButton
 
 import test_ui_context as fixtures
@@ -177,9 +177,11 @@ class SettingsUiTests(unittest.TestCase):
         d.show()
         self.app.processEvents()
         w.set_reduce_motion(False)
+        finished=QSignalSpy(d.tabs.animation.finished)
         d.tabs.setCurrentIndex(1)
         self.assertTrue(d.tabs.sliding)
-        QTest.qWait(300)
+        self.assertEqual(d.tabs.animation.duration(),260)
+        self.assertTrue(finished.wait(1500))
         self.assertFalse(d.tabs.sliding)
         w.motion_check.setChecked(True)
         d.tabs.setCurrentIndex(2)

@@ -76,11 +76,32 @@ construction is still relatively expensive and was slower in the latest run
 (62.640 → 83.316 ms); reuse targets repeated work, not a guaranteed zero-cost
 cold opening. Hidden layout entries are skipped during card measurement.
 
-The final focused geometry, card lifecycle, reference UI and Prices navigation
+The initial focused geometry, card lifecycle, reference UI and Prices navigation
 group passes **85 tests in 15.343 s**. It verifies exact-ID rejection, released
 old listing leases, bounded widget counts, no extra top-level windows, four-row
 shop reuse, preserved departing pixels and the unchanged card-morph duration.
-The complete regression rerun and updated live-preview observation follow.
+Adding cash/non-cash schema-switch coverage brings that group to **86 tests**,
+passing at **1× in 27.239 s** and **2× in 28.535 s**. Five successive cash/non-cash
+changes retain the summary with the correct tabs, watch identity and one source
+list.
+
+The complete run executes **1,523 tests in 529.298 s**, with **three skips and
+one failure**: the Settings test assumes a 260 ms animation has completed after
+a fixed 300 ms sleep. Its unchanged form passes all **10 Settings tests in
+5.407 s** in isolation. The corrected test explicitly asserts the 260 ms
+duration and waits up to 1.5 s for the real finished signal; all **10 pass in
+5.534 s**. No product animation/timer is changed to accommodate it. Only test
+coverage and this harness correction change after the complete run; product
+code remains the tested `afced46` revision. The full suite is not
+repeated after that test-only correction.
+
+The live preview runs `afced46` with the existing sharing helper's PID/start
+unchanged and fresh frames, Classic World identification and annotation-helper
+readiness confirmed. The observed scene subsequently has no active item/shop,
+so it is not acceptance of busy-shop physical smoothness. Cold construction and
+uncontrolled workload limits above remain. Diagnostic profiling/timers are
+disabled after verification; the preview remains open. No installer is built,
+installed or published in this follow-up.
 All private QA uses an isolated display/session and reduced scheduling priority;
 the user's unrelated workloads and existing sharing helper are preserved.
 
@@ -137,8 +158,8 @@ offline UI services, not game input or physical compositor measurements.
 The complete suite after the title-mask step passes **1,501 tests in 256.507 s,
 three skipped**. The final focused capture/geometry suite passes **126 tests in
 18.796 s**; this also covers unverified native panel metadata requiring
-background fallback preparation. The complete rerun of the combined changes
-follows below.
+background fallback preparation. Later combined-run results and the additional
+card/hover changes are recorded above.
 
 #### Remaining stalls and view navigation
 

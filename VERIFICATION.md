@@ -17,13 +17,27 @@ claim. The crowded hover replay measures **106.287 → 24.398 ms median CPU**,
 with exact original/revised bounds or misses in all cases. Ordinary and masked
 variants, sampling bounds and evidence are in [PERFORMANCE_PASS](docs/PERFORMANCE_PASS.md).
 
-The focused group passes **85 tests in 15.343 s**, covering geometry predicate
+The initial focused group passes **85 tests in 15.343 s**, covering geometry predicate
 parity, item changes, late listing signals, released leases, bounded widget
 counts, no extra top-level windows, compact shop reuse, Prices navigation and
 the preserved **180 ms** automatic-card morph. All tests/replays use private
 Xvfb/D-Bus/HOME/XDG state, offline UI services and reduced scheduling priority.
-The final full regression and live preview check are pending at this checkpoint.
-No installer, installed-package change or release is made.
+Added cash/non-cash schema coverage brings it to **86 tests**, passing at
+**1× in 27.239 s** and **2× in 28.535 s**.
+
+The complete run executes **1,523 tests (529.298 s), three skipped**, with one
+failure in Settings' fixed 300 ms animation wait. The unchanged Settings group
+passes **10 tests in 5.407 s** in isolation. Its corrected harness asserts the
+unchanged **260 ms** duration and waits for the actual finished signal with a
+1.5 s bound; all **10 tests pass in 5.534 s**. No product timing changes. Only
+tests change after the complete run; that full suite is not repeated.
+
+The updated live preview runs product revision `afced46`, retaining sharing
+helper PID 2912442/start 64698024. Fresh shared frames, game identification and
+annotation-helper readiness are verified. The later scene has no active item
+or shop, so this does not prove busy-shop physical smoothness. Numeric tracing
+is stopped after observation and the preview remains open. No installer,
+installed-package change or release is made.
 
 ## Remaining live-reading lag — 2026-11-14
 
@@ -63,8 +77,8 @@ three skipped**. The final focused capture, source-check and geometry suite
 passes **126 tests (18.796 s)**, including source-pixel/request/mask rejection,
 prepared misses, partial ordering, pause/close behavior, native scaled rails,
 independent inventory pricing and existing NPC/viewport checks. Unverified
-native panel metadata cannot skip background fallback preparation. A combined
-complete rerun is pending at this checkpoint.
+native panel metadata cannot skip background fallback preparation. Subsequent
+combined-run results and the additional card/hover changes are recorded above.
 
 ## Source-check scheduling and Prices navigation — 2026-11-14
 

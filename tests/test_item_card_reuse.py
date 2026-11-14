@@ -4,7 +4,7 @@ import unittest
 from PySide6.QtCore import QObject,Signal,Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication,QWidget
-from price_lens.domain import Catalog,Quote
+from price_lens.domain import Catalog,Item,Quote
 from price_lens.item_overview import ItemOverview,item_overview
 from price_lens.motion import MotionLabel
 from price_lens.reference_details import EntryDetails
@@ -68,6 +68,22 @@ class ItemCardReuseTests(unittest.TestCase):
         card=self.observe(101);record=self.window.reference.store.entry('items',102)
         data=dict(card.data);data['item']=self.window.catalog.by_id[101]
         self.assertFalse(card.rebind_item(*record,**data));self.assertEqual(card.entry.id,101)
+
+    def test_cash_schema_changes_keep_the_summary_and_replace_only_inner_pages(self):
+        card=self.observe(101);summary=card.summary_card
+        for identity in (5001,102,5001,103,101):
+            entry,row=self.window.reference.store.entry('items',identity)
+            item=Item(identity,entry.name,row.get('category')=='Equipment',cash=bool(row.get('cash')))
+            data=dict(card.data,item=item,row={'name':entry.name},quote=None,now=time.time(),ttl=self.window.ttl)
+            self.assertTrue(card.rebind_item(entry,row,automatic=True,**data))
+            self.app.processEvents()
+            self.assertIs(card.summary_card,summary)
+            self.assertEqual(card.entry.id,identity)
+            self.assertEqual(card.watch_button.item.game_id,identity)
+            self.assertEqual(card.where_seen.item.game_id,identity)
+            self.assertEqual(len(card.lists),1)
+            expected=['Sources','Where seen'] if row.get('cash') else ['Overview','Sources','Where seen']
+            self.assertEqual([card.tabs.tabText(i) for i in range(card.tabs.count())],expected)
 
     def test_rebinding_keeps_the_card_morph_and_frozen_departing_pixels(self):
         card=self.observe(101);self.app.setProperty('reduceMotion',False)
