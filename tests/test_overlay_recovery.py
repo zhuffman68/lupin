@@ -119,8 +119,11 @@ class OverlayRecoveryTests(unittest.TestCase):
             print('SENSITIVE_CHAT_DRAFT /private/location '+('x'*4000),file=sys.stderr,flush=True)
             raise SystemExit(9)
         """)
-        overlay=self.start(root)
-        self.wait(lambda:self.attempts()==3 and overlay.process.state()==QProcess.ProcessState.NotRunning and not overlay.retry_timer.isActive())
+        overlay=self.start(root,timeout_ms=15000)
+        # Three sequential fixture launches each have their own bounded startup
+        # deadline. Keep OS/Python cold start separate from the explicit exit
+        # being injected. Production and real-canvas startup limits are unchanged.
+        self.wait(lambda:self.attempts()==3 and overlay.process.state()==QProcess.ProcessState.NotRunning and not overlay.retry_timer.isActive(),timeout=45000)
         QTest.qWait(80);self.assertEqual(self.attempts(),3);self.assertFalse(overlay.ready)
         self.assertEqual(self.retry_delays,[500,1000])
         data=self.failure();self.assertEqual(data['reason'],'unexpected-exit');self.assertEqual(data['exit_code'],9)
@@ -130,7 +133,7 @@ class OverlayRecoveryTests(unittest.TestCase):
         self.helper("""
 counter=Path(__file__).with_name('attempts.txt');counter.write_text(str(int(counter.read_text())+1))
 """+READY+READ_LOOP)
-        overlay.retry();self.wait(lambda:overlay.ready)
+        overlay.retry();self.wait(lambda:overlay.ready,timeout=15000)
         self.assertEqual(self.attempts(),4);self.assertEqual(overlay.retries,0);self.assertTrue(overlay.writer_available)
 
     def test_busy_pipe_keeps_only_latest_state_and_does_not_resend_identical_rows(self):
@@ -186,14 +189,14 @@ counter=Path(__file__).with_name('attempts.txt');counter.write_text(str(int(coun
 counter=Path(__file__).with_name('attempts.txt');n=int(counter.read_text())+1 if counter.exists() else 1;counter.write_text(str(n))
 if n==1:raise SystemExit(7)
 """+READY+READ_LOOP)
-        overlay=self.start(root);overlay.update([0,0,800,600],[dict(name='Own fixture',text='100',x=1,y=2,key='own')])
-        self.wait(lambda:overlay.ready and bool(overlay.layout_boxes))
+        overlay=self.start(root,timeout_ms=15000);overlay.update([0,0,800,600],[dict(name='Own fixture',text='100',x=1,y=2,key='own')])
+        self.wait(lambda:overlay.ready and bool(overlay.layout_boxes),timeout=30000)
         self.assertEqual(self.attempts(),2);self.assertEqual(overlay.layout_boxes,[[1,2,20,10]])
         self.assertEqual(overlay.retries,1);self.assertEqual(self.messages[-1],'')
 
     def test_wrong_version_never_becomes_ready_and_recovery_is_bounded(self):
-        overlay=self.start(self.helper("VERSION='wrong-version'\n"+READY+READ_LOOP))
-        self.wait(lambda:overlay.retries==2 and not overlay.retry_timer.isActive() and overlay.process.state()==QProcess.ProcessState.NotRunning)
+        overlay=self.start(self.helper("VERSION='wrong-version'\n"+READY+READ_LOOP),timeout_ms=15000)
+        self.wait(lambda:overlay.retries==2 and not overlay.retry_timer.isActive() and overlay.process.state()==QProcess.ProcessState.NotRunning,timeout=45000)
         self.assertFalse(overlay.ready);self.assertFalse(overlay.writer_available)
         self.assertEqual(self.failure()['reason'],'version-mismatch')
 

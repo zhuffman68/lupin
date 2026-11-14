@@ -42,8 +42,8 @@ class PerformancePathTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
 
-    def wait_for(self,predicate):
-        deadline=time.monotonic()+3
+    def wait_for(self,predicate,timeout=3):
+        deadline=time.monotonic()+timeout
         while not predicate() and time.monotonic()<deadline:QTest.qWait(5)
         self.assertTrue(predicate())
 
@@ -148,7 +148,9 @@ class PerformancePathTests(unittest.TestCase):
         worker.process.setArguments(['-B','-c',program,str(counter)])
         self.assertEqual(worker.process.state(),QProcess.ProcessState.NotRunning)
         losses=[];worker.lost.connect(losses.append);worker.ensure()
-        self.wait_for(lambda:counter.exists() and counter.read_text()=='3' and worker.process.state()==QProcess.ProcessState.Running)
+        # Observe all three sequential subprocess launches, including the real
+        # retry delays. This is a recovery-contract check, not a startup benchmark.
+        self.wait_for(lambda:counter.exists() and counter.read_text()=='3' and worker.process.state()==QProcess.ProcessState.Running,timeout=15)
         self.assertEqual(len(losses),2);worker.accepted();self.assertEqual(worker.attempts,0)
         worker.restart('Fixture timeout');worker.pause();QTest.qWait(100)
         self.assertFalse(worker.retry.isActive());self.assertEqual(counter.read_text(),'3')

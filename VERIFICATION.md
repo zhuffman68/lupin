@@ -2,6 +2,14 @@
 
 ## Lupin 1.0.6 release
 
+Multi-attempt recovery fixtures now observe the complete bounded retry sequence
+instead of sharing a single three/four-second launch window across three Windows
+processes. Controlled exit/version fixtures have a separate cold-Python startup
+allowance so an unrelated OS delay cannot become another injected failure.
+Assertions on retry counts, version rejection, replayed state and pause
+cancellation remain unchanged. Production and real-canvas startup limits are
+unchanged; fixture observation windows are not performance claims.
+
 Windows package qualification also found temporary frame cleanup racing native
 process exit. Directories now remain owned until all reader/screenshot/pickup
 writers stop, including previously retired pickup workers. The existing shared
