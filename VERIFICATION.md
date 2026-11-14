@@ -15,18 +15,22 @@ live incoming text and released observers/timers; same-view card morphing is
 retained. The focused capture suite passes **80 tests (21.785 s)** and the
 Prices view suite passes **16 tests (15.387 s)**.
 
-The broad **1,497-test run (447.925 s, three skipped)** had one close-test
-harness assertion failure, corrected to wait on its Future rather than a GUI
-callback deliberately suppressed by close. The other cases passed. The corrected
-**six source-check tests pass in 0.166 s**.
-This is not a clean full-suite pass. A final controls/slide alignment refinement
-passes **17 Prices view tests at 1× in 12.371 s and 2× in 15.873 s**.
+The final full regression run passes **1,498 tests in 290.883 s, three skipped**.
+A close-test harness assertion from an earlier run was corrected to wait on
+its Future rather than a GUI callback deliberately suppressed by close. The
+**six source-check tests also pass separately in 0.166 s**. Controls/slide
+alignment passes **17 Prices view tests at 1× in 12.371 s and 2× in 15.873 s**.
 
 A native/IPC stress replay with fragmented synthetic scenery reduces combined
 GUI result-handler CPU from **50.4–52.5 to 10.7–11.2 ms per reply**, splitting
 that work into two callbacks with a **12.7 ms CPU** maximum in this sample. Reading
 and paused runs still exhibit frame gaps. These low-priority private Linux
 measurements do not establish physical smoothness or Windows acceptance.
+
+The updated live preview retained the existing sharing helper. The user reports
+that it is "miles better" and no longer redraws when navigating item details;
+a possible slight difference with reading enabled remains uncertain. This is
+positive Linux acceptance, not a measured locked frame rate or Windows test.
 
 See [PERFORMANCE_PASS](docs/PERFORMANCE_PASS.md) for evidence/limitations and
 [SHOP_RECOGNITION](docs/SHOP_RECOGNITION.md) for the admission contract.

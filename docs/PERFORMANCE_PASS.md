@@ -77,6 +77,17 @@ actual controls with their slide pixels, restoring the layout on completion;
 its **17 tests pass at 1× (12.371 s) and 2× (15.873 s)**. Evidence remains private under
 `evidence/live-reading-2026-11-14/`; no installer/release is built.
 
+The final complete rerun passes **1,498 tests in 290.883 s, three skipped**.
+The updated preview uses `6d5be27` and the same approved sharing helper. The
+user confirms a substantial improvement and no redraw, with a possible slight
+reading-on difference that is difficult to distinguish. Keep that residual
+uncertainty separate from the demonstrated callback reduction and pixel tests.
+The subsequent numeric trace contains 34 live and 21 paused tab transitions.
+It still records occasional delayed heartbeat samples in both modes; their
+different action counts/workloads are not a controlled FPS comparison. Small
+periodic GUI refreshes and isolated first-read work remain profiling targets.
+The user's paused state was preserved after testing.
+
 #### Earlier name-classification fix
 
 The user reported intermittent severe tab lag despite the isolated motion
