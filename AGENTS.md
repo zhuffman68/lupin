@@ -17,6 +17,11 @@ This is a screen-only companion for **MapleStory Classic World**.
 
 Keep vendor Minerva at its pinned revision; read its own AGENTS.md before changing it. Do not include private `evidence/`, live screenshots, caches or database files in a package.
 
+Frame directories must outlive every native, screenshot and pickup writer,
+including already-retiring pickup processes. Transfer cleanup to the shared
+process-lifecycle reaper; never delete their files immediately after requesting
+asynchronous shutdown. Keep close nonblocking and capture handoff separate.
+
 On a Linux desktop, run GUI/native-helper QA and Wine UI tests inside an isolated Xvfb display with WAYLAND_DISPLAY/WAYLAND_SOCKET unset; use GDK_BACKEND=x11 and software rendering for test helpers. Offscreen Qt alone does not isolate GTK/Wine helper windows. Set QT_QPA_PLATFORM=offscreen inside Windows Python before constructing QApplication, rather than relying on Wine to forward the shell variable. Never let test copies of Lupin or transient helper windows appear over the user's desktop.
 
 Lupin keeps legacy internal application/settings/socket IDs for upgrade compatibility. Price Search works without capture and reads the same full-market snapshot as overlays and watched items. Typing, selecting, hovering or watching items must not issue individual price requests.

@@ -34,6 +34,7 @@ See [the patch record](PATCH_1.0.6.md) for downloads, installation and verificat
   and can release after an idle interval; both local models remain included.
 - Window placement is remembered. Settings can clear cached installers, and
   Linux packages omit unused debug data while retaining the translation models.
+- Safer shutdown and updates on Windows while screen readers are finishing.
 
 Implementation, measured results and platform limits are recorded in
 [the performance work log](PERFORMANCE_PASS.md) and [verification](../VERIFICATION.md).

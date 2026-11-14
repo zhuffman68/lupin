@@ -22,6 +22,9 @@ class ReaderSourceCheckTests(unittest.TestCase):
     def setUp(self):
         self.reader=PixelReader(Path(__file__).resolve().parents[1]);self.reader.timer.stop()
         self.addCleanup(self.reader.close)
+        # These tests inject one owned reply. A valid automatic retry must not
+        # start a second real OCR request while inspecting the injected failure.
+        scan=patch.object(self.reader,'scan');scan.start();self.addCleanup(scan.stop)
         self.image=QImage(800,600,QImage.Format.Format_RGBA8888);self.image.fill(QColor('#223344'))
         r=self.reader;r.image=self.image
         self.request=SubmittedRequest('prices',self.image,(200,250),0,r.generation,time.monotonic(),shop_epoch=r.shop_browsing.epoch)

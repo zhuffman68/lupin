@@ -177,9 +177,10 @@ class ChatSnapshotTests(unittest.TestCase):
             chat.enable(True)
             self.assertIsNone(chat.process)
             chat.start_scan()
-            limit=time.monotonic()+15
+            limit=time.monotonic()+chat.load_timer.interval()/1000+1
             while not chat.ready and time.monotonic()<limit:QTest.qWait(10)
             self.assertTrue(chat.ready,messages)
+            limit=time.monotonic()+chat.deadline.interval()/1000+1
             self.assertTrue(chat.request(image,image.rect()))
             self.assertFalse(chat.request(image,image.rect()))
             while chat.busy and time.monotonic()<limit:QTest.qWait(10)
@@ -187,6 +188,7 @@ class ChatSnapshotTests(unittest.TestCase):
             self.assertEqual(len(chat.cards),2,messages)
             self.assertIn("hello",chat.cards[0]["text"].lower())
             process=chat.process;chat.enable(False)
+            limit=time.monotonic()+5
             self.assertIsNone(chat.process)
             from shiboken6 import isValid
             while isValid(process) and process.state()!=QProcess.ProcessState.NotRunning and time.monotonic()<limit:QTest.qWait(10)

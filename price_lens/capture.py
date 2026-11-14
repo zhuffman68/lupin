@@ -8,6 +8,7 @@ import time
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal, QRect, QPoint, Qt
 from PySide6.QtGui import QImage
+from shiboken6 import isValid
 import json
 from .stream import StreamClient, screen_pixels
 from .platform_paths import reader_binary
@@ -40,6 +41,7 @@ class PixelReader(QObject):
         self.root = Path(root)
         self.closed = False
         self.temp = tempfile.TemporaryDirectory(prefix="classic-price-lens-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+        self.temp_writers=[]
         self.image = QImage()
         self.last_frame = 0.0
         self.image_sequence = 0
@@ -642,6 +644,10 @@ class PixelReader(QObject):
         if image.isNull():return
         if self.pickup_worker is None:
             self.pickup_worker=PickupWorker(self.root,self.temp.name,self)
+            self.temp_writers=[process for process in self.temp_writers
+                               if isValid(process) and process.state()!=QProcess.ProcessState.NotRunning]
+            process=getattr(self.pickup_worker,'process',None)
+            if process is not None:self.temp_writers.append(process)
             self.pickup_worker.result.connect(self.on_pickup_result)
             self.pickup_worker.issue.connect(self.on_pickup_issue)
         identity_proof=name_proof(self.image,self.tracking_identity_area,QPoint())
@@ -995,7 +1001,9 @@ class PixelReader(QObject):
         if hasattr(self,'diagnostics_timer'):self.diagnostics_timer.stop()
         self.timer.stop()
         self.screenshot_timer.stop()
+        writers=[self.process,self.screenshot,*self.temp_writers]
         if self.pickup_worker is not None:
+            writers.append(getattr(self.pickup_worker,'process',None))
             self.pickup_worker.close()
             self.pickup_worker=None
         if self.screenshot.state() != QProcess.ProcessState.NotRunning:
@@ -1004,7 +1012,8 @@ class PixelReader(QObject):
             retire_process(self.screenshot,0)
         self.stream.stop(keep_session=keep_stream)
         self.reader_process.close()
-        self.temp.cleanup()
+        from .process_lifecycle import retire_directory
+        retire_directory(self.temp,writers)
 
 
 def pointer_in_shop(pointer, shop_context):

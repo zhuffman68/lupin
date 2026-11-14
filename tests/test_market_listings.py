@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 from types import SimpleNamespace
@@ -293,6 +294,10 @@ class NativeListingTests(unittest.TestCase):
         binary=market_binary(Path(__file__).resolve().parents[1])
         if not binary.is_file() or not os.environ.get('DISPLAY'):
             self.skipTest('Native helper check runs in isolated Xvfb')
+        if sys.platform=='win32':
+            check=subprocess.run([str(binary),'--runtime-check'],capture_output=True,timeout=15)
+            if check.returncode==10:self.skipTest('Production WebView2 is unavailable in this Windows test environment')
+            self.assertEqual(check.returncode,0,check.stderr.decode(errors='replace'))
         with tempfile.TemporaryDirectory() as profile:
             result=subprocess.run([str(binary),'--profile',profile,'--self-test','--listing-item',provider_id(ITEM)],
                                   capture_output=True,timeout=25)

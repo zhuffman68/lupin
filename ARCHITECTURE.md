@@ -66,6 +66,10 @@ and changes the source token.
 three-minute idle release after capture is paused. Loss revokes the submitted
 request/generation before restarting only our reader. `process_lifecycle.py`
 retires explicitly owned processes in parallel without GUI-thread waits. The
+same shared timer retains frame directories until every native, screenshot and
+pickup writer has exited, including already-retiring pickup processes. A
+transient filesystem lock is retried during the final drain/exit; it cannot
+raise through GUI shutdown or leave a permanent polling timer. The
 entry point drains them with a shared final budget and joins cancelled background
 workers before releasing installer IPC. Screen-sharing handoff remains separate.
 

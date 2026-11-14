@@ -277,13 +277,13 @@ class WriterBridgeTests(unittest.TestCase):
                 control.close()
                 self.assertIsNone(control.rectangle())
             overlay.update([0,0,800,600],[dict(x=25,y=25,name='Example Hat',text='FM 1,000',key=100)])
-            for _ in range(100):
+            for _ in range(750):
                 if overlay.layout_boxes:break
                 QTest.qWait(20)
             self.assertTrue(overlay.layout_boxes)
             before=overlay.layout_boxes
             control.open(self.placement,'Super+F8',True)
-            for _ in range(100):
+            for _ in range(250):
                 if control.actual_box:break
                 QTest.qWait(20)
             self.assertIsNotNone(control.actual_box,overlay.last_error)

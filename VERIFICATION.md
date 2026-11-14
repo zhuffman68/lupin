@@ -2,6 +2,21 @@
 
 ## Lupin 1.0.6 release
 
+Windows package qualification also found temporary frame cleanup racing native
+process exit. Directories now remain owned until all reader/screenshot/pickup
+writers stop, including previously retired pickup workers. The existing shared
+reaper handles this without blocking Qt or adding an idle polling loop; transient
+filesystem locks receive a final-drain/exit retry. Three new checks verify all
+writers, GUI responsiveness, retained pickup writers and lock retry behavior.
+
+The affected **121 focused checks pass on Linux in 11.417 s** and **Windows/Wine
+in 19.873 s**, with one explicit Windows skip for unavailable production
+WebView2. Failure-injection tests isolate their one injected reply from valid
+automatic OCR retries; helper fixtures drain their own processes before removing
+their working directories. Model and writer integration tests use separate,
+bounded startup/processing/recovery budgets. Production startup and scan limits
+are unchanged. Final rebuilt-package results are in the linked release report.
+
 Both release readers compile with Rust **1.98.1**, using the musl Linux target
 and pinned LLVM-MinGW Windows toolchain. All **78 native tests pass**. Both
 platform market helpers rebuild, including the exact-item shop-sighting path.

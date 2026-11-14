@@ -10,6 +10,7 @@ Find recent shop locations, browse consistent item cards, and use a more respons
 - Korean reading handles clear messages with unreadable timestamps or senders. Translation checks shortage and negation, improves party/skill wording and drops obsolete results.
 - Hidden pages and unchanged overlays do less work. Translation loads on demand and can release after an idle interval; both local models remain included.
 - Window placement is remembered, Settings can clear cached installers, and Linux packages omit unused debug data.
+- Safer shutdown and updates on Windows while screen readers are finishing.
 
 ### Install or update
 

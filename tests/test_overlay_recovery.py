@@ -56,6 +56,8 @@ class OverlayRecoveryTests(unittest.TestCase):
 
     def tearDown(self):
         for overlay in self.overlays:overlay.close();overlay.deleteLater()
+        from price_lens.process_lifecycle import drain_retired
+        drain_retired()
         QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
         self.stack.close();self.folder.cleanup()
 
