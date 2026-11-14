@@ -1,12 +1,55 @@
 """Independent OCR must agree on one catalog ID; no nearest-name guessing."""
 import unittest
+import hashlib
+from itertools import product
+import numpy as np
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QImage,QColor
 from price_lens.domain import Catalog
-from price_lens.tooltip_names import TooltipNames,roles_agree
+from price_lens.tooltip_names import TooltipNames,roles_agree,name_key
 from price_lens.domain import Item
 
 
 class TooltipNameTests(unittest.TestCase):
+    @staticmethod
+    def original_key(found,image):
+        area=found['area'];rect=QRect(*(area[k] for k in ('x','y','width','height')))
+        patch=image.copy(rect).convertToFormat(QImage.Format.Format_RGBA8888)
+        pixels=bytes(patch.constBits());mask=bytearray()
+        for r,g,b,a in zip(pixels[0::4],pixels[1::4],pixels[2::4],pixels[3::4]):
+            neutral=r>=150 and abs(r-g)<55 and b-r<100
+            coloured=max(r,g,b)>=150 and max(r,g,b)-min(r,g,b)>45
+            mask.append(1 if neutral or coloured else 0)
+        return found.get('name'),found.get('tier'),rect.width(),rect.height(),hashlib.blake2b(mask,digest_size=12).digest()
+
+    def test_name_masks_match_the_original_at_colour_boundaries_and_for_all_alpha_values(self):
+        levels=(0,1,45,46,54,55,99,100,149,150,151,204,205,249,250,255)
+        colors=np.array(list(product(levels,repeat=3)),dtype=np.uint8)
+        rgba=np.empty((32,128,4),dtype=np.uint8);rgba[:,:,:3]=colors.reshape(32,128,3)
+        rgba[:,:,3]=np.arange(4096,dtype=np.uint16).reshape(32,128)%256
+        image=QImage(rgba.tobytes(),128,32,128*4,QImage.Format.Format_RGBA8888).copy()
+        found=dict(name='Unresolved title',tier='Greater',area=dict(x=0,y=0,width=128,height=32))
+        self.assertEqual(name_key(found,image),self.original_key(found,image))
+
+    def test_name_masks_match_on_offset_titles_padded_rgb_rows_and_maximum_width(self):
+        rng=np.random.default_rng(907)
+        rgb=rng.integers(0,256,(38,731,3),dtype=np.uint8)
+        image=QImage(rgb.tobytes(),731,38,731*3,QImage.Format.Format_RGB888).copy()
+        for fmt in (QImage.Format.Format_RGB888,QImage.Format.Format_ARGB32_Premultiplied,QImage.Format.Format_RGBA8888):
+            frame=image.convertToFormat(fmt)
+            for width,height in ((40,8),(151,13),(720,32)):
+                with self.subTest(format=fmt,width=width,height=height):
+                    found=dict(name='Unknown',area=dict(x=7,y=3,width=width,height=height))
+                    self.assertEqual(name_key(found,frame),self.original_key(found,frame))
+
+    def test_name_mask_bounds_and_non_title_changes_keep_the_original_contract(self):
+        before=name_key(self.found,self.image)
+        changed=self.image.copy();changed.setPixelColor(0,0,QColor('white'))
+        self.assertEqual(name_key(self.found,changed),before)
+        for width,height in ((39,14),(721,14),(150,7),(150,33)):
+            found={**self.found,'area':dict(x=0,y=0,width=width,height=height)}
+            self.assertIsNone(name_key(found,self.image))
+
     def setUp(self):
         self.catalog=Catalog({'items':[{'id':1,'name':'Leaf Earrings','category':'Equipment'},
             {'id':2,'name':'Old Raggedy Cape','category':'Equipment'},

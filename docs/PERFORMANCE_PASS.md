@@ -33,6 +33,31 @@ Each implementation entry below must describe its validation and limitations.
 
 ### Live-reading follow-up — 2026-11-14
 
+#### Remaining uncertain-title work
+
+The user subsequently confirmed definite lag with reading enabled. Earlier
+qualified acceptance does not establish that this is resolved. A fresh live
+profile identifies the scalar title-mask loop in `tooltip_names.name_key` as
+a repeated UI-thread cost; profiling magnifies its many Python calls, so its
+profiled elapsed time must not be used as the ordinary callback cost.
+
+That predicate now uses signed NumPy channel calculations with the same strict
+thresholds, ignored alpha, output byte order and digest. No identity, current
+pixel, exclusion, retry or price-request rule changes, and no new cache is
+introduced. Eight name/correction tests pass, including scalar-equivalence
+checks over threshold boundaries, all alpha values, RGB/ARGB/RGBA images,
+padded rows, offset crops and the maximum supported title size.
+
+A paired unprofiled replay alternates old/new implementations for 32 samples
+per case. Median mask CPU drops **0.456 → 0.069 ms** at 150 × 14 and
+**4.587 → 0.298 ms** at 720 × 32. The complete native-result UI replay, with
+a small 109 × 13 unresolved generated title, improves only **7.486 → 7.088 ms**.
+It exercises both mask callers by replaying the native retry text/geometry as
+an initial result; services are offline and no live game is driven. These
+measurements establish the bounded operation's reduction, not uniformly smooth
+live navigation. Remaining callback/event-loop work is still being measured.
+Evidence: `evidence/reading-lag-2026-11-14/` (private).
+
 #### Remaining stalls and view navigation
 
 The user still observed substantial stutter after `852d35b`. Its long numeric

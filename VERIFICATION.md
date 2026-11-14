@@ -1,5 +1,22 @@
 # Verification — 2026-11-13
 
+## Remaining live-reading lag — 2026-11-14
+
+The user's latest observation confirms definite stutter with reading enabled;
+the earlier qualified acceptance below is historical. A fresh live profile
+finds repeated scalar title-mask calculation on the GUI thread. Its vectorized
+replacement preserves the original bytes/digest and all identity/visibility
+rules. **Eight focused tests pass (0.059 s)**, including channel thresholds,
+alpha, formats/stride, offset/maximal crops and existing exact-ID corrections.
+
+Unprofiled alternating old/new measurements show median mask CPU falling
+**0.456 → 0.069 ms** for 150 × 14 and **4.587 → 0.298 ms** for 720 × 32.
+A small generated native-title callback falls only **7.486 → 7.088 ms**.
+The live profile's high scalar timings include instrumentation overhead;
+do not present them as normal UI stall duration. This is a demonstrated local
+cost reduction; live frame delivery and the remaining work are still under
+investigation. No animation is shortened or removed and no build is made.
+
 ## Source-check scheduling and Prices navigation — 2026-11-14
 
 The previous preview still stuttered in the user's live test. Full-image NPC

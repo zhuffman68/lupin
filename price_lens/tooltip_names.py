@@ -1,6 +1,7 @@
 """Catalog validation of independent OCR readings, cached by actual name pixels."""
 import hashlib
 import re
+import numpy as np
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QImage
 from .domain import glyph_key,item_words
@@ -11,11 +12,15 @@ def name_key(found, image):
         area=found['area'];box=QRect(*(int(area[k]) for k in ('x','y','width','height')))
         if not image.rect().contains(box) or not 40<=box.width()<=720 or not 8<=box.height()<=32:return None
         patch=image.copy(box).convertToFormat(QImage.Format.Format_RGBA8888)
-        pixels=bytes(patch.constBits());mask=bytearray()
-        for r,g,b,a in zip(pixels[0::4],pixels[1::4],pixels[2::4],pixels[3::4]):
-            neutral=r>=150 and abs(r-g)<55 and b-r<100
-            coloured=max(r,g,b)>=150 and max(r,g,b)-min(r,g,b)>45
-            mask.append(1 if neutral or coloured else 0)
+        rows=np.frombuffer(patch.constBits(),dtype=np.uint8).reshape(patch.height(),patch.bytesPerLine())
+        # Signed channels preserve the original subtraction thresholds. Alpha
+        # is deliberately ignored, just as in the scalar title-mask predicate.
+        rgb=rows[:,:patch.width()*4].reshape(patch.height(),patch.width(),4)[:,:,:3].astype(np.int16)
+        r,g,b=rgb[:,:,0],rgb[:,:,1],rgb[:,:,2]
+        high=np.maximum(np.maximum(r,g),b);low=np.minimum(np.minimum(r,g),b)
+        neutral=(r>=150)&(np.abs(r-g)<55)&(b-r<100)
+        coloured=(high>=150)&(high-low>45)
+        mask=(neutral|coloured).astype(np.uint8).tobytes()
         return (found.get('name'),found.get('tier'),box.width(),box.height(),hashlib.blake2b(mask,digest_size=12).digest())
     except (KeyError,TypeError,ValueError):return None
 
