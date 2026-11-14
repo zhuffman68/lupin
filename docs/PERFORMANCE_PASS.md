@@ -84,8 +84,10 @@ CPU remains background work. Without preparation, that fallback still takes
 replays native retry text/geometry as an initial unresolved result and uses
 offline UI services, not game input or physical compositor measurements.
 The complete suite after the title-mask step passes **1,501 tests in 256.507 s,
-three skipped**. The final focused capture/geometry suite passes **125 tests in
-17.489 s**; the complete rerun of the combined changes follows below.
+three skipped**. The final focused capture/geometry suite passes **126 tests in
+18.796 s**; this also covers unverified native panel metadata requiring
+background fallback preparation. The complete rerun of the combined changes
+follows below.
 
 #### Remaining stalls and view navigation
 

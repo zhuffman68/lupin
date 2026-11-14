@@ -57,6 +57,13 @@ class PreparedBoundsTests(unittest.TestCase):
             self.assertEqual(discover.call_count,1)
 
     def test_explicit_native_panel_uses_ordinary_validation_without_legacy_preparation(self):
-        with patch('price_lens.tooltip_geometry.description_bounds',side_effect=AssertionError('Unneeded legacy geometry')):
+        with patch('price_lens.tooltip_geometry.native_panel',return_value=self.bounds),patch('price_lens.tooltip_geometry.description_bounds',side_effect=AssertionError('Unneeded legacy geometry')):
             self.assertIsNone(prepare_bounds(self.request,self.image,dict(
                 tooltip=dict(found=dict(name='Generated title',area=self.area)),tooltipPanel=dict(version=1))))
+
+    def test_unverified_native_metadata_cannot_keep_fallback_discovery_on_the_gui(self):
+        with patch('price_lens.tooltip_geometry.native_panel',return_value=None),patch('price_lens.tooltip_geometry.description_bounds',return_value=self.bounds) as discover:
+            prepared=prepare_bounds(self.request,self.image,dict(
+                tooltip=dict(found=dict(name='Generated title',area=self.area)),tooltipPanel=dict(version=1)))
+        discover.assert_called_once()
+        self.assertEqual(prepared.lookup(self.request,self.image,self.area,()),(True,self.bounds))

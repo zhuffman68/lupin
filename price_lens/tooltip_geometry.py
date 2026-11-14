@@ -36,15 +36,15 @@ def prepare_bounds(request,image,result):
     if association_state(result.get('tooltipAssociation'))!='normal':return None
     tooltip=result.get('tooltip');hover=result.get('hover')
     other=hover.get('tooltip') if isinstance(hover,dict) else None
-    candidates=[other]
-    if not isinstance(result.get('tooltipPanel'),dict):candidates.append(tooltip)
-    exclude=tuple(QRect(*rect) for rect in request.annotations);entries={}
-    for value in candidates:
+    exclude=tuple(QRect(*rect) for rect in request.annotations);entries={};seen=set()
+    for value in (other,tooltip):
         found=value.get('found') if isinstance(value,dict) else None
         area=found.get('area') if isinstance(found,dict) else None
         if not isinstance(area,dict):continue
         parts=tuple(area.get(k) for k in ('x','y','width','height'))
-        if any(type(v) is not int for v in parts) or parts in entries:continue
+        if any(type(v) is not int for v in parts) or parts in seen:continue
+        seen.add(parts)
+        if native_panel(result.get('tooltipPanel'),found,image,exclude) is not None:continue
         bounds=description_bounds(image,area,exclude)
         entries[parts]=bounds.getRect() if bounds is not None else None
     return PreparedBounds(request,QImage(image),tuple(rect.getRect() for rect in exclude),tuple(entries.items())) if entries else None

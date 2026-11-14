@@ -715,7 +715,7 @@ class PixelReader(QObject):
         hover=result.get('hover');other=hover.get('tooltip') if isinstance(hover,dict) else None
         legacy=association_state(result.get('tooltipAssociation'))=='normal' and (
             isinstance(other,dict) and other.get('found')
-            or isinstance(generic,dict) and generic.get('found') and not isinstance(result.get('tooltipPanel'),dict))
+            or isinstance(generic,dict) and generic.get('found'))
         if not discover_needed and not legacy:return False
         discover=find_npc_shop
         def check(token):

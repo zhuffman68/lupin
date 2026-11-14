@@ -35,9 +35,10 @@ physical frame-rate or Windows acceptance result.
 
 The title-mask checkpoint's complete suite passes **1,501 tests (256.507 s),
 three skipped**. The final focused capture, source-check and geometry suite
-passes **125 tests (17.489 s)**, including source-pixel/request/mask rejection,
+passes **126 tests (18.796 s)**, including source-pixel/request/mask rejection,
 prepared misses, partial ordering, pause/close behavior, native scaled rails,
-independent inventory pricing and existing NPC/viewport checks. A combined
+independent inventory pricing and existing NPC/viewport checks. Unverified
+native panel metadata cannot skip background fallback preparation. A combined
 complete rerun is pending at this checkpoint.
 
 ## Source-check scheduling and Prices navigation — 2026-11-14
