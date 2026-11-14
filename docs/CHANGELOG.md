@@ -5,72 +5,38 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
-## Unreleased — performance and resource improvements
+## 1.0.6
 
-- Reduced repeated shop-name, title and description-frame checks. NPC-shop
-  discovery and large description searches run in the background, retaining
-  item, shop and inventory validation while reading continues. Crowded shop
-  hovers and changing item cards do less repeated work; hidden cards release
-  external requests while a small reusable pool avoids rebuilding their controls.
+See [the patch record](PATCH_1.0.6.md) for downloads, installation and verification.
 
-- On-screen items now use the available height. Click an item to open its
-  details; returning to the list keeps its scroll position. Pages keep their contents
-  steady while sliding away, including during card refreshes and fades.
-  Item details and the on-screen list slide apart without doubled text; prices
-  and thumbnails can update during the transition without restarting it.
+- Find recent shops in the **Where seen** tab on item cards in Prices and
+  Database: seller, channel/FM room or map, asking price, quantity and sighting
+  age. Results load when opened, animate in and stay cached for 15 minutes.
+- Search, watched/recent selections and inventory descriptions share the same
+  detailed cards. Click a shop row for its full card; full-width tabs and paired
+  stats make Overview easier to browse.
+- On-screen items use the available height. Moving between the list and item
+  details retains scroll positions and uses a clean slide without doubled text.
+- Reduced interface stalls during screen reading, card changes and crowded shop
+  hovers. Page slides, card resizing, wheel scrolling, watched-item expansion
+  and rolling numbers retain their animations while doing less repeated work.
+- Steadier inventory prices through brief unreadable frames, moving descriptions
+  and small pointer movements, including consumables, scrolls and materials with
+  a shop open. Shop-item hovers continue to use listing labels only.
+- Market refreshes, image loading and large description searches do more work in
+  the background. Unchanged overlays and hidden pages avoid unnecessary updates;
+  the reader starts when needed and releases idle resources.
+- Korean reading handles clear chat messages with unreadable timestamps/senders
+  and slightly varied bubble colors. Translation checks shortage and negation,
+  improves party/skill wording and discards results for messages that have moved
+  away or changed.
+- Prices and Database share image caches. Korean translation loads on demand
+  and can release after an idle interval; both local models remain included.
+- Window placement is remembered. Settings can clear cached installers, and
+  Linux packages omit unused debug data while retaining the translation models.
 
-- Smoother wheel scrolling and less work during page slides, watched-list
-  expansion and rolling numbers. Item cards resize smoothly between details
-  and different items, with steadier text and interrupted transitions. Full
-  opening/closing effects are retained. Large shop-sighting lists paint only
-  visible rows; hidden content and unchanged status do less work.
-
-- Searched items and inventory/equipment descriptions share detailed item cards.
-  Click a shop row to open the same view with its asking price. Full-width tabs,
-  paired stats and inline requirements reduce scrolling in Overview.
-
-- Item cards in Prices and Database have a **Where seen** tab for recent shops,
-  with seller, channel/FM room or map, asking price, quantity and sighting age.
-  Listings load on demand and stay cached for 15 minutes, including empty
-  results, with a smooth reveal as locations arrive. Failed refreshes keep
-  previous sightings with their original ages.
-
-- Blue item-description prices retain their verified item through temporary OCR
-  misses and small cursor movements, including movement during the first read.
-  Unchanged complete titles reuse recognition to reduce repeated work. Placement
-  avoids the captured description and its moving position; changed items still
-  clear immediately. Shop-item hovers continue to use listing labels only.
-- Unchanged price overlays stay visible while reading continues. Lightweight
-  liveness messages preserve timeout protection without rebuilding labels or
-  restarting their animations.
-
-- Inventory items can be recognized in front of a shop's saved rectangle,
-  including consumables, scrolls and materials on previously skipped inventory
-  tabs, without enabling duplicate description prices for shop listings.
-- Korean chat can recover a clear message despite an unreadable timestamp or
-  sender. Bubble detection tolerates small channel-rounding differences;
-  freeform translation considers two candidates and checks explicit shortage
-  and negation, with clearer party-member and skill-request wording.
-
-- Market refreshes prepare saved prices and availability in the background,
-  keeping the interface responsive. Older catalogs remain available offline.
-- Screen reading avoids discarded-frame conversions and unnecessary tooltip
-  copies. The reader starts when needed, recovers from failures, and stops
-  obsolete shop repair after scrolling.
-- Price overlays skip duplicate updates and repaint changed areas. Hidden
-  pages and unchanged tracking controls do less work while timers and rolling
-  numbers keep their normal cadence.
-- Prices and Database share image downloads and caches; disk reads and decoding
-  no longer run on the interface thread. Search reuses normalized item names.
-- Korean reading loads on first scan, can release after a configurable idle
-  period, and recovers without requiring an off/on toggle. Late translations
-  require current matching pixels and no longer count discarded results.
-- Window placement is remembered, helper shutdown runs in parallel, Settings
-  shows clearable installer-cache storage, and Linux packages retain both
-  translation models while omitting non-loaded debug data.
-
-Implementation, validation and platform limits are recorded in
-[the performance work log](PERFORMANCE_PASS.md). This entry is not a published release.
+Implementation, measured results and platform limits are recorded in
+[the performance work log](PERFORMANCE_PASS.md) and [verification](../VERIFICATION.md).
 
 ## 1.0.5
 

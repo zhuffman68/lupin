@@ -20,7 +20,7 @@ Compare player-shop listings with color-coded market references beside each item
 
 Star items to watch for them while browsing shops. Recently seen items stay in the Prices tab, with thumbnails and their last seen asking prices. Saved market prices remain available between refreshes.
 
-Open **Where seen** in an item card to find recently spotted shops, sellers, channels and FM rooms, with asking prices and sighting ages. Listings are cached for 15 minutes; an item may have sold since it was seen.
+**Find a shop:** open an item's **Where seen** tab in Prices or Database to see recent sellers, channels and FM rooms or other map locations. Each sighting includes the asking price, quantity and when it was last seen. Results load when you open the tab and stay cached for 15 minutes; an item may have sold since it was spotted.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/prices.gif" width="640" alt="Lupin showing market prices beside items in two player shops">
@@ -53,7 +53,7 @@ Both directions run on your device, with everything included.
 
 Browse Classic World **Items, Monsters, Skills, Maps, and Quests**. Search for an entry or explore illustrated categories and jobs.
 
-Look up item stats and market prices, monster drops and locations, skill ranks, and quest rewards. Explore maps with zoom and portal destinations, or follow quests to their next step. Downloaded information stays available offline.
+Look up item stats, market prices and recent shop locations in the same item card. Browse monster drops and locations, skill ranks, and quest rewards. Explore maps with zoom and portal destinations, or follow quests to their next step. Downloaded information stays available offline.
 
 ## Screenshots
 
