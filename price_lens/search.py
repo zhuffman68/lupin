@@ -455,7 +455,7 @@ class PriceSearch(QWidget):
                 image=self.thumbnails.image(self.selected.game_id)
                 card.thumbnail.show()
                 if not image.isNull() or not record:card.thumbnail.set_image(image)
-            if changed:incoming=card
+            if changed and self.inline_detail:incoming=card
             self.request_thumbnails()
             self.reference_changed.emit()
         else:

@@ -61,7 +61,8 @@ class ComposerWidget(QWidget):
         visibility(self.preview,bool(c.result))
         self.progress.setVisible(c.busy and not c.error)
         self.status.setText(c.error or c.note or c.status)
-        self.status.setStyleSheet('color:#e4bd7b;font-size:11px' if c.error or 'Ambiguous' in c.note else 'color:#a6b1bf;font-size:11px')
+        style='color:#e4bd7b;font-size:11px' if c.error or 'Ambiguous' in c.note else 'color:#a6b1bf;font-size:11px'
+        if self.status.styleSheet()!=style:self.status.setStyleSheet(style)
         self.copy.setEnabled(bool(c.text) and c.copy_pending is None)
         self.copy.setText('Translating…' if c.copy_pending is not None else 'Translate && Copy')
 

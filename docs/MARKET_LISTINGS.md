@@ -25,6 +25,12 @@ temporarily showing outgoing pages cannot create another request. Hiding or
 minimizing the view removes pending demand and its age timer. An already started
 request may complete into the cache.
 
+The hidden tab does not build its body, query its saved state or construct
+sighting-row widgets. Build and refresh that presentation only when explicitly
+selected and visible. Hidden source changes leave retained rows alone; opening
+the tab reconciles them with the latest cached snapshot. This keeps cached
+popular items from adding hundreds of widgets to an unrelated card transition.
+
 One native helper runs at a time for this service. New selections replace pending
 demand; they never create a queue of obsolete items. If a full-market refresh is
 already busy, sightings wait without blocking the GUI or screen reader. A later

@@ -42,6 +42,15 @@ class Market:
 
 
 class DatabaseUiTests(unittest.TestCase):
+    def test_tab_switches_reuse_counts_but_a_database_reload_refreshes_them(self):
+        p=self.panel;p.update_status()
+        with patch.object(p.store,'metadata',wraps=p.store.metadata) as metadata,\
+                patch.object(p.store,'released_counts',wraps=p.store.released_counts) as counts:
+            for active in (False,True,False,True):p.set_active(active);self.app.processEvents()
+            metadata.assert_not_called();counts.assert_not_called()
+            p.reloaded();self.app.processEvents()
+            metadata.assert_called_once();counts.assert_called_once()
+
     @classmethod
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
 

@@ -50,15 +50,15 @@ class ClippedSection(QWidget):
 
     def advance(self,value):
         self.setFixedHeight(round(value))
-        # Qt otherwise paints a frame with the old ancestor height, squeezing
-        # the header/body apart before the queued layout request catches up.
-        chain=[];parent=self.parentWidget()
+        # Settle the affected section from inside out. Its fixed-height change
+        # already invalidates the owning layout; do not invalidate the whole
+        # window or Qt's private page stack on every animation frame.
+        parent=self.parentWidget()
         while parent is not None:
-            chain.append(parent);parent.updateGeometry()
-            if parent.layout():parent.layout().invalidate()
-            parent=parent.parentWidget()
-        for parent in reversed(chain):
             if parent.layout() and parent.layout().isEnabled():parent.layout().activate()
+            parent.updateGeometry()
+            if parent.isWindow() or parent.property('motionLayoutBoundary'):break
+            parent=parent.parentWidget()
         self.update()
 
     def finish(self):

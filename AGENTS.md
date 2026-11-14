@@ -37,6 +37,11 @@ Sources/listings are explicit visible-tab demand, with no preloading while
 hovering through items. Historical asking prices must say Last seen price and
 cannot become current offers. See docs/ITEM_CARDS.md.
 
+Retain animation effects and durations when improving performance; do not
+substitute instant swaps or shortened fades. Only Reduce motion and hidden
+surfaces bypass motion. Tab slides show the pages in their travel range and keep
+unrelated pages hidden. Hidden Where seen tabs must not construct saved rows.
+
 EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 
 Linux packages are named `lupin` and replace `classic-price-lens`. Preserve existing per-user data and the desktop/portal identity during migration. Prices includes manual search; Translation has its own tab. Shortcuts default on both platforms to Super/Win+F9 prices, +F10 EXP, +F11 reading Korean and +F8 writing Korean; retain explicitly customized assignments. Shop labels stay fully opaque and in place for the verified current page, except where a verified add-item form overlaps their measured rectangles. Native shop descriptions may refine a clipped listing identity, but never create another price overlay or replace the shop list in Prices.

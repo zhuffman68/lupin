@@ -258,10 +258,13 @@ the vendor pin are unchanged. [ITEM_CARDS.md](ITEM_CARDS.md) and
 The scrolling/card-opening follow-up adds one bounded wheel animation per own
 viewport, preserves direct trackpad/scrollbar input and disables motion when
 hidden or reduced. Reference-list media demand is coalesced during motion, and
-watched-thumbnail selection uses the existing exact-ID catalog index. Selecting
-a Prices card avoids two whole-viewport snapshots and their 130 ms transition;
-the summary is initialized once with its actual data and the live card has a
-brief reveal. The timing evidence and regression outcome are recorded in
+watched-thumbnail selection uses the existing exact-ID catalog index. Prices
+cards retain their full 130 ms opening/closing transition. Page slides,
+watched-section motion and number rolls retain their effects and durations.
+Glyph/height caching, affected-layout propagation, unchanged-style guards,
+cached database counts and deferred hidden sightings reduce work around those
+animations. The summary is initialized once with its actual data. The timing
+evidence and regression outcome are recorded in
 [VERIFICATION.md](../VERIFICATION.md); no game capture/recognition or release
 artifact changes are part of this follow-up.
 

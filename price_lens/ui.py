@@ -410,6 +410,7 @@ class LensWindow(QMainWindow):
         self.exp_panel.meso_overlay_check.blockSignals(False)
         self.tabs = AnimatedTabs()
         self.prices_page = QWidget()
+        self.prices_page.setProperty('motionLayoutBoundary',True)
         prices_layout = QVBoxLayout(self.prices_page)
         prices_layout.setContentsMargins(0,0,0,0)
         prices_layout.setSpacing(8)
@@ -441,7 +442,7 @@ class LensWindow(QMainWindow):
         self.price_content_layout.addWidget(self.onscreen_button)
         self.price_content_layout.addWidget(self.scroll,1)
         prices_layout.addWidget(self.price_content,1)
-        self.search_panel.detail_changing.connect(self.begin_detail_change)
+        self.search_panel.detail_changing.connect(self.price_content.begin)
         self.search_panel.active_changed.connect(self.update_price_layout)
         self.search_panel.watched_items.visible_changed.connect(self.update_price_layout)
         self.search_tab_index=0
@@ -612,13 +613,6 @@ class LensWindow(QMainWindow):
         from .shortcut_ui import edit_shortcuts
         edit_shortcuts(self,focus)
 
-    def begin_detail_change(self):
-        # Show the live selected card immediately, using its own brief reveal.
-        # Taking two whole-page snapshots here delays the response to a click.
-        self.opening_detail=self.search_panel.selected is not None
-        if self.opening_detail:self.price_content.finish()
-        else:self.price_content.begin()
-
     def update_price_layout(self,*_):
         if not hasattr(self,"onscreen_button"):return
         watching=self.search_panel.watched_items.expanded
@@ -628,7 +622,7 @@ class LensWindow(QMainWindow):
         if not self.rows and not detail and not self.search_panel.query.text().strip():show=True
         content_key=(detail,show)
         if content_key!=getattr(self,'price_content_key',None):
-            if not getattr(self,'opening_detail',False) and self.price_content.before is None:self.price_content.begin()
+            if self.price_content.before is None:self.price_content.begin()
             self.price_content_key=content_key
         self.onscreen_button.setVisible(active and bool(self.rows))
         self.onscreen_button.setText(f"On-screen items · {len(self.rows)}"+ (" ▾" if self.onscreen_button.isChecked() else " ▸"))
@@ -639,7 +633,6 @@ class LensWindow(QMainWindow):
         self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.search_panel.detail_scroll),1 if detail else 0)
         self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.scroll),0 if detail else 1)
         self.price_content.complete()
-        self.opening_detail=False
         self.update_shop_thumbnails()
         if watching:self.update_watched_quotes()
 
@@ -1299,7 +1292,8 @@ class LensWindow(QMainWindow):
         title, detail, tone, action = self.connection_state()
         self.status_badge.setText(title)
         self.status_badge.setToolTip(detail)
-        self.status_badge.setStyleSheet(f"color: {COLORS[tone]}; font-weight: 650; font-size: 13px")
+        status_style=f"color: {COLORS[tone]}; font-weight: 650; font-size: 13px"
+        if self.status_badge.styleSheet()!=status_style:self.status_badge.setStyleSheet(status_style)
         self.capture_info.setText(detail)
         self.capture_info.setVisible(True)
         self.setup_details.setVisible(bool(self.capture_error or self.capture_starting and not self.session_available or action))

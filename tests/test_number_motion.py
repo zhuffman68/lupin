@@ -9,6 +9,34 @@ from price_lens import window_size
 
 
 class NumberMotionTests(unittest.TestCase):
+    def test_wrapped_currency_height_is_reused_and_updates_for_font_text_and_width(self):
+        from unittest.mock import patch
+        from price_lens import gui_currency
+        label=MotionLabel('Collected 12,345 mesos while training');label.setWordWrap(True)
+        font=label.font();font.setPixelSize(12);label.setFont(font)
+        with patch('price_lens.gui_currency.document',wraps=gui_currency.document) as document:
+            height=label.heightForWidth(130)
+            for _ in range(12):self.assertEqual(label.heightForWidth(130),height)
+            document.assert_called_once()
+            self.assertGreaterEqual(label.heightForWidth(70),height)
+            font.setPixelSize(24);label.setFont(font);large=label.heightForWidth(130);self.assertGreater(large,height)
+            label.setText('12 mesos');self.assertLess(label.heightForWidth(130),large)
+        label.deleteLater()
+
+    def test_clear_removes_cached_numeric_content_and_font_changes_remeasure_cells(self):
+        from PySide6.QtGui import QFont,QFontMetrics
+        self.app.setProperty('reduceMotion',True)
+        for label in (MotionLabel('1,234 mesos'),RollingLabel('1,234')):
+            label.show();self.app.processEvents();label.clear()
+            self.assertEqual(label.text(),'')
+            roll=label.number_roll if isinstance(label,MotionLabel) else label.roll
+            self.assertEqual(roll.text,'');self.assertFalse(roll.numeric)
+            label.hide();label.deleteLater()
+        roll=NumberRoll('123');font=QFont();font.setPixelSize(12)
+        small=roll.layout(QFontMetrics(font));font.setPixelSize(24)
+        large=roll.layout(QFontMetrics(font))
+        self.assertGreater(large[1],small[1]);self.assertGreater(large[2],small[2])
+
     @classmethod
     def setUpClass(cls):
         os.environ.setdefault('QT_QPA_PLATFORM','offscreen');cls.app=QApplication.instance() or QApplication([])

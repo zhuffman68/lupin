@@ -42,11 +42,21 @@ the canvas adjusts through its normal height animation. CardArea invalidates
 application layouts without descending into Qt's private tab-container layouts.
 Item tabs retain their existing slide and reduced-motion behavior.
 
-Opening a selected item in Prices presents the live card immediately with a
-brief 85 ms reveal. It does not take whole-page before/after screenshots or
-wait behind their transition. Closing a selection keeps the existing animated
-return to the prior content. The factory initializes the price summary with the
-actual selected quote/offer once, avoiding temporary empty-price renders.
+Opening and closing a selected item in Prices retain the full 130 ms composited
+fade/lift transition. The factory initializes the price summary with the actual
+selected quote/offer once, avoiding temporary empty-price renders. Do not replace
+this motion with an immediate swap or a shortened fade to meet performance
+targets. Page slides, watched-section expansion and rolling numbers also retain
+their durations; only Reduce motion and hidden surfaces bypass their effects.
+
+Animation work is bounded independently of its duration. Number rolls reuse
+glyph advances, wrapped labels cache a small set of measured heights, and
+unchanged capture/translation status cannot repeatedly repolish its style.
+Watched expansion settles only the affected owner layouts, stopping before
+Qt's private page stack. Adjacent tab slides keep unrelated pages hidden; a
+longer slide still shows every page in its travel range, with live page content.
+Database count/date summaries refresh on database updates rather than each
+navigation/status tick.
 
 ## Scrolling
 
@@ -80,7 +90,10 @@ requests begin only for a visible Sources view. An automatic cash card showing
 its default Sources tab uses cached data until the user activates that tab.
 Where seen retains its separate 15-minute positive/empty/failure cache and only
 the selected visible item tab supplies demand; moving through descriptions does
-not preload every item's listings. A new automatic item starts on its default
+not preload every item's listings. Its body and cached sighting rows are also
+created only when that tab is visible; hidden refresh signals do not build or
+rebuild them. Previously displayed rows remain retained for the next visit.
+A new automatic item starts on its default
 tab. Visibility uses explicit owner/subtab state, never parent walks through
 Qt's private stacked widgets. Shared image demand includes the visible automatic
 card, with late media/report results updating its retained rows.

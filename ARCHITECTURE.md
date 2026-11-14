@@ -1035,9 +1035,16 @@ own scroll areas, lists and scrollbars. One 125 ms animation accumulates/retarge
 wheel motion; native pixel/gesture scrolling and scrollbar/programmatic changes
 stay direct. Hide cancels motion and Reduce motion bypasses easing. Reference
 lists coalesce image-demand work during movement while retaining nearby-image
-prefetch. Opening a Prices detail card bypasses the whole-page snapshot
-transition: the common factory initializes its actual quote/offer once and the
-live card receives an 85 ms reveal after its owner has made it visible. Clearing
-the selection retains the normal animated return.
+prefetch. Prices item opening and clearing retain the full 130 ms composited
+fade/lift transition. The common factory initializes its actual quote/offer once.
+Number rolls cache glyph advances and wrapped labels retain up to eight measured
+heights, invalidated by text, font/style and geometry inputs. Resting labels do
+not walk ancestors on every paint. Watched expansion settles the affected owner
+layouts without invalidating the main window/private page stack. Live tab slides
+show only pages in their travel range. Database count/date summaries refresh
+when its updated signal invalidates them; pending/error text stays live. Hidden
+Where seen panels neither build their body nor render saved rows until selected.
+Performance changes must retain animation effects and durations; Reduce motion
+and hidden surfaces remain the explicit exceptions.
 
 The Prices scroll area reserves a narrow constant gutter and paints no empty scrollbar; scrollbar visibility cannot change card width or end a transition. A brief unknown name in the same proven shop slot inherits only the prior GUI presentation for two seconds. Its raw observation remains unknown. Masked shop-title identity can use only its exact captured list slot plus independent exposed shop guards and a native description body. Descriptions from shop rows never create a separate price reference. The Prices list and current-page labels keep their existing widgets and keys through hover changes.

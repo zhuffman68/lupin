@@ -297,7 +297,8 @@ class WriterOverlay(QDialog):
             c.note or (c.status if c.text and not c.result else ''))))
         self.detail.setText(detail); self.detail.setVisible(bool(detail))
         self.body_scroll.setVisible(bool(detail or c.result))
-        self.detail.setStyleSheet('color:#e4bd7b;font-size:10px' if c.error else 'color:#aab8ca;font-size:10px')
+        style='color:#e4bd7b;font-size:10px' if c.error else 'color:#aab8ca;font-size:10px'
+        if self.detail.styleSheet()!=style:self.detail.setStyleSheet(style)
         self.copy.setEnabled(bool(c.text) and not c.copy_pending)
         self.copy.setText('Translating…' if c.copy_pending else 'Translate && Copy')
         self.fit()

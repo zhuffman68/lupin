@@ -9,6 +9,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from PySide6.QtCore import QObject, QEvent, QCoreApplication, Signal
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
@@ -197,6 +198,19 @@ class ListingServiceTests(ListingTestCase):
 
 
 class ListingWidgetTests(ListingTestCase):
+    def test_cached_sightings_do_not_build_hidden_rows_while_other_cards_animate(self):
+        from price_lens.listing_widgets import ListingRow
+        self.tabs.setCurrentWidget(self.panel);self.until(lambda:bool(self.fetcher.requests));self.accept()
+        self.tabs.setCurrentIndex(0);self.app.processEvents()
+        with patch('price_lens.listing_widgets.ListingRow',wraps=ListingRow) as rows:
+            candidate=WhereSeenPanel(ITEM,self.service,selected=lambda:self.tabs.currentWidget() is candidate)
+            self.tabs.addTab(candidate,'Other item')
+            for _ in range(5):self.service.changed.emit(ITEM.game_id);candidate.refresh()
+            rows.assert_not_called();self.assertIsNone(candidate.widget())
+            self.assertFalse(candidate.timer.isActive())
+            self.tabs.setCurrentWidget(candidate);self.app.processEvents()
+            self.assertEqual(len(candidate.rows),1);rows.assert_called_once()
+
     def setUp(self):
         super().setUp()
         self.app.setProperty('reduceMotion',True)

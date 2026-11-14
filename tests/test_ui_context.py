@@ -163,6 +163,34 @@ class FakeThumbnails(QObject):
 
 
 class ContextUiTests(unittest.TestCase):
+    def test_watched_expansion_keeps_later_page_slides_available(self):
+        w=self.window;w.show();self.app.processEvents();self.app.setProperty('reduceMotion',False)
+        w.watchlist.toggle(w.catalog.by_id[1]);w.search_panel.watched_items.set_expanded(True)
+        QTest.qWait(250);w.tabs.setCurrentIndex(w.exp_tab_index)
+        self.assertIsNotNone(w.tabs.stack);self.assertTrue(w.tabs.sliding)
+        QTest.qWait(90);self.assertTrue(w.tabs.sliding)
+        self.assertGreater(w.tabs.animation.currentTime(),0)
+
+    def test_adjacent_page_slides_do_not_wake_an_unrelated_database_page(self):
+        w=self.window;w.show();self.app.processEvents();self.app.setProperty('reduceMotion',False)
+        with patch.object(w.database_panel,'showEvent',wraps=w.database_panel.showEvent) as shown:
+            w.tabs.setCurrentIndex(w.exp_tab_index)
+            self.assertTrue(w.tabs.sliding);self.assertFalse(w.database_panel.isVisible())
+            QTest.qWait(300)
+            w.tabs.setCurrentIndex(w.translation_tab_index)
+            self.assertTrue(w.tabs.sliding);shown.assert_not_called()
+            QTest.qWait(300);w.tabs.setCurrentIndex(w.database_tab_index)
+            self.assertTrue(w.tabs.sliding);self.assertTrue(w.database_panel.isVisible())
+            self.assertGreater(shown.call_count,0)
+
+    def test_repeated_capture_state_does_not_reapply_the_same_style(self):
+        w=self.window;w.update_capture_controls()
+        with patch.object(w.status_badge,'setStyleSheet',wraps=w.status_badge.setStyleSheet) as style:
+            for _ in range(12):w.update_capture_controls()
+            style.assert_not_called()
+            w.mode='paused';w.update_capture_controls()
+            self.assertEqual(style.call_count,1)
+
     def test_inventory_and_search_share_the_same_full_item_card(self):
         from price_lens.reference_details import EntryDetails
         w=self.window;self.app.setProperty('reduceMotion',True);w.show()
@@ -190,23 +218,20 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(detail.summary_card.store_caption.text(),'Last seen price')
         self.assertIn('100',detail.fields['store'].text())
 
-    def test_opening_item_details_reveals_the_live_card_without_a_page_snapshot(self):
-        from price_lens.motion import reveal
+    def test_opening_item_details_keeps_the_full_animated_transition(self):
         w=self.window;w.show();self.app.processEvents();self.app.setProperty('reduceMotion',False)
         w.on_reading(self.reading(shop_hover=True));QTest.qWait(230)
         card=next(card for key,card in w.card_views.items() if key[0] is False)
-        visible_at_reveal=[]
-        def show_incoming(widget):visible_at_reveal.append(widget.isVisible());reveal(widget)
-        with patch.object(w.price_content,'grab',wraps=w.price_content.grab) as snapshots,\
-                patch('price_lens.search.reveal',side_effect=show_incoming):
-            QTest.mouseClick(card.fields['name'],Qt.MouseButton.LeftButton)
-            self.app.processEvents()
-            snapshots.assert_not_called()
+        QTest.mouseClick(card.fields['name'],Qt.MouseButton.LeftButton)
         detail=w.search_panel.price_view
-        self.assertTrue(detail.isVisible());self.assertIsNone(w.price_content.outgoing)
+        self.assertTrue(detail.isVisible());self.assertIsNotNone(w.price_content.outgoing)
         self.assertEqual(detail.summary_card.content_row['price']['mesos'],100)
-        self.assertEqual(visible_at_reveal,[True])
-        QTest.qWait(110);self.assertIsNone(detail.graphicsEffect())
+        animation=w.price_content.animation;animation.pause();animation.setCurrentTime(65)
+        self.assertGreater(w.price_content.outgoing.progress,0)
+        self.assertLess(w.price_content.outgoing.progress,1)
+        self.assertEqual(animation.duration(),130)
+        animation.resume();animation.setCurrentTime(130);self.app.processEvents()
+        self.assertIsNone(w.price_content.outgoing);self.assertTrue(detail.isVisible())
 
     def test_automatic_overview_does_not_request_external_item_sources(self):
         w=self.window;self.app.setProperty('reduceMotion',True);w.show()
@@ -232,10 +257,13 @@ class ContextUiTests(unittest.TestCase):
         w.on_reading(self.reading(shop_hover=False));self.app.processEvents()
         card=next(card for key,card in w.card_views.items() if key[0] is True)
         QTest.qWait(230)  # The initial card reveal must finish before a user can click it.
-        card.tabs.setCurrentIndex(1);QTest.qWait(300)
+        card.tabs.setCurrentIndex(1);card.tabs.animation.pause();card.tabs.animation.setCurrentTime(130)
         now=time.time()
         for price in (1200,1500,1000):w.service.deliver_quote(1,Quote(1,price,now,now,20,'Test','','24h'));self.app.processEvents()
-        self.assertEqual(card.tabs.currentIndex(),1);self.assertFalse(card.tabs.sliding)
+        self.assertEqual(card.tabs.currentIndex(),1);self.assertTrue(card.tabs.sliding)
+        self.assertEqual(card.tabs.animation.currentTime(),130)
+        card.tabs.animation.resume();card.tabs.animation.setCurrentTime(card.tabs.animation.duration())
+        self.assertFalse(card.tabs.sliding)
         self.assertTrue(card.tabs.currentWidget().isVisible());self.assertTrue(card.tabs.stack.layout().isEnabled())
         self.assertEqual(card.tabs.currentWidget().geometry(),card.tabs.stack.contentsRect())
 

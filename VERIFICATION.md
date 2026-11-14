@@ -1,5 +1,35 @@
 # Verification — 2026-11-13
 
+## Preserved animations and lower frame work — 2026-11-14
+
+The Prices selection transition is restored to its full **130 ms** composited
+fade/lift. Live page slides remain **260 ms**, watched-list expansion **220 ms**,
+and number rolls **160 ms**. Effects are bypassed only for the existing hidden
+surface/Reduce motion rules. The earlier short-fade-only opening below is
+superseded by this implementation.
+
+- Private interaction checks cover main/subtab slides, interrupted transitions,
+  watched expansion/clipping, price refresh during a slide, cached sightings,
+  rolling digits, text/font/width cache invalidation and unchanged-status style
+  work. A targeted 256-test run passed before the final height-cache/transition
+  refinements; **26 dedicated final guards** also pass after those refinements.
+- A 27-action Xvfb/xcb comparison uses a read-only backup of the real local
+  database, a copied price cache and offline capture/thumbnail services. Both
+  versions retain the full selection transition. Across this one controlled
+  sequence, summed **UI-thread action CPU** falls from **760.1 ms to 390.0 ms**;
+  CPU across the actions plus their animation intervals falls from **2,549.5 ms
+  to 2,237.0 ms**. Main-tab actions account for **247.6 ms to 52.2 ms** of that
+  reduction. These are aggregate CPU times, not per-click latency or a display
+  FPS guarantee. Wall-time gaps varied substantially with concurrent load.
+- The principal changes are glyph-advance and wrapped-height reuse, affected
+  section layout propagation with an explicit page boundary, limiting live
+  slides to their travel range, count/date reuse until database updates, and
+  building/rendering saved Where seen rows only while explicitly visible.
+  Unchanged capture/translation status does not repolish styles repeatedly.
+- Private evidence is under `evidence/animation-performance-2026-11-14/`.
+  It includes both full-animation source baselines, timing/profile output and
+  isolated guards. No installer/release artifact is part of this UI follow-up.
+
 ## Smooth scrolling and selected-card response — source preview
 
 - The complete regression run passes **1,445 tests, three skipped, 294.700 s**

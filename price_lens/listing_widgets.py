@@ -61,9 +61,19 @@ class WhereSeenPanel(SmoothScrollArea):
         self.signature = None
         self.observing = False
         self.observed_window = None
+        self.built = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timer = QTimer(self)
+        self.timer.setInterval(60000)
+        self.timer.timeout.connect(self.refresh)
+        if service:
+            service.changed.connect(self.changed)
+
+    def build_body(self):
+        if self.built:return
+        self.built=True
         content = QWidget()
         self.body = QVBoxLayout(content)
         self.body.setContentsMargins(3,7,3,0)
@@ -85,12 +95,6 @@ class WhereSeenPanel(SmoothScrollArea):
         self.body.addWidget(self.source,0,Qt.AlignmentFlag.AlignLeft)
         self.body.addStretch()
         self.setWidget(content)
-        self.timer = QTimer(self)
-        self.timer.setInterval(60000)
-        self.timer.timeout.connect(self.refresh)
-        if service:
-            service.changed.connect(self.changed)
-        self.refresh()
 
     def visit_source(self):
         if self.source_requested:
@@ -103,7 +107,9 @@ class WhereSeenPanel(SmoothScrollArea):
 
     def sync(self):
         if not isValid(self) or not isValid(self.timer):return
-        observing = bool(self.service and self._selected())
+        active=self._selected()
+        if active:self.build_body()
+        observing = bool(self.service and active)
         if observing != self.observing:
             self.observing = observing
             self.service.set_interest(self,self.item if observing else None)
@@ -111,7 +117,7 @@ class WhereSeenPanel(SmoothScrollArea):
             self.timer.start()
         else:
             self.timer.stop()
-        self.refresh()
+        if active:self.refresh()
 
     def set_active(self, active):
         self.allowed = bool(active)
@@ -122,6 +128,7 @@ class WhereSeenPanel(SmoothScrollArea):
             self.refresh()
 
     def refresh(self):
+        if not self.built or not self._selected():return
         now = time.time()
         state = self.service.state(self.item) if self.service else None
         snapshot = state.snapshot if state else None

@@ -25,6 +25,8 @@ class NumberRoll:
     """An interrupted roll starts at the visible glyph positions, not its old target."""
     def __init__(self,text=''):
         self.text=text;self.columns=columns(text);self.before={};self.progress=1.0
+        self.numeric=any(key is not None for key,_ in self.columns)
+        self._layout_key=None;self._metrics=None;self._layout=None
 
     def layers(self,key,char):
         old=self.before.get(key,[])
@@ -36,17 +38,32 @@ class NumberRoll:
         if text==self.text:return False
         self.before={key:self.layers(key,char) for key,char in self.columns if key is not None}
         self.text=text;self.columns=columns(text)
+        self.numeric=any(key is not None for key,_ in self.columns)
         self.progress=0.0 if animate and any(key is not None for key,_ in self.columns) else 1.0
         return self.progress==0.0
 
     def finish(self):
         self.progress=1.0;self.before={}
 
+    def layout(self,metrics,icons=False):
+        """Keep glyph advances stable through a roll; measure only new content/fonts."""
+        key=(self.text,bool(icons))
+        if key!=self._layout_key or self._metrics is None or self._metrics!=metrics:
+            cell=metrics.horizontalAdvance('0');height=metrics.height();advances={}
+            widths=[]
+            for digit,char in self.columns:
+                if digit is not None:width=cell
+                elif char=='\ufffc' and icons:width=max(12,min(18,height-2))+2
+                else:
+                    if char not in advances:advances[char]=metrics.horizontalAdvance(char)
+                    width=advances[char]
+                widths.append(width)
+            self._layout_key=key;self._metrics=metrics;self._layout=(widths,sum(widths),height)
+        return self._layout
+
     def paint(self,painter,rect,alignment=Qt.AlignmentFlag.AlignLeft,inline_icon=None):
         painter.save()
-        metrics=painter.fontMetrics();cell=metrics.horizontalAdvance('0');height=metrics.height()
-        widths=[cell if key is not None else max(12,min(18,height-2))+2 if c=='\ufffc' and inline_icon else metrics.horizontalAdvance(c) for key,c in self.columns]
-        width=sum(widths)
+        widths,width,height=self.layout(painter.fontMetrics(),bool(inline_icon))
         if width>rect.width() and rect.width()>0:
             painter.translate(rect.x(),0);painter.scale(rect.width()/width,1)
             rect=QRectF(0,rect.y(),width,rect.height())

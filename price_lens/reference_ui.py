@@ -30,7 +30,7 @@ class DatabasePanel(QWidget):
         super().__init__(parent);self.service=service;self.store=service.store;self.media=media or ReferenceMedia(media_folder,self)
         self.kind='items';self.scope=();self.selected=None;self.history=[];self.catalog={};self.market=None;self.ttl=900;self.external_demand=None
         self.active=False;self.closed=False;self._entry=None;self.entries={};self.results_current=True;self.limit=80;self.match_count=0;self.sort_mode=None
-        self.external_return=None;self.kind_states={}
+        self.external_return=None;self.kind_states={};self.status_content=None
         self.setStyleSheet('QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;} QScrollBar::up-arrow:vertical,QScrollBar::down-arrow:vertical{width:0;height:0;}')
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(7)
         self.kind_bar=QTabBar();self.kind_bar.setExpanding(False);self.kind_bar.setDrawBase(False)
@@ -348,6 +348,7 @@ class DatabasePanel(QWidget):
 
     def reloaded(self):
         if self.closed:return
+        self.status_content=None
         if self.selected and self._entry:
             record=self.store.entry(*self.selected.key)
             if not record or not self.store.available(*self.selected.key):self.selected=None;self.search()
@@ -367,10 +368,13 @@ class DatabasePanel(QWidget):
 
     def update_status(self):
         if self.closed:return
-        state=self.store.metadata();stamp=state.get('generation','')
-        try:stamp=datetime.fromisoformat(stamp.replace('Z','+00:00')).strftime('%b %d')
-        except (ValueError,TypeError):stamp=''
-        counts=self.store.released_counts();parts=['Updating released content…' if self.service.busy else f"Released content · {counts['items']:,} items · {counts['monsters']} monsters"]
+        if self.status_content is None:
+            state=self.store.metadata();stamp=state.get('generation','')
+            try:stamp=datetime.fromisoformat(stamp.replace('Z','+00:00')).strftime('%b %d')
+            except (ValueError,TypeError):stamp=''
+            self.status_content=(stamp,self.store.released_counts())
+        stamp,counts=self.status_content
+        parts=['Updating released content…' if self.service.busy else f"Released content · {counts['items']:,} items · {counts['monsters']} monsters"]
         if stamp:parts.append('Data '+stamp)
         if self.service.error:parts.append('Saved reference data')
         if self.service.availability_error:parts.append('Release list offline')
