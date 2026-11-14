@@ -6,7 +6,7 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from .domain import age_text
-from .market_listings import LISTING_TTL, provider_id
+from .market_listings import provider_id
 from .motion import AnimatedTabs, MotionLabel, RollingLabel
 from .ui_components import mesos
 
@@ -125,11 +125,9 @@ class WhereSeenPanel(QScrollArea):
         loading = bool(self.service and self.service.loading(self.item))
         if snapshot:
             checked = age_text(max(0,now-snapshot.checked_at))
-            old = now-snapshot.checked_at >= LISTING_TTL or now-snapshot.published_at >= LISTING_TTL
             status = f'Checked {checked} ago'
             if loading:status += ' · refreshing…'
             elif state.error:status += ' · refresh unavailable'
-            elif old:status += ' · older sightings'
             self.status.setText(status)
             self.status.setToolTip(f'Source published {age_text(max(0,now-snapshot.published_at))} ago. Refresh interval: 15 minutes.')
             self.note.setText(('Items may have sold; stats unverified.' if self.item.equipment else 'Recent sightings; items may have sold.')

@@ -81,7 +81,7 @@ separate from full-market diagnostics. No seller/chat/draft text enters logs.
 
 - **Checked** is the local completed successful download time.
 - **Source published** is the detail feed's generation time, available on the
-  status tooltip; an older feed is labeled as older sightings.
+  status tooltip.
 - **Seen** is each seller/location sighting time. It is never reset by refreshing.
 - The whole-number asking amount is for the stated quantity, not an inferred
   unit price. The GUI's small coin remains the currency indicator.
