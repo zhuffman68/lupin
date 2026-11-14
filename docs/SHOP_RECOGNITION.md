@@ -92,6 +92,16 @@ full-display mask allocations. Neither optimization skips current-frame proofs.
 Alternate title OCR caches at most 32 exact captured crops, including misses;
 these are recognition results only, never cached source or item authority.
 
+Shop name anchors retain at most eight classifications per reference raster
+and exact exposed-pixel mask (at most 8 KiB per packed mask). Every captured
+comparison still checks all exposed RGB bytes before reusing a classification;
+changed letters/colours run the complete native palette/ink checks. A new mask
+cannot borrow ink hidden by that mask, and blank bands remain unproven.
+Byte-identical rows retain their templates only with the same exact identity,
+position and intersecting exclusions. Distant exclusions cannot alter a row's
+mask. This avoids repeatedly classifying stationary shop letters on the GUI
+thread without caching current offer or viewport authority.
+
 A faint cyan core may propose a panel only when ordinary complete markers fail
 to locate one. The source header/slot, complete cap/corners, full-height rails,
 dark body and bright title must all remain present. Recognition then uses that

@@ -1,5 +1,31 @@
 # Verification — 2026-11-13
 
+## Live-reading UI stalls — 2026-11-14
+
+The actual running preview's numeric trace found shop-result processing blocking
+the GUI for roughly 80–120 ms at a time. A native-reader/IPC replay reproduces
+repeated palette classification of unchanged shop names. Classification now
+reuses bounded template/mask results only after exact exposed-byte comparisons;
+changed pixels still require the complete original checks.
+
+In a private reading/paused/reading tab-slide replay, mean callback CPU drops
+**45.4/47.2 → 8.7/8.2 ms** and maximum callback wall time drops
+**109.1/101.4 → 20.0/20.3 ms**. This replay uses public shop pixels, fresh owned
+QImages, the actual native reader and deliberately repeated replies at a bounded
+450 ms retry interval, with offline service sinks. Some frame gaps persist in
+reading and paused phases; it does not establish uniformly smooth physical
+display delivery. Existing animations and their durations remain unchanged.
+
+The redundant Return to item details / Return to search button is removed.
+The full-height list opens details through item clicks/search activation;
+same-item details retain their object, subtab and scroll position. Its 13
+navigation tests pass; new exact-pixel/mask cache guards are included in the
+current source checks. The combined shop/inventory/offer-source, add-item form,
+NPC, card/navigation and animation suite passes **479 tests in 228.887 s** in
+private Xvfb/D-Bus/HOME/XDG. Full test results below describe the earlier commit.
+
+Evidence: `evidence/live-reading-2026-11-14/`. No build or publication performed.
+
 ## Full-height Prices navigation and stable departure — 2026-11-14
 
 The complete regression run passes **1,483 tests, three skipped, 251.676 s**.

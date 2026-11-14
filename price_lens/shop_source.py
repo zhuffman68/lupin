@@ -184,13 +184,15 @@ def native_name_state(before,after,visible):
     """
     count=int(visible.sum())
     if count<max(64,visible.size*.35):return 'unknown'
+    identical=np.array_equal(before,after)
     before=before.astype(np.float32);after=after.astype(np.float32)
-    old=_band_tint(before,visible);new=_band_tint(after,visible)
+    old=_band_tint(before,visible);new=old if identical else _band_tint(after,visible)
     if old is None or new is None:return 'unknown'
     def coverage(rgb,tint):
         gain=(rgb*tint).sum(axis=2)/float(tint@tint)
         return gain,np.max(np.abs(rgb-gain[:,:,None]*tint),axis=2)<=8
-    a,valid_a=coverage(before,old[1]);b,valid_b=coverage(after,new[1])
+    a,valid_a=coverage(before,old[1])
+    b,valid_b=(a,valid_a) if identical else coverage(after,new[1])
     # A partly overlapping purple description is unknown at those pixels,
     # rather than missing/changed black item-name glyphs.
     visible=visible&valid_a&valid_b

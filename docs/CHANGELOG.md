@@ -7,6 +7,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
+- Reduced repeated shop-name checks that could stall the interface while screen
+  reading. Changed pixels and covered names retain their validation rules;
+  animations keep their effects and duration.
+
 - On-screen items now use the available height. Click an item to open its
   details; returning to the list keeps its scroll position. Pages keep their contents
   steady while sliding away, including during card refreshes and fades.

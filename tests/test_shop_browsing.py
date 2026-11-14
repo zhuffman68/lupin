@@ -1,12 +1,14 @@
 """Native-pixel browse events; fixtures never capture or send game input."""
 from copy import deepcopy
 import unittest
+from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QRect
 from PySide6.QtGui import QColor, QImage, QPainter
 
 from price_lens.shop_browsing import ShopBrowsing
 from price_lens.shop_rows import ShopRows
+from price_lens.shop_source import native_name_state
 
 
 class ShopBrowsingTests(unittest.TestCase):
@@ -42,6 +44,43 @@ class ShopBrowsingTests(unittest.TestCase):
     def seed(self):
         image=self.frame();self.state.observe_rows(self.rows(),image,area=self.area)
         return image
+
+    def test_unchanged_exposed_names_reuse_classification_across_fresh_captures(self):
+        original=self.seed();proofs=dict(self.state.rows)
+        with patch('price_lens.shop_browsing.native_name_state',wraps=native_name_state) as classifier:
+            for _ in range(3):
+                fresh=original.copy()
+                self.state.observe_rows(self.rows(),fresh,area=self.area,latest=fresh)
+                states=self.state.name_states(fresh,self.area)
+                self.assertEqual(set(states.values()),{'same'})
+                self.assertTrue(all(self.state.rows[slot] is proof for slot,proof in proofs.items()))
+            self.assertEqual(classifier.call_count,0)
+
+    def test_a_new_mask_cannot_reuse_name_ink_that_it_covers(self):
+        image=self.seed();self.state.name_states(image,self.area)
+        # The upper half contains every black letter, leaving only native blank
+        # band pixels exposed. It cannot veto a real scroll as a same-name anchor.
+        mask=QRect(137,100,162,13)
+        states=self.state.name_states(image,self.area,exclude=[mask])
+        self.assertEqual(states[(137,100,162,35)],'unknown')
+        self.assertEqual(self.state.name_states(image,self.area)[(137,100,162,35)],'same')
+
+    def test_changed_exposed_letters_always_reclassify_after_a_cache_hit(self):
+        original=self.seed();self.state.name_states(original,self.area)
+        changed=self.frame(glyph=5)
+        with patch('price_lens.shop_browsing.native_name_state',wraps=native_name_state) as classifier:
+            states=self.state.name_states(changed,self.area)
+            self.assertEqual(set(states.values()),{'changed'})
+            self.assertEqual(classifier.call_count,3)
+        # QImage edits also change the current comparison, even with the same
+        # object/coordinates and an already cached unchanged state.
+        painter=QPainter(original);painter.drawImage(original.rect(),changed);painter.end()
+        self.assertEqual(set(self.state.name_states(original,self.area).values()),{'changed'})
+
+    def test_name_classification_mask_cache_is_bounded(self):
+        image=self.seed()
+        for offset in range(20):self.state.name_states(image,self.area,exclude=[QRect(137+offset,100,1,1)])
+        self.assertTrue(all(len(proof.identical_states)<=8 for proof in self.state.rows.values()))
 
     def test_native_thumb_change_advances_once_until_fresh_rows_arrive(self):
         self.seed();changed=self.frame(80)

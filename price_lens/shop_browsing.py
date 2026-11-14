@@ -3,7 +3,7 @@
 This state never supplies an item identity or an asking price.  Its epoch only
 invalidates observations of an older viewport; covered rows must be read again.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 import numpy as np
 
 from PySide6.QtCore import QObject, QRect
@@ -35,6 +35,7 @@ class _RowProof:
     pixels: QImage
     exclude: tuple
     title_proven: bool = False
+    identical_states: dict = field(default_factory=dict,repr=False)
 
 
 class ShopBrowsing(QObject):
@@ -216,6 +217,30 @@ class ShopBrowsing(QObject):
         pixels=cls._name_pixels(old,image,rect,hidden)
         return bool(pixels is not None and native_name_ink_changed(*pixels))
 
+    @staticmethod
+    def _name_state(proof,pixels):
+        """Reuse native classification only after comparing every exposed byte.
+
+        A cached result belongs to this reference raster and this exact mask.
+        Changed pixels still run the complete native palette/ink classifier;
+        covering the letters cannot turn blank background into a page anchor.
+        """
+        before,after,visible=pixels
+        identical=(np.array_equal(before,after)
+                   or np.array_equal(before[visible],after[visible]))
+        key=None
+        if identical:
+            mask=np.packbits(visible).tobytes()
+            if len(mask)<=8192:
+                key=(proof.pixels.cacheKey(),visible.shape,mask)
+                state=proof.identical_states.get(key)
+                if state is not None:return state
+        state=native_name_state(before,after,visible)
+        if key is not None:
+            proof.identical_states[key]=state
+            if len(proof.identical_states)>8:proof.identical_states.pop(next(iter(proof.identical_states)))
+        return state
+
     def name_states(self,image,area,*,tooltip=None,exclude=(),pointer=None):
         """Bounded same-slot page anchors; never a new item or asking price."""
         area=_rectangle(area)
@@ -228,7 +253,7 @@ class ShopBrowsing(QObject):
             if not proof.title_proven:
                 result[rect.getRect()]='unproven';continue
             pixels=self._name_pixels(proof,image,rect,hidden)
-            if pixels is not None:result[rect.getRect()]=native_name_state(*pixels)
+            if pixels is not None:result[rect.getRect()]=self._name_state(proof,pixels)
         return result
 
     def observe_rows(self, rows, image, *, area=None, tooltip=None, exclude=(), pointer=None, latest=None):
@@ -268,9 +293,18 @@ class ShopBrowsing(QObject):
                 if source is None or not rect.adjusted(-2,-2,2,2).contains(source):continue
                 proof=capture_proof(image,source,pointer=pointer,exclude=hidden,scale=area.width()/199.0)
                 if proof_state(proof,latest,pointer=pointer,exclude=hidden) not in ('same','occluded'):continue
-            proof=_RowProof(identity,QRect(rect),image.copy(rect),hidden)
+            # Distant labels/cursors cannot change this row's visible pixels.
+            # Keep only its actual intersections, so unrelated motion does not
+            # discard an otherwise byte-identical native template.
+            row_hidden=tuple({part.getRect():part for mask in hidden
+                              if not (part:=rect.intersected(mask)).isEmpty()}.values())
+            proof=_RowProof(identity,QRect(rect),image.copy(rect),row_hidden)
+            old=self.rows.get(canonical)
+            if (old is not None and old.identity==identity and old.rectangle==rect
+                    and old.exclude==row_hidden and old.pixels==proof.pixels):
+                proofs[canonical]=old;continue
             pixels=self._name_pixels(proof,image,rect,())
-            proof.title_proven=pixels is not None and native_name_state(*pixels)=='same'
+            proof.title_proven=pixels is not None and self._name_state(proof,pixels)=='same'
             proofs[canonical]=proof
         compatible = self.area is not None and abs(self.area.width() - area.width()) <= 3
         changed = bool(not self.pending and compatible and any(

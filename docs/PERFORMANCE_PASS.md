@@ -42,8 +42,40 @@ Removed the redundant Return to item details / Return to search control from
 the full-height on-screen list. Explicit item clicks and search activation
 reopen retained details, including the same selected search result. All 13
 Prices navigation regressions pass in private Xvfb/D-Bus/HOME/XDG (5.531 s).
-The live capture/validation path is the next profiling target; effects and
-durations remain unchanged.
+Effects and durations remain unchanged.
+
+Numeric tracing of the actual shared-screen preview then caught steady
+shop-result callbacks around 80–120 ms, plus longer interruptions. Name-band
+palette/ink classification was repeated for byte-identical templates during
+viewport checks, accepted-row updates and page retention. A public native-shop
+replay reproduces the hotspot; ordinary UI-only paint measurements missed it.
+
+`ShopBrowsing` now retains a byte-identical row's template and reuses its
+classification only after comparing every currently exposed byte with that
+template under the exact mask. Each reference retains at most eight packed
+mask keys, at most 8 KiB each. Changed text still runs the full classifier;
+different masks cannot borrow hidden letters, blank bands remain unproven and
+the independent container/current-offer checks are unchanged. Identical input
+bands also share one palette/coverage calculation within a classification.
+
+A separate private xcb event-loop replay now runs the **actual native reader,
+IPC and Python source checks** while switching main tabs. Captures use fresh
+owned QImages, public shop pixels and offline market/reference data. One retry
+every 450 ms deliberately reproduces repeated cached native replies; these are
+not spontaneous live-user request rates. Reading → paused → reading comparisons
+retain the same slide effects/durations. Across the two reading phases,
+mean callback CPU drops **45.4/47.2 → 8.7/8.2 ms**, with sampled callback maxima
+**109.1/101.4 → 20.0/20.3 ms**. Some frame gaps remain, including a 90.5 ms gap
+after the fix and gaps in paused runs. This establishes a reduced callback
+hotspot, not universally smooth display delivery or physical Windows acceptance.
+
+Private numeric traces and replay scripts/results are in
+`evidence/live-reading-2026-11-14/`. The user capture helper remains untouched;
+QA uses private Xvfb/D-Bus/HOME/XDG. No installer or release is built here.
+The final combined regressions pass **479 tests in 228.887 s**, including
+unchanged-row reuse, changed/masked native letters, bounded mask storage,
+scrolling, independent inventory proofs, NPC exclusion, add-item-form fading,
+Prices navigation and retained animations.
 
 ### Checkpoint 1
 
