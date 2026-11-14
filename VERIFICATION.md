@@ -31,14 +31,21 @@ visibility rules separately from the full-market price snapshot.
   safely drops retired targets. Listing visibility now uses explicit subtab
   and owner-page selection, avoiding private Qt-container parent walks. The
   animation/listing/card checks cover live selection checks during a slide,
-  native-target retirement, resize and search-return motion.
+  native-target retirement, resize and search-return motion. The final combined
+  listing/branding/Prices/Database/main-window check passes **193 tests**. The
+  ordinary preview displays 26 rows in the selected Where seen panel, with
+  Overview/Sources hidden, the layout enabled and no logged exception. Its
+  capture-helper PID/start identity is unchanged through the handoff.
 
 Evidence is local and ignored under `evidence/where-seen-2026-11-13/`:
 `live-helper.log`, `live-document.json`, `layout.log`, `card-*.png`,
 `full-python-final.log`, `final-focused-current.log`, `last-guards.log` and
-`animation-guards.log`. The first complete run
+`animation-guards.log`, `animation-selection-final.log`,
+`selection-integrated-final.log` and `preview/`. The first complete run
 found one older two-tab UI expectation, which was updated before the passing
-complete run. Native Windows live networking/capture and a fresh live inventory
+complete run. A standalone attempt with the previous parent-walk policy did not
+reproduce the live failure; the live window and final selected-page screenshot
+are separate evidence. Native Windows live networking/capture and a fresh live inventory
 demonstration remain untested; compilation/isolated fixtures do not establish
 those results. No installer or public release is produced by this source preview.
 
