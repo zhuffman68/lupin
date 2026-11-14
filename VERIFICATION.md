@@ -1,5 +1,29 @@
 # Verification — 2026-11-13
 
+## Smooth scrolling and selected-card response — source preview
+
+- The complete regression run passes **1,445 tests, three skipped, 294.700 s**
+  in a private Xvfb/D-Bus/home environment.
+- The focused run passes **182 tests** across UI context, reference navigation,
+  search returns, card motion and wheel behavior. Six wheel tests exercise real
+  own-widget events: intermediate movement and native final distance, repeated
+  notches, natural direction/bounds, trackpad gestures, Reduce motion, external
+  scrollbar control and stopping while hidden.
+- The card-opening guard checks that selecting a shop card presents a visible
+  live detail card without either whole-page snapshot. Its short reveal starts
+  after the owner has made it visible; the asking amount remains intact. Search
+  clearing/return animations and the exact-ID star action retain their guards.
+- The earlier opening path took two viewport snapshots and ran a 130 ms
+  whole-page transition. That transition is removed for opening a selection;
+  the price summary is initialized with the selected quote/offer once. Timing
+  probes varied with concurrent work, so they do not establish a fixed latency
+  guarantee. Private evidence is under `evidence/scroll-click-2026-11-14/`.
+- The source preview at `3ed670b` is visible with the same Linux capture helper
+  and sharing connection retained in their previous paused state. Its own-window
+  screenshot shows the compact item layout intact and its log is clean. No
+  installer or release artifact was built for this UI follow-up; native physical
+  Windows/trackpad feel still needs ordinary platform testing.
+
 ## Shared detailed item cards — source preview
 
 [ITEM_CARDS.md](docs/ITEM_CARDS.md) records the common factory, offer context,
