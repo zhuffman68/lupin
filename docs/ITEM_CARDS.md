@@ -29,12 +29,13 @@ and list scroll positions survive same-item price updates.
 `price_views.py` owns the Prices content switch. The navigation button sits
 above one full-height view: either the selected item or on-screen cards/history.
 There is no capped second list beneath an open card. Returning to on-screen
-items retains the selected card, its subtab and both outer scroll positions;
-Return to item details restores that same object. A genuinely new selection
+items retains the selected card, its subtab and both outer scroll positions.
+The list has no return button: clicking an item or choosing a search result
+opens its details, reusing the retained object for the same item. A genuinely new selection
 starts at the top. Price updates still reach the retained card without changing
 the visible view or initiating an individual price request.
 
-The return action remains available if the shop closes while the list is open.
+The list remains full-height if the shop closes while it is open.
 Clearing/replacing the selection and watch-list collapse retain their existing
 navigation behavior. Hidden details release visible source/listing demand; an
 on-screen description can supply that demand instead when its card is visible.

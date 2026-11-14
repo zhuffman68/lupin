@@ -7,7 +7,7 @@ The **57 final motion/navigation guards also pass at 2× scale**. GUI/helper QA
 uses private Xvfb, D-Bus and HOME/XDG, with software rendering and offline data.
 
 - On-screen items and selected details now occupy the same full-height area.
-  The return button preserves the selected card object, subtab and independent
+  Navigation preserves the selected card object, subtab and independent
   scroll positions. Checks cover both 460/520-pixel widths, updates while the
   card is hidden, shop closure, page changes, a new selection starting at the
   top, query editing and rapid reversals. Hidden details release visible source,
@@ -24,7 +24,10 @@ uses private Xvfb, D-Bus and HOME/XDG, with software rendering and offline data.
   fix. In that sequence these transitions have moving-frame gaps below 18 ms
   and average paint CPU below 2 ms; no animation surfaces remain at idle.
   Effects retain their 130/260 ms timing. This is an isolated Linux render
-  result, not a physical Windows/compositor guarantee.
+  result with capture disabled, not evidence of live reading performance or a
+  physical Windows/compositor guarantee. The user subsequently reported severe
+  intermittent lag, especially with reading enabled; that regression remains
+  under investigation.
 - One thumbnail-cancellation test had a scheduling race: a previously initiated
   GET could reach its loopback server after abort. It now checks that no new
   client requests start after cancellation, retaining the concurrency/queue

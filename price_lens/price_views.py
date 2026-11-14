@@ -32,7 +32,7 @@ class PriceViews(ContentArea):
         if not active:self.select_detail()
         screen=not active or self.switch_button.isChecked()
         pane='screen' if screen else 'detail' if detail else None
-        navigation=active and (available or self.switch_button.isChecked())
+        navigation=active and available and not screen
         key=(pane,navigation)
         layout_changed=key!=self.view_key
         if layout_changed:
@@ -42,7 +42,7 @@ class PriceViews(ContentArea):
         areas={'detail':self.detail,'screen':self.screen_view}
         if changed and self.pane:self.positions[self.pane]=areas[self.pane].verticalScrollBar().value()
         self.pane=pane
-        text=('Return to item details →' if detail else 'Return to search →') if screen else f'← On-screen items · {count}'
+        text=f'← On-screen items · {count}'
         if self.switch_button.text()!=text:
             self.switch_button.setText(text);self.switch_button.setAccessibleName(text)
         self.switch_button.setVisible(navigation)

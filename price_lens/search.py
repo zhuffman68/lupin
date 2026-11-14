@@ -95,7 +95,8 @@ class PriceSearch(QWidget):
         self.results.setMaximumHeight(210)
         self.results.setStyleSheet("QListWidget { background: #1e2734; border: 1px solid #354255; border-radius: 7px; } QListWidget::item { padding: 9px 10px; border-bottom: 1px solid #2a3647; } QListWidget::item:selected { background: #35455c; color: #f4e7d1; }")
         self.results.currentItemChanged.connect(self.select_result)
-        self.results.itemClicked.connect(lambda *_:self.set_results_state(False) if self.results_current else None)
+        self.results.itemClicked.connect(self.activate_result)
+        self.results.itemActivated.connect(self.activate_result)
         self.results.hide()
         result_layout.addWidget(self.results)
         self.watch_gap=QWidget();self.watch_gap.setFixedHeight(12);self.watch_gap.hide();layout.addWidget(self.watch_gap)
@@ -372,7 +373,15 @@ class PriceSearch(QWidget):
     def choose_first(self):
         self.timer.stop()
         self.find_items()
-        if self.results.count():self.results.setCurrentRow(0)
+        if self.results.count():
+            self.results.setCurrentRow(0);self.activate_result(self.results.item(0))
+
+    def activate_result(self,current):
+        if not self.results_current:return
+        item=current.data(Qt.ItemDataRole.UserRole) if current else None
+        if item is not None and item==self.selected and self.detail_scroll.isHidden():
+            self.item_selected.emit(item);self.active_changed.emit()
+        self.set_results_state(False)
 
     def select_result(self, current, previous=None):
         if not self.results_current:return

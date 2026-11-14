@@ -7,8 +7,8 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
-- On-screen items now use the available height, with a return button that keeps
-  the selected item's details and scroll position. Pages keep their contents
+- On-screen items now use the available height. Click an item to open its
+  details; returning to the list keeps its scroll position. Pages keep their contents
   steady while sliding away, including during card refreshes and fades.
 
 - Smoother wheel scrolling and less work during page slides, watched-list

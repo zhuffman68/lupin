@@ -34,6 +34,10 @@ class PriceViewsTests(unittest.TestCase):
     def click_switch(self):
         QTest.mouseClick(self.window.onscreen_button,Qt.MouseButton.LeftButton);self.app.processEvents()
 
+    def reopen(self):
+        p=self.window.search_panel;p.select_observed(p.selected,p.selected_row or {'name':p.selected.name})
+        self.app.processEvents()
+
     def test_switch_uses_the_available_height_at_both_supported_widths(self):
         w=self.window;self.select()
         for width in (460,520):
@@ -41,12 +45,12 @@ class PriceViewsTests(unittest.TestCase):
             self.assertTrue(w.scroll.isHidden());self.assertTrue(w.onscreen_button.isVisible())
             self.click_switch()
             self.assertTrue(w.search_panel.detail_scroll.isHidden());self.assertFalse(w.scroll.isHidden())
-            expected=w.price_content.height()-w.onscreen_button.height()-8
+            expected=w.price_content.height()
             self.assertGreater(w.scroll.viewport().height(),250)
             self.assertGreaterEqual(w.scroll.height(),expected-2)
             self.assertGreater(w.scroll.verticalScrollBar().maximum(),0)
-            self.assertIn('Return to item details',w.onscreen_button.text())
-            self.click_switch()
+            self.assertTrue(w.onscreen_button.isHidden())
+            self.reopen()
 
     def test_selection_subtab_and_both_scroll_positions_survive_the_round_trip(self):
         w=self.window;w.scroll.verticalScrollBar().setValue(140);card=self.select()
@@ -57,7 +61,7 @@ class PriceViewsTests(unittest.TestCase):
         self.click_switch()
         self.assertEqual(w.scroll.verticalScrollBar().value(),140)
         w.scroll.verticalScrollBar().setValue(210)
-        self.click_switch()
+        self.reopen()
         self.assertIs(w.search_panel.price_view,card);self.assertEqual(card.tabs.currentIndex(),1)
         self.assertEqual(w.search_panel.detail_scroll.verticalScrollBar().value(),120)
         self.click_switch();self.assertEqual(w.scroll.verticalScrollBar().value(),210)
@@ -67,7 +71,7 @@ class PriceViewsTests(unittest.TestCase):
         quote=Quote(1,123456,time.time(),time.time(),10,'Test','','24h')
         w.service.deliver_quote(1,quote);self.app.processEvents()
         self.assertEqual(w.price_content.pane,'screen');self.assertIs(w.search_panel.price_view,card)
-        self.click_switch();self.assertIn('123,456',card.fields['market'].text())
+        self.reopen();self.assertIn('123,456',card.fields['market'].text())
 
     def test_clicking_a_listing_returns_to_details_even_for_the_same_item(self):
         w=self.window;card=self.select();self.click_switch()
@@ -82,14 +86,21 @@ class PriceViewsTests(unittest.TestCase):
         self.assertEqual(w.price_content.pane,'detail')
         self.assertEqual(w.search_panel.detail_scroll.verticalScrollBar().value(),0)
 
-    def test_closed_shop_and_main_tab_changes_keep_a_way_back_to_the_item(self):
+    def test_closed_shop_and_main_tab_changes_do_not_restore_a_return_button(self):
         w=self.window;card=self.select();self.click_switch()
         w.rows=[];w.shop_open=False;w.render();self.app.processEvents()
-        self.assertTrue(w.onscreen_button.isVisible())
+        self.assertTrue(w.onscreen_button.isHidden())
         w.tabs.setCurrentIndex(w.exp_tab_index);w.tabs.setCurrentIndex(0);self.app.processEvents()
         self.assertEqual(w.price_content.pane,'screen')
-        self.click_switch();self.assertIs(w.search_panel.price_view,card)
+        w.search_panel.choose_first();self.app.processEvents();self.assertIs(w.search_panel.price_view,card)
         self.assertEqual(w.price_content.pane,'detail')
+
+    def test_clicking_the_same_search_result_reopens_it_without_a_return_button(self):
+        w=self.window;card=self.select();p=w.search_panel;self.click_switch()
+        p.find_items();self.app.processEvents()
+        item=p.results.item(0);QTest.mouseClick(p.results.viewport(),Qt.MouseButton.LeftButton,pos=p.results.visualItemRect(item).center())
+        self.app.processEvents()
+        self.assertIs(p.price_view,card);self.assertEqual(w.price_content.pane,'detail')
 
     def test_search_without_a_selection_keeps_navigation_at_the_top(self):
         w=self.window;p=w.search_panel;p.query.setText('No matching item');p.timer.stop();p.find_items()
@@ -126,7 +137,7 @@ class PriceViewsTests(unittest.TestCase):
         self.click_switch();frame=w.price_content.outgoing
         self.assertIsNotNone(frame);self.assertEqual(w.price_content.animation.duration(),130)
         w.price_content.animation.pause();w.price_content.animation.setCurrentTime(60)
-        self.click_switch()
+        self.reopen()
         self.assertEqual(w.price_content.pane,'detail');self.assertIsNotNone(w.price_content.outgoing)
         w.price_content.finish();self.assertTrue(w.scroll.isHidden())
 

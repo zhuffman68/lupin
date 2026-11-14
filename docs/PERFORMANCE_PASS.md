@@ -31,6 +31,20 @@ evidence and Cargo outputs.
 
 Each implementation entry below must describe its validation and limitations.
 
+### Live-reading follow-up — 2026-11-14
+
+The user reported intermittent severe tab lag despite the isolated motion
+measurements, especially while screen reading. Those fixtures disable the
+capture pipeline; their paint timings do not establish live responsiveness.
+Do not treat the animation regression as resolved on that evidence.
+
+Removed the redundant Return to item details / Return to search control from
+the full-height on-screen list. Explicit item clicks and search activation
+reopen retained details, including the same selected search result. All 13
+Prices navigation regressions pass in private Xvfb/D-Bus/HOME/XDG (5.531 s).
+The live capture/validation path is the next profiling target; effects and
+durations remain unchanged.
+
 ### Checkpoint 1
 
 Implemented the catalog-retention fix, batched name/entry/drop lookups, owned
