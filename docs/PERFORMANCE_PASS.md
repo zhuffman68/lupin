@@ -236,9 +236,7 @@ selection checks during a slide. The actual preview's normal cache
 also contains 26 successfully downloaded sightings; this is distinct from the
 isolated source check and does not establish live game/OCR performance.
 
-## Acceptance
-
-### Shared detailed card follow-up
+## Shared detailed card follow-up
 
 The user approved consolidation of searched and automatically read item cards,
 with a compact price header above full-width detail tabs. The common factory
@@ -255,7 +253,7 @@ card heights, quote stability and long-overview overflow. Native OCR/capture and
 the vendor pin are unchanged. [ITEM_CARDS.md](ITEM_CARDS.md) and
 [VERIFICATION.md](../VERIFICATION.md) contain the current contract and evidence.
 
-## Acceptance checks
+## Acceptance
 
 Run focused meaningful regressions as each subsystem changes, then the full
 Python, release-tool and Rust suites. GUI/native-helper checks use isolated

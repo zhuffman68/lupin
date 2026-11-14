@@ -36,6 +36,12 @@ Evidence is local/ignored under `evidence/item-cards-2026-11-14/`, including
 renders do not establish live Windows behavior or a fresh game-reading result.
 No package is built, installed or published for this source preview.
 
+The normal Linux preview is open on the scroll's Overview. Its owned-window
+capture shows the full-width facts and metadata in a 264-pixel card, with no
+inner Overview scrollbar. The new source process reports an empty error log,
+and the capture-helper PID/start identity is unchanged. Reading remains paused;
+this is live app-layout evidence, separate from game/OCR acceptance.
+
 ## Selected-item Where seen tab — source preview
 
 Prices and Database item cards now share a compact shop-sighting subtab beside
