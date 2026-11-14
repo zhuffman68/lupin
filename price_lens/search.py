@@ -3,7 +3,7 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter
-from PySide6.QtWidgets import (QFrame,QHBoxLayout,QListWidget,
+from PySide6.QtWidgets import (QFrame,QHBoxLayout,
     QListWidgetItem,QPushButton,QVBoxLayout,QWidget)
 
 from .domain import key, item_words, unclipped_name
@@ -18,6 +18,7 @@ from .widget_lifetime import retire_widget
 from .market_status_ui import MarketStatus
 from .catalog_search import CatalogSearch
 from .item_cards import item_caption,item_record,make_item_card,matches_item_card
+from .smooth_scroll import SmoothListWidget
 
 
 class PriceSearch(QWidget):
@@ -86,7 +87,7 @@ class PriceSearch(QWidget):
         self.retry_button.clicked.connect(self.catalog_retry.emit)
         self.retry_button.hide()
         result_layout.addWidget(self.retry_button,0,Qt.AlignmentFlag.AlignLeft)
-        self.results = QListWidget()
+        self.results = SmoothListWidget()
         self.results.setIconSize(QSize(32,32))
         blank=QPixmap(32,32);blank.fill(Qt.GlobalColor.transparent);self.placeholder_icon=QIcon(blank)
         self.results.verticalScrollBar().valueChanged.connect(self.request_thumbnails)
@@ -156,7 +157,7 @@ class PriceSearch(QWidget):
         items=[self.selected] if self.selected else []
         if self.catalog:
             watched=set(self.watched_items.visible_ids())
-            items.extend(item for item in self.catalog.items if item.game_id in watched)
+            items.extend(self.catalog.by_id[identity] for identity in watched if identity in self.catalog.by_id)
             for identity in watched:self.watched_items.set_image(identity,self.thumbnails.image(identity))
         if not self.results.isHidden():
             region=self.results.viewport().rect().adjusted(0,-50,0,50)
@@ -415,6 +416,7 @@ class PriceSearch(QWidget):
         self.render()
 
     def render(self):
+        incoming=None
         identity=(self.selected.game_id if self.selected else None,self.pending_identity)
         changed_identity=identity!=self.detail_identity
         if changed_identity:self.detail_changing.emit();self.detail_identity=identity
@@ -453,7 +455,7 @@ class PriceSearch(QWidget):
                 image=self.thumbnails.image(self.selected.game_id)
                 card.thumbnail.show()
                 if not image.isNull() or not record:card.thumbnail.set_image(image)
-            if changed and self.inline_detail:reveal(card)
+            if changed:incoming=card
             self.request_thumbnails()
             self.reference_changed.emit()
         else:
@@ -466,3 +468,4 @@ class PriceSearch(QWidget):
                                              else 'Item unidentified · check the item name')
             self.reference_changed.emit()
         if changed_identity:self.active_changed.emit()
+        if incoming:reveal(incoming)

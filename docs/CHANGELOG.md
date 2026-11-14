@@ -7,6 +7,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
+- Smoother wheel scrolling throughout the app, with responsive trackpad and
+  scrollbar controls. Opening item details in Prices shows the card immediately
+  with a short fade and avoids redundant price-summary rendering.
+
 - Searched items and inventory/equipment descriptions share detailed item cards.
   Click a shop row to open the same view with its asking price. Full-width tabs,
   paired stats and inline requirements reduce scrolling in Overview.

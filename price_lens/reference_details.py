@@ -4,7 +4,7 @@ import re
 import time
 from PySide6.QtCore import Qt,Signal,QTimer
 from shiboken6 import isValid
-from PySide6.QtWidgets import QFrame,QGridLayout,QHBoxLayout,QPushButton,QScrollArea,QSlider,QVBoxLayout,QWidget,QComboBox
+from PySide6.QtWidgets import QFrame,QGridLayout,QHBoxLayout,QPushButton,QSlider,QVBoxLayout,QWidget,QComboBox
 from .motion import MotionLabel,RollingLabel,AnimatedTabs
 from .reference_data import image_url,wiki_url
 from .reference_media import ReferenceSprite
@@ -17,6 +17,7 @@ from .domain import key as name_key,Item
 from .price_widgets import ItemDetailTabs,PriceCard
 from .market_lookup import market_lookup
 from .listing_widgets import ITEM_TAB_STYLE,WhereSeenPanel
+from .smooth_scroll import SmoothScrollArea
 
 ITEM_STATS={'reqLevel':'Level required','reqSTR':'STR required','reqDEX':'DEX required','reqINT':'INT required','reqLUK':'LUK required','reqPOP':'Fame required',
     'incPAD':'Weapon attack','incMAD':'Magic attack','incPDD':'Weapon defense','incMDD':'Magic defense','incACC':'Accuracy',
@@ -65,7 +66,7 @@ def stats(layout,values,*,columns=2,compact=False):
 def page(*,scrolling=True):
     widget=QWidget();layout=QVBoxLayout(widget);layout.setContentsMargins(1,9,5,0);layout.setSpacing(10)
     if not scrolling:return widget,widget,layout
-    scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll=SmoothScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);scroll.setWidget(widget)
     return scroll,widget,layout
 
@@ -93,14 +94,16 @@ def item_facts(layout,values):
 class EntryDetails(QFrame):
     media_changed=Signal()
 
-    def __init__(self,panel,entry,row):
+    def __init__(self,panel,entry,row,*,summary=None):
         super().__init__();self.panel=panel;self.store=panel.store;self.media=panel.media;self.entry=entry;self.row=row
         self.lists=[];self.rank_slider=None;self.animation_url='';self.market_label=None;self.drop_list=None;self.source_list=None;self.drop_key=None
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(7)
         self.summary_card=None;self.sprite=None;self.map_preview=None;self.sources_activated=True
         if entry.kind=='items':
-            self.summary_card=PriceCard(item=self.item_identity(),row={'name':entry.name},quote=None,now=time.time(),ttl=panel.ttl,hovered=True,selected=True,
-                watchlist=getattr(panel,'watchlist',None),context_name=row.get('sub_category') or 'Item')
+            initial=dict(item=self.item_identity(),row={'name':entry.name},quote=None,now=time.time(),ttl=panel.ttl,hovered=True)
+            if summary is not None:initial.update(summary)
+            initial.update(selected=True,context_name=row.get('sub_category') or ('Cash item' if row.get('cash') else entry.category))
+            self.summary_card=PriceCard(watchlist=getattr(panel,'watchlist',None),**initial)
             layout.addWidget(self.summary_card)
             self.item_name=self.summary_card.fields['name'];self.watch_button=self.summary_card.watch_button
             self.market_label=self.summary_card.fields['market'];self.thumbnail=self.summary_card.thumbnail;self.header=self.summary_card.header;self.fields=self.summary_card.fields
@@ -164,7 +167,9 @@ class EntryDetails(QFrame):
         self.tabs.tabBar().setVisible(self.tabs.count()>1)
         self.tabs.currentChanged.connect(self.tab_changed)
         if entry.kind=='items':self.tabs.tabBarClicked.connect(self.tab_changed)
-        self.refresh_drops();self.update_market();self.refresh_followups()
+        self.refresh_drops()
+        if summary is None:self.update_market()
+        self.refresh_followups()
         if isinstance(self.tabs,ItemDetailTabs):self.tabs.fit_page()
 
     def add_list(self,layout,*,drop_tiles=False):

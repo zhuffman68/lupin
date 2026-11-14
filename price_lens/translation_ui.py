@@ -1,8 +1,9 @@
 """Translation controls and the latest local results; no capture or networking."""
 from PySide6.QtCore import Signal,Qt,QTimer
 from shiboken6 import isValid
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QCheckBox,QPushButton,QScrollArea,QFrame,QLabel,QDoubleSpinBox
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QCheckBox,QPushButton,QFrame,QLabel,QDoubleSpinBox
 from .motion import reveal,AnimatedTabs,MotionLabel
+from .smooth_scroll import SmoothScrollArea
 from .composer_ui import ComposerWidget
 from .widget_lifetime import retire_widget
 
@@ -92,14 +93,14 @@ class TranslationPanel(QWidget):
         layout.addLayout(timings)
         self.scan.setToolTip('Results appear as soon as text is read. Keep checking for new or moving text during this window; press again to restart.')
         for spin in (self.scan,self.linger):spin.valueChanged.connect(lambda *_:self.timing_changed.emit(self.scan.value(),self.linger.value()))
-        scroll=self.scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll=self.scroll=SmoothScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.results=QWidget();self.results_layout=QVBoxLayout(self.results);self.results_layout.setContentsMargins(0,0,0,0)
         scroll.setWidget(self.results);layout.addWidget(scroll,1)
         clear=QPushButton("Clear results and popups");clear.clicked.connect(self.clear_requested.emit)
         layout.addWidget(clear);self.card_key=None;self.result_cards={};self.empty_label=None;self.set_cards([])
         if composer is not None:
             self.writer=ComposerWidget(composer,compose_shortcut,configure_compose,self)
-            writer_scroll=QScrollArea();writer_scroll.setWidgetResizable(True);writer_scroll.setFrameShape(QFrame.Shape.NoFrame);writer_scroll.setWidget(self.writer)
+            writer_scroll=SmoothScrollArea();writer_scroll.setWidgetResizable(True);writer_scroll.setFrameShape(QFrame.Shape.NoFrame);writer_scroll.setWidget(self.writer)
             self.modes.addTab(writer_scroll,'Write Korean')
 
     def set_active(self,active):self.translate_button.setText('Restart scan' if active else 'Scan now')

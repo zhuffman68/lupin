@@ -7,6 +7,7 @@ from shiboken6 import isValid
 from .number_motion import NumberRoll
 from . import gui_currency
 from .widget_lifetime import retire_widget
+from .smooth_scroll import smooth_scrolling
 
 
 def enabled(widget):
@@ -39,6 +40,7 @@ class StableScrollArea(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         bar.rangeChanged.connect(lambda low,high:bar.setEnabled(high>low))
         bar.setEnabled(False)
+        smooth_scrolling(self)
 
 
 class MotionLabel(QLabel):

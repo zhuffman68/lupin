@@ -23,7 +23,7 @@ def matches_item_card(card,item,record):
 def make_item_card(panel,identity,record,*,automatic=False,**data):
     item=identity
     if record:
-        card=EntryDetails(panel,*record)
+        card=EntryDetails(panel,*record,summary=data)
         card.sources_activated=not automatic
         card.media_changed.connect(panel.reference_changed.emit)
     else:
@@ -32,5 +32,4 @@ def make_item_card(panel,identity,record,*,automatic=False,**data):
         card=PriceCard(watchlist=getattr(panel,'watchlist',None),**data)
         add_fallback_panel(card,item,getattr(panel,'market',None),panel.source_requested.emit,
                            active=lambda:getattr(panel,'listing_active',True))
-    card.update_data(**data)
     return card

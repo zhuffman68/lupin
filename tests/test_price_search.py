@@ -154,7 +154,7 @@ class PriceSearchTests(unittest.TestCase):
         quote=Quote(3,500,now,now,20,"NiaMeowDB","","24h")
         self.panel.accept_quote(3,quote)
         labels=[widget.text() for widget in self.panel.detail.findChildren(QLabel)]
-        self.assertIn("Classic World · market price",labels)
+        self.assertEqual(self.panel.price_view.fields['context'].text(),'Equipment')
         self.assertNotIn("Inventory / equipment item",labels)
 
     def test_manual_demand_survives_no_screen_and_obeys_cache_ttl(self):

@@ -1,6 +1,6 @@
 """Stable reference rows, nearby-image demand and interruptible navigation."""
 from pathlib import Path
-from PySide6.QtCore import QSize,Qt,Signal,QRectF,QPointF
+from PySide6.QtCore import QSize,Qt,Signal,QRectF,QPointF,QTimer
 from PySide6.QtGui import QColor,QFont,QFontMetrics,QIcon,QImage,QPainter,QPixmap,QTextLayout,QTextOption
 from PySide6.QtWidgets import QListWidget,QListWidgetItem,QWidget,QStyledItemDelegate,QStyle
 from .motion import ContentArea,enabled
@@ -123,7 +123,21 @@ class ReferenceList(QListWidget):
         else:self.setItemDelegate(SourceDelegate(self))
         self.setMouseTracking(True)
         self.itemClicked.connect(self.activate_row);self.itemActivated.connect(self.activate_row)
-        self.verticalScrollBar().valueChanged.connect(lambda *_:self.viewport_changed.emit())
+        self.scroll_demand=QTimer(self);self.scroll_demand.setSingleShot(True);self.scroll_demand.setInterval(32)
+        self.scroll_demand.timeout.connect(self.viewport_changed.emit)
+        self.verticalScrollBar().valueChanged.connect(self.scroll_changed)
+        from .smooth_scroll import smooth_scrolling
+        smooth_scrolling(self)
+        self.smooth_wheel.animation.finished.connect(self.finish_scroll_demand)
+
+    def scroll_changed(self,*_):
+        if self.smooth_wheel.writing:
+            if not self.scroll_demand.isActive():self.scroll_demand.start()
+        else:
+            self.scroll_demand.stop();self.viewport_changed.emit()
+
+    def finish_scroll_demand(self):
+        if self.scroll_demand.isActive():self.scroll_demand.stop();self.viewport_changed.emit()
 
     def activate_row(self,item):
         if item and item.data(Qt.ItemDataRole.UserRole) is not None:self.chosen.emit(item.data(Qt.ItemDataRole.UserRole))

@@ -123,6 +123,8 @@ class WatchRows(QListWidget):
         self.setMouseTracking(True);self.viewport().setMouseTracking(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setTextElideMode(Qt.TextElideMode.ElideRight);self.setAccessibleName('Watched items')
+        from .smooth_scroll import smooth_scrolling
+        smooth_scrolling(self)
 
     def remove_target(self,event):
         row=self.itemAt(event.position().toPoint())

@@ -1,8 +1,9 @@
 """Clipboard-only Korean composer shared by the Translation page and hotkey popup."""
 from PySide6.QtCore import Qt,QTimer,QVariantAnimation,QEasingCurve,QPoint
 from PySide6.QtGui import QFontDatabase,QFont
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLineEdit,QPushButton,QFrame,QProgressBar,QDialog,QScrollArea
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLineEdit,QPushButton,QFrame,QProgressBar,QDialog
 from .motion import MotionLabel,visibility,enabled,reveal
+from .smooth_scroll import SmoothScrollArea
 from .outgoing_text import clean,LIMIT
 
 _korean_family=None
@@ -76,7 +77,7 @@ class ComposerDialog(QDialog):
         self.composer=composer;self.setWindowTitle('Write in Korean · Lupin');self.setMinimumWidth(420);self.resize(460,360)
         layout=QVBoxLayout(self);layout.setContentsMargins(18,12,18,16)
         self.editor=ComposerWidget(composer,shortcut,configure,self)
-        scroll=QScrollArea(self);scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame);scroll.setWidget(self.editor);layout.addWidget(scroll)
+        scroll=SmoothScrollArea(self);scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame);scroll.setWidget(self.editor);layout.addWidget(scroll)
         self.scroll=scroll;self.motion_origin=QPoint();self.closing_result=None
         self.submitting=False
         composer.copy_submitted.connect(self.submitted)

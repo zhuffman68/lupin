@@ -6,7 +6,7 @@ from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QCursor
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
     QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QVBoxLayout, QWidget,
 )
 
 from .capture import PixelReader, pointer_in_shop
@@ -26,6 +26,7 @@ from .search import PriceSearch
 from .item_cards import item_caption,item_record,make_item_card,matches_item_card
 from .reference_details import EntryDetails
 from .motion import AnimatedTabs, ContentArea, CardArea, MotionLabel,StableScrollArea
+from .smooth_scroll import SmoothScrollArea
 from .fonts import interface_family
 from .branding import Brand
 from .price_observations import PriceObservations
@@ -440,11 +441,11 @@ class LensWindow(QMainWindow):
         self.price_content_layout.addWidget(self.onscreen_button)
         self.price_content_layout.addWidget(self.scroll,1)
         prices_layout.addWidget(self.price_content,1)
-        self.search_panel.detail_changing.connect(self.price_content.begin)
+        self.search_panel.detail_changing.connect(self.begin_detail_change)
         self.search_panel.active_changed.connect(self.update_price_layout)
         self.search_panel.watched_items.visible_changed.connect(self.update_price_layout)
         self.search_tab_index=0
-        self.exp_scroll = QScrollArea()
+        self.exp_scroll = SmoothScrollArea()
         self.exp_scroll.setWidgetResizable(True)
         self.exp_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.exp_scroll.setWidget(self.exp_panel)
@@ -611,6 +612,13 @@ class LensWindow(QMainWindow):
         from .shortcut_ui import edit_shortcuts
         edit_shortcuts(self,focus)
 
+    def begin_detail_change(self):
+        # Show the live selected card immediately, using its own brief reveal.
+        # Taking two whole-page snapshots here delays the response to a click.
+        self.opening_detail=self.search_panel.selected is not None
+        if self.opening_detail:self.price_content.finish()
+        else:self.price_content.begin()
+
     def update_price_layout(self,*_):
         if not hasattr(self,"onscreen_button"):return
         watching=self.search_panel.watched_items.expanded
@@ -620,7 +628,7 @@ class LensWindow(QMainWindow):
         if not self.rows and not detail and not self.search_panel.query.text().strip():show=True
         content_key=(detail,show)
         if content_key!=getattr(self,'price_content_key',None):
-            if self.price_content.before is None:self.price_content.begin()
+            if not getattr(self,'opening_detail',False) and self.price_content.before is None:self.price_content.begin()
             self.price_content_key=content_key
         self.onscreen_button.setVisible(active and bool(self.rows))
         self.onscreen_button.setText(f"On-screen items · {len(self.rows)}"+ (" ▾" if self.onscreen_button.isChecked() else " ▸"))
@@ -631,6 +639,7 @@ class LensWindow(QMainWindow):
         self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.search_panel.detail_scroll),1 if detail else 0)
         self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.scroll),0 if detail else 1)
         self.price_content.complete()
+        self.opening_detail=False
         self.update_shop_thumbnails()
         if watching:self.update_watched_quotes()
 

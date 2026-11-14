@@ -190,6 +190,24 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(detail.summary_card.store_caption.text(),'Last seen price')
         self.assertIn('100',detail.fields['store'].text())
 
+    def test_opening_item_details_reveals_the_live_card_without_a_page_snapshot(self):
+        from price_lens.motion import reveal
+        w=self.window;w.show();self.app.processEvents();self.app.setProperty('reduceMotion',False)
+        w.on_reading(self.reading(shop_hover=True));QTest.qWait(230)
+        card=next(card for key,card in w.card_views.items() if key[0] is False)
+        visible_at_reveal=[]
+        def show_incoming(widget):visible_at_reveal.append(widget.isVisible());reveal(widget)
+        with patch.object(w.price_content,'grab',wraps=w.price_content.grab) as snapshots,\
+                patch('price_lens.search.reveal',side_effect=show_incoming):
+            QTest.mouseClick(card.fields['name'],Qt.MouseButton.LeftButton)
+            self.app.processEvents()
+            snapshots.assert_not_called()
+        detail=w.search_panel.price_view
+        self.assertTrue(detail.isVisible());self.assertIsNone(w.price_content.outgoing)
+        self.assertEqual(detail.summary_card.content_row['price']['mesos'],100)
+        self.assertEqual(visible_at_reveal,[True])
+        QTest.qWait(110);self.assertIsNone(detail.graphicsEffect())
+
     def test_automatic_overview_does_not_request_external_item_sources(self):
         w=self.window;self.app.setProperty('reduceMotion',True);w.show()
         with patch.object(w.reference.extra,'select') as extra,patch.object(w.reference.sources,'select') as sources:

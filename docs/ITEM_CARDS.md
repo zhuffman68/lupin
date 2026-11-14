@@ -42,6 +42,24 @@ the canvas adjusts through its normal height animation. CardArea invalidates
 application layouts without descending into Qt's private tab-container layouts.
 Item tabs retain their existing slide and reduced-motion behavior.
 
+Opening a selected item in Prices presents the live card immediately with a
+brief 85 ms reveal. It does not take whole-page before/after screenshots or
+wait behind their transition. Closing a selection keeps the existing animated
+return to the prior content. The factory initializes the price summary with the
+actual selected quote/offer once, avoiding temporary empty-price renders.
+
+## Scrolling
+
+`smooth_scroll.py` eases ordinary wheel input over 125 ms in Lupin's own lists
+and scroll areas. Repeated notches retarget one bounded animation; there is no
+queue of delayed scrolling. Lists use pixel scrolling. Trackpad pixel/gesture
+input, modified wheel events and scrollbar dragging retain Qt's direct behavior.
+External position changes take over immediately; hiding a viewport cancels
+motion. Reduce motion makes wheel movement immediate. Event filters belong
+only to the app's own viewports and scrollbars, never to the desktop or game.
+Reference-image demand is coalesced during wheel animation, with a final demand
+update when movement settles and the existing nearby-image prefetch retained.
+
 ## Asking prices and refreshes
 
 An expanded shop card retains the asking quantity/amount alongside the shared

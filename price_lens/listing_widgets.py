@@ -4,11 +4,12 @@ from urllib.parse import quote
 from shiboken6 import isValid
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
 from .domain import age_text
 from .market_listings import provider_id
 from .motion import MotionLabel, RollingLabel
+from .smooth_scroll import SmoothScrollArea
 from .ui_components import mesos
 
 
@@ -49,7 +50,7 @@ class ListingRow(QFrame):
         self.age.setText(f'{self.quantity} · seen {age_text(max(0,now-self.listing.last_seen))} ago')
 
 
-class WhereSeenPanel(QScrollArea):
+class WhereSeenPanel(SmoothScrollArea):
     def __init__(self, item, service, *, source_requested=None, selected=None):
         super().__init__()
         self.item, self.service = item, service

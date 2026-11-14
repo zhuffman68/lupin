@@ -207,6 +207,8 @@ class RecentItems(QWidget):
         self.rows=RecentRows(self);self.rows.owner=self;self.rows.rolls=self.rolls;self.rows.setItemDelegate(RecentDelegate(self.rows));self.rows.setMouseTracking(True)
         self.rows.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.rows.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.rows.setStyleSheet('QListWidget{border:0;background:transparent;}');layout.addWidget(self.rows)
+        from .smooth_scroll import smooth_scrolling
+        smooth_scrolling(self.rows)
         self.rows.itemClicked.connect(lambda item:self.chosen.emit(item.data(Qt.ItemDataRole.UserRole)['item']))
         self.rows.verticalScrollBar().valueChanged.connect(lambda _:self.changed.emit())
         self.animating=set()
