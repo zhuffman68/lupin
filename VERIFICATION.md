@@ -26,11 +26,12 @@ visibility rules separately from the full-market price snapshot.
   record their numeric timing fields. Narrow
   UI renders at **460, 520 and 640 pixels** have no horizontal listing scrollbar;
   the three subtab labels fit, and row geometry remains stable.
-- The first live preview also found a late slide/hide callback holding an
-  already destroyed native stacked widget during card replacement. Slide
-  completion now drops that retired target safely. **73 animation/listing/card
-  regressions pass**, including an explicitly destroyed native-stack case;
-  existing slide, resize, numeric and search-return effects remain enabled.
+- Live startup also found a late slide callback holding an invalidated Python
+  proxy while the native page container remained present. Slide completion
+  safely drops retired targets. Listing visibility now uses explicit subtab
+  and owner-page selection, avoiding private Qt-container parent walks. The
+  animation/listing/card checks cover live selection checks during a slide,
+  native-target retirement, resize and search-return motion.
 
 Evidence is local and ignored under `evidence/where-seen-2026-11-13/`:
 `live-helper.log`, `live-document.json`, `layout.log`, `card-*.png`,

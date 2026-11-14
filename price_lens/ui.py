@@ -924,6 +924,7 @@ class LensWindow(QMainWindow):
     def on_tab_changed(self, index):
         if hasattr(self,'exp_panel'):self.exp_panel.set_presentation_active(index==self.exp_tab_index)
         if hasattr(self,'database_panel'):self.database_panel.set_active(index==self.database_tab_index)
+        if hasattr(self,'search_panel'):self.search_panel.set_listing_active(index==self.search_tab_index)
         self.update_reference_context()
         self.update_shortcut_footer()
         self.update_price_layout()

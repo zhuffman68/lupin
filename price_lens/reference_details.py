@@ -144,7 +144,8 @@ class EntryDetails(QFrame):
         elif entry.kind=='npcs':self.npc(body)
         self.where_seen=None
         if entry.kind=='items':
-            self.where_seen=WhereSeenPanel(self.item_identity(),getattr(getattr(panel,'market',None),'listings',None),source_requested=panel.source_requested.emit)
+            self.where_seen=WhereSeenPanel(self.item_identity(),getattr(getattr(panel,'market',None),'listings',None),source_requested=panel.source_requested.emit,
+                selected=lambda:self.tabs.currentWidget() is self.where_seen and getattr(panel,'listing_active',getattr(panel,'active',True)))
             self.tabs.addTab(self.where_seen,'Where seen')
             self.tabs.currentChanged.connect(lambda *_:self.where_seen.sync())
         body.addStretch()

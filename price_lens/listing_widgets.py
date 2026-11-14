@@ -3,7 +3,7 @@ import time
 from urllib.parse import quote
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from .domain import age_text
 from .market_listings import LISTING_TTL, provider_id
@@ -49,10 +49,11 @@ class ListingRow(QFrame):
 
 
 class WhereSeenPanel(QScrollArea):
-    def __init__(self, item, service, *, source_requested=None):
+    def __init__(self, item, service, *, source_requested=None, selected=None):
         super().__init__()
         self.item, self.service = item, service
         self.source_requested = source_requested
+        self.selected = selected or (lambda: True)
         self.allowed = True
         self.rows = []
         self.signature = None
@@ -94,13 +95,9 @@ class WhereSeenPanel(QScrollArea):
             self.source_requested('https://meso.watch/?item='+quote(provider_id(self.item),safe=''))
 
     def _selected(self):
-        child = self
-        parent = self.parentWidget()
-        while parent:
-            if isinstance(parent,QStackedWidget) and parent.currentWidget() is not child:
-                return False
-            child, parent = parent, parent.parentWidget()
-        return self.allowed and self.isVisible() and not self.window().isMinimized()
+        # Explicit owner selection avoids creating base-class wrappers while
+        # walking Qt's private stacked widgets during a live tab animation.
+        return self.allowed and self.selected() and self.isVisible() and not self.window().isMinimized()
 
     def sync(self):
         observing = bool(self.service and self._selected())
@@ -180,7 +177,7 @@ ITEM_TAB_STYLE = ('QTabWidget{background:transparent;} QTabWidget::pane{border:0
                   'QTabBar::tab:selected{background:#3a495f;color:#f1dfbf;} QScrollArea{border:0;}')
 
 
-def add_fallback_panel(card, item, market, source_requested):
+def add_fallback_panel(card, item, market, source_requested, *, active=lambda:True):
     """An exact catalog selection can have sightings before its database exists."""
     card.listing_item = item
     card.tabs = AnimatedTabs()
@@ -199,7 +196,8 @@ def add_fallback_panel(card, item, market, source_requested):
         body.addStretch()
         page.setWidget(content)
         card.tabs.addTab(page,title)
-    card.where_seen = WhereSeenPanel(item,market.listings,source_requested=source_requested)
+    card.where_seen = WhereSeenPanel(item,market.listings,source_requested=source_requested,
+                                    selected=lambda:card.tabs.currentWidget() is card.where_seen and active())
     card.tabs.addTab(card.where_seen,'Where seen')
     card.tabs.currentChanged.connect(lambda *_:card.where_seen.sync())
     card.set_panel(card.tabs)

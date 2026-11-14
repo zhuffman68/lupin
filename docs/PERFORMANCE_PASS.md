@@ -227,10 +227,12 @@ draw-local variables from the separate paint-timing callback. It now remains in
 the draw path; timing acknowledgments consume only their report. Two dedicated
 regressions and the existing wrong-reference rejection pass in the final
 22-test guard run, after the complete 1,426-test run and 194-test focused pass.
-Live preview startup then exposed a slide callback after Qt had destroyed its
-saved native page stack. Completion/movement/resize now discard the destroyed
-target without disabling normal slides. The 73-test animation/listing/card pass
-includes this native-destruction regression. The actual preview's normal cache
+Live preview startup then exposed a slide callback retaining an invalidated
+Python container proxy, although the native page container remained present.
+Completion/movement/resize safely discard retired targets, and listing demand
+uses explicit owner/subtab selection without walking Qt's private parent
+containers. Animation/listing/card checks include target retirement and live
+selection checks during a slide. The actual preview's normal cache
 also contains 26 successfully downloaded sightings; this is distinct from the
 isolated source check and does not establish live game/OCR performance.
 

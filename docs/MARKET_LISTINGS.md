@@ -19,7 +19,8 @@ independent and keep their existing unscrolled policy.
 `PriceService.listings` owns one `ListingService`, shared by both item views.
 Only a visible, selected Where seen tab supplies demand. Opening Overview,
 Sources, a search result, an overlay or a watched item does not download item
-details. Animated tab transitions check the selected stacked pages explicitly;
+details. Animated tab transitions check explicit subtab/owner selection without
+walking Qt's private page containers;
 temporarily showing outgoing pages cannot create another request. Hiding or
 minimizing the view removes pending demand and its age timer. An already started
 request may complete into the cache.

@@ -32,6 +32,7 @@ class PriceSearch(QWidget):
     def __init__(self, parent=None, *, inline_detail=True):
         super().__init__(parent)
         self.inline_detail=inline_detail
+        self.listing_active=True
         self.detail_identity=(None,None)
         self.catalog = None
         self.reference=None;self.store=None;self.media=None;self.market=None
@@ -195,6 +196,11 @@ class PriceSearch(QWidget):
         self.reference=service;self.store=service.store;self.media=media;self.market=market
         media.ready.connect(self.on_reference_image);service.extra.updated.connect(self.on_reference_reports)
         service.sources.updated.connect(self.on_reference_reports)
+
+    def set_listing_active(self,active):
+        self.listing_active=bool(active)
+        card=getattr(self,'price_view',None)
+        if card and getattr(card,'where_seen',None):card.where_seen.sync()
 
     def catalog_item(self,entry):
         item=self.catalog.by_id.get(entry.id) if self.catalog else None
@@ -434,7 +440,7 @@ class PriceSearch(QWidget):
                 if card:card.update_data(**data)
                 else:
                     card = self.price_view = price_card(watch_button=self.watch_button,**data)
-                    if sightings:add_fallback_panel(card,self.selected,self.market,self.source_requested.emit)
+                    if sightings:add_fallback_panel(card,self.selected,self.market,self.source_requested.emit,active=lambda:self.listing_active)
                     self.detail_layout.insertWidget(0,card)
             self.card_item = self.selected.game_id
             card.show()

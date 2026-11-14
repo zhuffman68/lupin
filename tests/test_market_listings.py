@@ -12,6 +12,7 @@ import unittest
 
 from PySide6.QtCore import QObject, QEvent, QCoreApplication, Signal
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtTest import QTest
 
 from price_lens.data import Cache
 from price_lens.domain import Catalog, Item
@@ -202,7 +203,7 @@ class ListingWidgetTests(ListingTestCase):
         self.host=QWidget();self.host.resize(250,300);layout=QVBoxLayout(self.host)
         self.tabs=AnimatedTabs();layout.addWidget(self.tabs)
         self.tabs.addTab(QWidget(),'Overview')
-        self.panel=WhereSeenPanel(ITEM,self.service)
+        self.panel=WhereSeenPanel(ITEM,self.service,selected=lambda:self.tabs.currentWidget() is self.panel)
         self.tabs.addTab(self.panel,'Where seen');self.tabs.currentChanged.connect(lambda *_:self.panel.sync())
         self.host.show();self.app.processEvents()
 
@@ -226,6 +227,18 @@ class ListingWidgetTests(ListingTestCase):
         self.assertFalse(self.panel.timer.isActive());self.assertFalse(self.service.interests)
         self.host.showNormal();self.app.processEvents();self.panel.sync()
         self.assertTrue(self.service.interests);self.assertEqual(len(self.fetcher.requests),1)
+
+    def test_live_slide_reaches_sightings_while_selection_checks_run(self):
+        import gc
+        self.app.setProperty('reduceMotion',False)
+        self.tabs.setCurrentWidget(self.panel);self.until(lambda:bool(self.fetcher.requests));self.accept()
+        for _ in range(15):
+            self.panel.sync();gc.collect();QTest.qWait(25)
+        self.assertFalse(self.tabs.sliding)
+        self.assertFalse(self.tabs.widget(0).isVisible())
+        self.assertEqual(self.panel.geometry(),self.tabs.stack.contentsRect())
+        self.assertTrue(self.tabs.stack.layout().isEnabled())
+        self.assertEqual(self.panel.rows[0].listing.seller,'Seller')
 
     def test_exact_search_without_database_has_tabs_and_no_hidden_listing_request(self):
         prices=PriceSearch()
