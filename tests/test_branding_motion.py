@@ -6,7 +6,7 @@ import unittest
 from PySide6.QtCore import QPoint,QRect
 from PySide6.QtGui import QMovie,QImageReader
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout
+from PySide6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QStackedWidget
 
 from price_lens.branding import Brand
 from price_lens.motion import AnimatedTabs,RollingLabel
@@ -106,6 +106,24 @@ class BrandingMotionTests(unittest.TestCase):
             tabs.animation.setCurrentTime(300)
             self.assertFalse(tabs.sliding)
             self.assertEqual(page.pos(),tabs.stack.contentsRect().topLeft())
+        finally:tabs.close();tabs.deleteLater();self.app.processEvents()
+
+    def test_late_slide_completion_after_its_native_stack_was_destroyed(self):
+        from shiboken6 import delete
+        tabs=AnimatedTabs();tabs.resize(460,500)
+        tabs.addTab(QLabel('Overview'),'Overview');tabs.addTab(QLabel('Where seen'),'Where seen')
+        self.app.setProperty('reduceMotion',False)
+        try:
+            tabs.show();self.app.processEvents();tabs.setCurrentIndex(1)
+            self.assertTrue(tabs.sliding)
+            original=tabs.stack
+            # Qt can destroy the stack before delivering a final animation/hide
+            # callback during a selected card's deferred native teardown.
+            retired=QStackedWidget();delete(retired);tabs.stack=retired
+            tabs.finish_slide()
+            self.assertFalse(tabs.sliding);self.assertFalse(tabs.mouse_before)
+            original.layout().setEnabled(True)
+            tabs.stack=original
         finally:tabs.close();tabs.deleteLater();self.app.processEvents()
 
     def test_tracking_anchor_uses_game_bottom_left_independently_of_details(self):

@@ -3,6 +3,7 @@ import re
 from PySide6.QtCore import QEasingCurve,QPoint,Qt,QVariantAnimation,QSize,QRect
 from PySide6.QtGui import QPainter, QPalette,QPixmap
 from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QTabWidget, QWidget,QSizePolicy,QStackedWidget,QStyle,QStyleOption,QScrollArea,QScrollBar
+from shiboken6 import isValid
 from .number_motion import NumberRoll
 from . import gui_currency
 from .widget_lifetime import retire_widget
@@ -418,6 +419,7 @@ class AnimatedTabs(QTabWidget):
 
     def move_pages(self,value):
         if not self.sliding:return
+        if self.stack is None or not isValid(self.stack):self.finish_slide();return
         if not enabled(self):self.finish_slide();return
         self.scroll=float(value)
         for i in range(self.count()):
@@ -426,7 +428,10 @@ class AnimatedTabs(QTabWidget):
     def finish_slide(self):
         self.animation.stop()
         if not self.sliding:return
-        self.sliding=False;stack=self.stack;current=self.currentWidget()
+        self.sliding=False;stack=self.stack
+        if stack is None or not isValid(stack):
+            self.stack=None;self.mouse_before.clear();return
+        current=self.currentWidget()
         stack.setUpdatesEnabled(False)
         for i in range(self.count()):
             child=self.widget(i)
@@ -442,6 +447,7 @@ class AnimatedTabs(QTabWidget):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if self.sliding:
+            if self.stack is None or not isValid(self.stack):self.finish_slide();return
             # Status text and page layouts can resize the viewport during a tab
             # change. Scroll in page units so the same animation/easing survives.
             self.base=self.stack.contentsRect();self.slide_width=self.base.width()

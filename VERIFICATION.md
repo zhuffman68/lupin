@@ -26,10 +26,16 @@ visibility rules separately from the full-market price snapshot.
   record their numeric timing fields. Narrow
   UI renders at **460, 520 and 640 pixels** have no horizontal listing scrollbar;
   the three subtab labels fit, and row geometry remains stable.
+- The first live preview also found a late slide/hide callback holding an
+  already destroyed native stacked widget during card replacement. Slide
+  completion now drops that retired target safely. **73 animation/listing/card
+  regressions pass**, including an explicitly destroyed native-stack case;
+  existing slide, resize, numeric and search-return effects remain enabled.
 
 Evidence is local and ignored under `evidence/where-seen-2026-11-13/`:
 `live-helper.log`, `live-document.json`, `layout.log`, `card-*.png`,
-`full-python-final.log`, `final-focused-current.log` and `last-guards.log`. The first complete run
+`full-python-final.log`, `final-focused-current.log`, `last-guards.log` and
+`animation-guards.log`. The first complete run
 found one older two-tab UI expectation, which was updated before the passing
 complete run. Native Windows live networking/capture and a fresh live inventory
 demonstration remain untested; compilation/isolated fixtures do not establish
