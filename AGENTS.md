@@ -21,6 +21,14 @@ On a Linux desktop, run GUI/native-helper QA and Wine UI tests inside an isolate
 
 Lupin keeps legacy internal application/settings/socket IDs for upgrade compatibility. Price Search works without capture and reads the same full-market snapshot as overlays and watched items. Typing, selecting, hovering or watching items must not issue individual price requests.
 
+The explicitly opened Where seen item subtab is a separate shop-sighting lookup,
+never a market-reference provider. Share one demand-driven ListingService across
+Prices/Database, with a 15-minute positive/empty/failure cache and exact Classic
+World ID/name/unit checks. Native listing mode uses the system web view, one
+bounded same-origin detail fetch and no sale-history persistence. Retain old
+sightings/ages on failure; equipment stats/continued availability are unverified.
+Hidden/minimized pages release pending demand. See docs/MARKET_LISTINGS.md.
+
 EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 
 Linux packages are named `lupin` and replace `classic-price-lens`. Preserve existing per-user data and the desktop/portal identity during migration. Prices includes manual search; Translation has its own tab. Shortcuts default on both platforms to Super/Win+F9 prices, +F10 EXP, +F11 reading Korean and +F8 writing Korean; retain explicitly customized assignments. Shop labels stay fully opaque and in place for the verified current page, except where a verified add-item form overlaps their measured rectangles. Native shop descriptions may refine a clipped listing identity, but never create another price overlay or replace the shop list in Prices.

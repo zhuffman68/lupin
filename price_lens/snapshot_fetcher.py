@@ -26,6 +26,7 @@ class SnapshotFetcher(QObject):
         self.stderr = b""
         self.failure_kind = ""
         self.last_failure = None
+        self.error_filename = 'market-last-error.json'
         self.process = QProcess(self)
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.readyReadStandardError.connect(self.read_error)
@@ -101,7 +102,7 @@ class SnapshotFetcher(QObject):
                              "stages": stages}
         try:
             self.profile.parent.mkdir(parents=True, exist_ok=True)
-            path = self.profile.parent / "market-last-error.json"
+            path = self.profile.parent / self.error_filename
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(self.last_failure), encoding="utf-8")
             temporary.replace(path)

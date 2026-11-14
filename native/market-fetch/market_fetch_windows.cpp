@@ -14,6 +14,8 @@
 #include <string>
 #include <cwchar>
 #include <cstdio>
+#include <cstring>
+#include "listing_script.h"
 #include "WebView2.h"
 
 using Microsoft::WRL::ComPtr;
@@ -155,8 +157,14 @@ class MarketReader {
     ComPtr<ICoreWebView2Environment> environment;
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> web;
+    std::wstring listing_query;
 public:
-    explicit MarketReader(bool test, bool diagnose) : self_test(test), diagnostics(test || diagnose) {}
+    explicit MarketReader(bool test, bool diagnose, const std::string &item) : self_test(test), diagnostics(test || diagnose) {
+        if (!item.empty()) {
+            std::string expression=std::string("(()=>{const d=")+LISTING_SCRIPT_HEAD+item+LISTING_SCRIPT_TAIL+";if(d)chrome.webview.postMessage(JSON.stringify(d));})()";
+            listing_query.assign(expression.begin(),expression.end());
+        }
+    }
     void diagnostic(const char *stage, HRESULT status = S_OK) {
         if (!diagnostics) return;
         char message[160];
@@ -187,7 +195,7 @@ public:
     void poll() {
         if (finished) return;
         if (GetTickCount64()-started>20000) { finish(20,"The market did not become ready before the deadline."); return; }
-        if (web) web->ExecuteScript(READ_DOCUMENT,nullptr);
+        if (web) web->ExecuteScript(listing_query.empty() ? READ_DOCUMENT : listing_query.c_str(),nullptr);
     }
     HRESULT created_controller(HRESULT status, ICoreWebView2Controller *value) {
         diagnostic("controller",status);
@@ -239,7 +247,9 @@ public:
                 return S_OK;
             });
         web->add_NavigationCompleted(navigated.Get(),&token);
-        HRESULT navigation=self_test ? web->NavigateToString(SELF_TEST) : web->Navigate(MARKET_URL);
+        const char *listing_test=LISTING_SELF_TEST;
+        std::wstring test_page(listing_test,listing_test+strlen(listing_test));
+        HRESULT navigation=self_test ? web->NavigateToString(listing_query.empty() ? SELF_TEST : test_page.c_str()) : web->Navigate(MARKET_URL);
         diagnostic("navigation requested",navigation);
         if (FAILED(navigation)) finish(12,"The market reader could not load its page.");
         return S_OK;
@@ -272,9 +282,18 @@ public:
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     int count=0;LPWSTR *argv=CommandLineToArgvW(GetCommandLineW(),&count);
-    bool self_test=false,runtime_check=false,diagnostics=false,close=false;std::wstring profile;
+    bool self_test=false,runtime_check=false,diagnostics=false,close=false;std::wstring profile;std::string listing_item;
     for (int i=1;i<count;i++) {
         if (!wcscmp(argv[i],L"--self-test")) self_test=true;
+        else if (!wcscmp(argv[i],L"--listing-item") && i+1<count) {
+            const wchar_t *raw=argv[++i];
+            if (wcslen(raw)>14) { LocalFree(argv);return 2; }
+            for (size_t k=0;raw[k];k++) {
+                if (raw[k]>127) { LocalFree(argv);return 2; }
+                listing_item+=static_cast<char>(raw[k]);
+            }
+            if (!valid_listing_item(listing_item.c_str())) { LocalFree(argv);return 2; }
+        }
         else if (!wcscmp(argv[i],L"--diagnostic")) diagnostics=true;
         else if (!wcscmp(argv[i],L"--runtime-check")) runtime_check=true;
         else if (!wcscmp(argv[i],L"--close-panel")) close=true;
@@ -311,6 +330,6 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     }
     SetPriorityClass(GetCurrentProcess(),BELOW_NORMAL_PRIORITY_CLASS);
     int code;
-    { MarketReader reader(self_test,diagnostics);code=reader.run(instance,create,options.Get(),profile); }
+    { MarketReader reader(self_test,diagnostics,listing_item);code=reader.run(instance,create,options.Get(),profile); }
     options.Reset();CoUninitialize();return code;
 }

@@ -17,6 +17,7 @@ from .market_lookup import market_lookup_reason
 from .widget_lifetime import retire_widget
 from .market_status_ui import MarketStatus
 from .catalog_search import CatalogSearch
+from .listing_widgets import add_fallback_panel
 
 
 class PriceSearch(QWidget):
@@ -423,10 +424,18 @@ class PriceSearch(QWidget):
                     card.media_changed.connect(self.reference_changed.emit);self.detail_layout.insertWidget(0,card)
                     if previous:card.restore(previous)
                 card.update_data(**data)
-            elif card:card.update_data(**data)
             else:
-                card = self.price_view = price_card(watch_button=self.watch_button,**data)
-                self.detail_layout.insertWidget(0,card)
+                sightings=bool(getattr(self.market,'listings',None))
+                if isinstance(card,EntryDetails) or sightings and card and getattr(card,'listing_item',None)!=self.selected:
+                    self.detail_layout.removeWidget(card);retire_widget(self,card);card=None
+                    self.watch_button=WatchButton()
+                    if self.watchlist:self.watch_button.bind(self.watchlist)
+                if sightings:data['selected']=True
+                if card:card.update_data(**data)
+                else:
+                    card = self.price_view = price_card(watch_button=self.watch_button,**data)
+                    if sightings:add_fallback_panel(card,self.selected,self.market,self.source_requested.emit)
+                    self.detail_layout.insertWidget(0,card)
             self.card_item = self.selected.game_id
             card.show()
             if self.thumbnails:

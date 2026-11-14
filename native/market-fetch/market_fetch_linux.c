@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/resource.h>
+#include "listing_script.h"
 
 #define MAX_DOCUMENT (8 * 1024 * 1024)
 #define MARKET_URL "https://meso.watch/"
@@ -16,6 +17,7 @@ static GtkWidget *window;
 static WebKitWebView *view;
 static gboolean finished, evaluating;
 static int exit_code = 1;
+static char *listing_query;
 
 static gboolean quit_loop(gpointer unused) {
     (void)unused;
@@ -58,7 +60,7 @@ static gboolean poll_document(gpointer unused) {
     if (finished) return G_SOURCE_REMOVE;
     if (!evaluating) {
         evaluating = TRUE;
-        webkit_web_view_evaluate_javascript(view, READ_DOCUMENT, -1, NULL, NULL, NULL, evaluated, NULL);
+        webkit_web_view_evaluate_javascript(view, listing_query ? listing_query : READ_DOCUMENT, -1, NULL, NULL, NULL, evaluated, NULL);
     }
     return G_SOURCE_CONTINUE;
 }
@@ -88,12 +90,18 @@ static WebKitWebView *new_window(WebKitWebView *sender, WebKitNavigationAction *
 
 int main(int argc, char **argv) {
     gboolean self_test = FALSE;
+    const char *listing_item = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--self-test")) self_test = TRUE;
+        else if (!strcmp(argv[i], "--listing-item") && i + 1 < argc) {
+            listing_item=argv[++i];
+            if (!valid_listing_item(listing_item)) return 2;
+        }
         else if (!strcmp(argv[i], "--version")) { puts("Lupin market helper 1 (WebKitGTK)"); return 0; }
         else if (!strcmp(argv[i], "--profile") && i + 1 < argc) i++; /* GTK uses an ephemeral context. */
         else { fputs("Unknown market helper argument.\n", stderr); return 2; }
     }
+    if (listing_item) listing_query=g_strconcat("JSON.stringify(",LISTING_SCRIPT_HEAD,listing_item,LISTING_SCRIPT_TAIL,")",NULL);
     (void)setpriority(PRIO_PROCESS, 0, 10);
     if (!gtk_init_check(NULL, NULL)) {
         fputs("A desktop connection is required for the market reader.\n", stderr);
@@ -115,8 +123,9 @@ int main(int argc, char **argv) {
     g_unix_signal_add(SIGINT, cancelled, NULL);
     g_timeout_add(200, poll_document, NULL);
     g_timeout_add_seconds(20, timed_out, NULL);
-    if (self_test) webkit_web_view_load_html(view, SELF_TEST, "about:blank");
+    if (self_test) webkit_web_view_load_html(view, listing_item ? LISTING_SELF_TEST : SELF_TEST, "about:blank");
     else webkit_web_view_load_uri(view, MARKET_URL);
     gtk_main();
+    g_free(listing_query);
     return exit_code;
 }

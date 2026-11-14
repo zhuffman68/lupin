@@ -16,6 +16,7 @@ from .watchlist_ui import WatchButton
 from .domain import key as name_key,Item
 from .price_widgets import PriceCard
 from .market_lookup import market_lookup
+from .listing_widgets import ITEM_TAB_STYLE,WhereSeenPanel
 
 ITEM_STATS={'reqLevel':'Level required','reqSTR':'STR required','reqDEX':'DEX required','reqINT':'INT required','reqLUK':'LUK required','reqPOP':'Fame required',
     'incPAD':'Weapon attack','incMAD':'Magic attack','incPDD':'Weapon defense','incMDD':'Magic defense','incACC':'Accuracy',
@@ -132,7 +133,7 @@ class EntryDetails(QFrame):
         self.tabs.tabBar().setDrawBase(False)
         self.tabs.setStyleSheet('QTabWidget::pane{border:0;background:transparent;} QTabWidget::tab-bar{alignment:center;} QTabBar::tab{padding:6px 9px;margin:0 3px 2px 0;} QScrollArea,QScrollArea>QWidget>QWidget{background:transparent;}')
         if self.summary_card:
-            self.tabs.setStyleSheet('QTabWidget{background:transparent;} QTabWidget::pane{border:0;padding:0;} QTabWidget QWidget{background:transparent;} QTabWidget::tab-bar{alignment:center;} QTabBar::tab{padding:6px 8px;margin:0 2px 0 0;border-radius:5px;color:#b5c3d6;} QTabBar::tab:selected{background:#3a495f;color:#f1dfbf;} QScrollArea{border:0;}')
+            self.tabs.setStyleSheet(ITEM_TAB_STYLE)
         overview,self.overview,body=page();self.tabs.addTab(overview,'Overview')
         if entry.kind=='items':body.setContentsMargins(5,7,5,0);body.setSpacing(9)
         if entry.kind=='items':self.item(body)
@@ -141,6 +142,11 @@ class EntryDetails(QFrame):
         elif entry.kind=='quests':self.quest(body)
         elif entry.kind=='maps':self.map(body)
         elif entry.kind=='npcs':self.npc(body)
+        self.where_seen=None
+        if entry.kind=='items':
+            self.where_seen=WhereSeenPanel(self.item_identity(),getattr(getattr(panel,'market',None),'listings',None),source_requested=panel.source_requested.emit)
+            self.tabs.addTab(self.where_seen,'Where seen')
+            self.tabs.currentChanged.connect(lambda *_:self.where_seen.sync())
         body.addStretch()
         self.tabs.tabBar().setVisible(self.tabs.count()>1)
         self.tabs.currentChanged.connect(lambda *_:self.media_changed.emit())
@@ -423,6 +429,7 @@ class EntryDetails(QFrame):
 
     def set_active(self,active):
         if self.sprite:self.sprite.active=active;self.sprite.sync()
+        if self.where_seen:self.where_seen.set_active(active)
 
     def sync_motion(self):
         if self.sprite:self.sprite.sync()

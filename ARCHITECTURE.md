@@ -362,7 +362,7 @@ cannot access deleted Qt children.
 
 ## One full-market cache
 
-`PriceService` loads the Classic World regular/cash catalog and manages a single `SnapshotStore`/`SnapshotUpdater`. There is no individual-price provider, per-item HTTP queue or provider-ID index.
+`PriceService` loads the Classic World regular/cash catalog and manages a single `SnapshotStore`/`SnapshotUpdater`. There is no individual-price provider, individual-price HTTP queue or provider-ID discovery index. The separately cached, explicit Where seen subtab reads shop sightings as described below; it cannot supply market-reference prices.
 
 Catalog expiry requests refresh without deleting the offline fallback. Snapshot
 preparation and SQLite replacement run off the GUI thread; only the accepted
@@ -417,6 +417,20 @@ The countdown reads the existing retry deadline and makes no requests itself.
 A new valid publication clears the warning through normal market signals.
 
 Overlay annotations show the source's latest observed-sale age rather than repeating the snapshot check age. Stale/refresh warnings remain explicit. The larger item panel shows the source's latest observed-sale time. The full list does not supply a verified individual transaction amount; the market median is never presented as the latest sale price.
+
+### Selected-item shop sightings
+
+`market_listings.py` validates exact Classic World listing identities, units,
+publication times and whole-number asking amounts independently of quotes.
+`ListingService` owns a shared 15-minute positive/empty/failure cache, one native
+helper and one bounded disk worker. Only the selected visible Where seen subtab
+requests data. Its native helper mode shares a single same-origin fetch script
+between WebKitGTK and WebView2, strips historical transactions, and retains the
+normal bounded output/deadline/shutdown contract. `listing_widgets.py` supplies
+the compact seller/location/amount/quantity/age rows to Prices and Database,
+including selections without a downloaded database. Hidden/minimized pages
+release demand; changing ages retain row widgets. Full-market references and
+screen-reading schedules are unchanged. See [the complete lifecycle and limits](docs/MARKET_LISTINGS.md).
 
 ## Prices and watched items
 

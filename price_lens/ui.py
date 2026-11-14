@@ -2469,6 +2469,10 @@ class LensWindow(QMainWindow):
         self.overlay.shop_viewport_epoch = self.shop_browsing.epoch
         self.overlay.shop_viewport_pending = self.shop_browsing.pending
         self.overlay.update(list(geometry.getRect()), annotations, hover_enabled=self.prices_enabled and self.labels_enabled and self.mode == "live" and game_visible and screen_matches and not screen_old)
+        if annotations and ready_price and not self.first_price_seen:
+            self.first_price_seen = True
+            self.settings.setValue("first-price-seen", True)
+            self.update_capture_controls()
 
     def on_overlay_painted(self,report):
         metrics=getattr(self.reader,'metrics',None)
@@ -2478,10 +2482,6 @@ class LensWindow(QMainWindow):
             metrics.record('overlay.send_to_paint',duration_ms=(painted-sent)*1000)
         if type(painted) in (int,float) and type(captured) in (int,float) and captured>0 and 0<=painted-captured<10:
             metrics.record('overlay.capture_to_paint',duration_ms=(painted-captured)*1000)
-        if (annotations and ready_price and not self.first_price_seen):
-            self.first_price_seen = True
-            self.settings.setValue("first-price-seen", True)
-            self.update_capture_controls()
 
     def open_source(self, url):
         from PySide6.QtCore import QUrl

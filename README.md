@@ -20,6 +20,8 @@ Compare player-shop listings with color-coded market references beside each item
 
 Star items to watch for them while browsing shops. Recently seen items stay in the Prices tab, with thumbnails and their last seen asking prices. Saved market prices remain available between refreshes.
 
+Open **Where seen** in an item card to find recently spotted shops, sellers, channels and FM rooms, with asking prices and sighting ages. Listings are cached for 15 minutes; an item may have sold since it was seen.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/zhuffman68/lupin/main/docs/media/prices.gif" width="640" alt="Lupin showing market prices beside items in two player shops">
 </p>

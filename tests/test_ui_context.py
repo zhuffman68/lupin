@@ -267,7 +267,7 @@ class ContextUiTests(unittest.TestCase):
         w.on_catalog(raw);w.search_panel.query.setText('leaf');w.search_panel.choose_first();self.app.processEvents()
         card=w.search_panel.price_view;self.assertIsInstance(card,EntryDetails);self.assertIsInstance(card.summary_card,PriceCard)
         self.assertIn('Requirements Level 25',' '.join(label.text() for label in card.findChildren(QLabel)))
-        self.assertEqual([card.tabs.tabText(i) for i in range(card.tabs.count())],['Overview','Sources'])
+        self.assertEqual([card.tabs.tabText(i) for i in range(card.tabs.count())],['Overview','Sources','Where seen'])
         self.assertNotIn(999,[i.game_id for i in w.search_panel.catalog.items])
         self.assertEqual(set(i.game_id for i in w.search_panel.catalog.items),set(w.database_panel.catalog))
         header=card.item_name;watch=card.watch_button
@@ -1682,6 +1682,20 @@ class ContextUiTests(unittest.TestCase):
                 self.assertFalse(self.window.first_price_seen)
                 self.assertNotIn("987,654", "\n".join(row["text"] for row in self.window.overlay.rows))
                 self.assertIn("0 market references ready", self.window.summary.text())
+
+    def test_first_fresh_reference_is_confirmed_in_the_draw_path(self):
+        self.window.on_reading(self.reading(shop_hover=True))
+        now=time.time()
+        self.window.service.deliver_quote(1,Quote(1,987654,now,now,20,'Test','','24h'))
+        self.assertTrue(self.window.first_price_seen)
+
+    def test_paint_diagnostics_do_not_use_locals_from_another_callback(self):
+        from types import SimpleNamespace
+        recorded=[]
+        self.window.reader.metrics=SimpleNamespace(record=lambda name,**kwargs:recorded.append((name,kwargs)))
+        self.window.on_overlay_painted(dict(painted_at=10.1,sent_at=10,captured_at=9.9))
+        self.assertEqual([name for name,_ in recorded],['overlay.send_to_paint','overlay.capture_to_paint'])
+        self.assertFalse(self.window.first_price_seen)
 
     def test_single_display_dropdown_and_three_feature_tabs(self):
         self.assertFalse(hasattr(self.window,'display_map'))

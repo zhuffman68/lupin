@@ -74,6 +74,15 @@ class DatabaseUiTests(unittest.TestCase):
         self.assertEqual(self.panel.detail.summary_card.data['quote'].game_id,1001)
         self.assertIsNone(self.panel.catalog_item(self.panel.selected))
 
+    def test_shop_sightings_is_a_third_item_tab_and_navigation_preserves_it(self):
+        p=self.panel;self.app.setProperty('reduceMotion',True);p.resize(460,680)
+        p.open(('items',1001));self.app.processEvents()
+        self.assertEqual([p.detail.tabs.tabText(i) for i in range(p.detail.tabs.count())],['Overview','Sources','Where seen'])
+        self.assertLessEqual(p.detail.tabs.tabBar().sizeHint().width(),p.detail.tabs.width())
+        p.detail.tabs.setCurrentIndex(2);p.open(('monsters',13));self.app.processEvents()
+        self.assertNotIn('Where seen',[p.detail.tabs.tabText(i) for i in range(p.detail.tabs.count())])
+        p.go_back();self.app.processEvents();self.assertEqual(p.detail.tabs.currentIndex(),2)
+
     def test_monster_locations_and_drop_links_round_trip_to_the_search_results(self):
         self.search('monsters','green');p=self.panel;p.open_first();self.app.processEvents()
         self.assertEqual(p.selected.id,13);self.assertIn('Locations',[p.detail.tabs.tabText(i) for i in range(p.detail.tabs.count())])
@@ -202,7 +211,7 @@ class DatabaseUiTests(unittest.TestCase):
         for key in (('items',1001),('monsters',13),('items',5001)):
             p.open(key);QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete);self.app.processEvents()
             self.assertEqual(p.detail.findChildren(QSlider),[]);self.assertIsNone(p.rank_slider)
-        self.assertEqual(p.detail.tabs.count(),1);self.assertEqual(p.detail.tabs.tabText(0),'Sources');self.assertIsNone(p.detail.drop_list)
+        self.assertEqual([p.detail.tabs.tabText(i) for i in range(p.detail.tabs.count())],['Sources','Where seen']);self.assertIsNone(p.detail.drop_list)
         labels=' '.join(w.text() for w in p.detail.findChildren(QLabel))
         self.assertNotIn('No confirmed',labels)
         self.assertFalse(any(w.isVisible() and 'reports' in w.text().lower() for w in p.detail.findChildren(QPushButton)))

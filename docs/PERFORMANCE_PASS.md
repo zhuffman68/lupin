@@ -203,6 +203,31 @@ input listeners or automated replies were introduced.
 - [x] Archive or purge verified unnecessary development storage after committed checkpoints.
 - [x] Update architecture, changelog, development instructions and verification results.
 
+## Additional selected-item shop sightings
+
+The user approved an item-card **Where seen** subtab after the read-only source
+investigation. Prices and Database share one bounded, asynchronous sighting cache
+with a 15-minute positive/empty/failure lifetime. Only the selected visible
+subtab requests data; regular price cards, overlays, typing and OCR still use
+the local full-market snapshot exclusively. The reader/helper is independent of
+the game. Native helpers are short-lived; hidden/minimized pages stop demand
+and age animation, and unchanged sighting rows retain their widgets.
+
+Both native platform sources compile. A real isolated Linux request returned
+26 validated Work Gloves sightings in 4,754 IPC bytes; large sale histories are
+not retained. The complete Python suite passes 1,426 tests with three skips;
+subsequent focused checks cover the final identity-cache guard as well. Cards
+fit the 460-pixel minimum width. Physical Windows networking/capture remains an
+acceptance check. [MARKET_LISTINGS.md](MARKET_LISTINGS.md) and
+[VERIFICATION.md](../VERIFICATION.md) record details. This is part of the source
+preview; no package, install or publication is requested.
+
+Combined-preview review also found the first-price confirmation referring to
+draw-local variables from the separate paint-timing callback. It now remains in
+the draw path; timing acknowledgments consume only their report. Two dedicated
+regressions and the existing wrong-reference rejection pass in the final
+22-test guard run, after the complete 1,426-test run and 194-test focused pass.
+
 ## Acceptance
 
 Run focused meaningful regressions as each subsystem changes, then the full

@@ -8,6 +8,7 @@ from .snapshot import SnapshotStore
 from .snapshot_updater import SnapshotUpdater
 from .tls import retryable_catalog_error
 from .market_lookup import LookupResult
+from .listing_service import ListingService
 
 
 class PriceService(QObject):
@@ -22,6 +23,7 @@ class PriceService(QObject):
         super().__init__(parent)
         self.cache=Cache(cache_path);self.snapshot=SnapshotStore(self.cache)
         self.snapshot_updater=None;self.refresh_snapshot=False;self.interval=DEFAULT_TTL
+        self.listings=ListingService(self.cache,self,market_busy=lambda:bool(self.snapshot_updater and self.snapshot_updater.busy))
         self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='lupin-catalog')
         self.closed=False;self.catalog_pending=False;self.catalog_retries=0;self.catalog_token=None
         self.current_catalog=None
@@ -146,9 +148,11 @@ class PriceService(QObject):
         self.closed=True;self.catalog_retry_timer.stop()
         if self.catalog_token:self.catalog_token.cancel()
         if self.snapshot_updater:self.snapshot_updater.close()
+        self.listings.close()
         self.pool.shutdown(wait=False,cancel_futures=True)
 
     def wait_closed(self):
         """Join outside the GUI loop (and in isolated test cleanup)."""
         self.pool.shutdown(wait=True,cancel_futures=True)
         if self.snapshot_updater:self.snapshot_updater.storage.pool.shutdown(wait=True,cancel_futures=True)
+        self.listings.wait_closed()

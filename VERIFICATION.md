@@ -1,5 +1,40 @@
 # Verification — 2026-11-13
 
+## Selected-item Where seen tab — source preview
+
+Prices and Database item cards now share a compact shop-sighting subtab beside
+Overview and Sources (Sources and Where seen for cash items). Exact catalog
+selections also support it before their database entry has downloaded.
+[The listing contract](docs/MARKET_LISTINGS.md) records validation, cache and
+visibility rules separately from the full-market price snapshot.
+
+- Both WebKitGTK and WebView2 native helper sources compile successfully. The
+  local native asynchronous-fetch fixture passes without network, strips sale
+  history and preserves the expected exact identity/channel/FM room.
+- A real isolated WebKitGTK request for Work Gloves succeeds: **26 validated
+  sightings**, including channels and FM rooms, in **4,754 IPC bytes**, with no
+  sale-history array. This is dated source evidence, not proof that each shop is
+  still open or has that stock. Equipment stats remain unverified.
+- Cache regressions cover repeated views, 15-minute expiry, persisted empty
+  results, failures retaining old sightings, alias/name/unit/world rejection,
+  latest pending selection, hidden/minimized demand, cancellation and stable
+  row widgets. A later focused check also rejects in-memory name/unit reuse.
+- The complete suite passes **1,426 tests, three skipped, 261.895 s**. The current
+  focused suite passes **194 tests** and includes the name/unit-cache regression.
+  A final **22-test** pass also covers a small callback-scope correction: first
+  valid-price confirmation belongs to drawing, while paint acknowledgments only
+  record their numeric timing fields. Narrow
+  UI renders at **460, 520 and 640 pixels** have no horizontal listing scrollbar;
+  the three subtab labels fit, and row geometry remains stable.
+
+Evidence is local and ignored under `evidence/where-seen-2026-11-13/`:
+`live-helper.log`, `live-document.json`, `layout.log`, `card-*.png`,
+`full-python-final.log`, `final-focused-current.log` and `last-guards.log`. The first complete run
+found one older two-tab UI expectation, which was updated before the passing
+complete run. Native Windows live networking/capture and a fresh live inventory
+demonstration remain untested; compilation/isolated fixtures do not establish
+those results. No installer or public release is produced by this source preview.
+
 ## Inventory price latency and first-reply movement — source preview
 
 The [stability record](docs/BLUE_DESCRIPTION_STABILITY.md) describes the first-
