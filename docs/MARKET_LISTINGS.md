@@ -95,10 +95,18 @@ separate from full-market diagnostics. No seller/chat/draft text enters logs.
 Subtabs use the existing slide animation and fit the minimum-width selected
 card. `listing_rows.py` paints exposed sightings inside one scrolling widget;
 a 100-row response creates lightweight records rather than hundreds of labels
-and layouts. Only changed listing data replaces records. Minute age updates
+and layouts. The first loaded result fades in from transparent with an
+eight-pixel upward settling motion over 220 ms. A result prepared before its
+first show waits for visibility; reopening already displayed rows does not
+replay the reveal. The scroll content keeps its final height throughout, so
+text and surrounding controls do not shift. Changed nonempty results retain
+the existing 130 ms refresh fade. Only changed listing data replaces records;
+unchanged refreshes do not restart motion. Minute age updates
 retain records and visible rolling digits or text fades through shared
 160/110 ms clocks. Hidden rows do not acquire independent animations. Hidden
 pages perform no age animation or background listing refresh. Reduce motion
-uses the existing app policy.
+uses the existing app policy, including stopping an in-progress reveal. One
+shared reveal clock paints only exposed rows; scrolling and pointer locations
+account for the temporary painted offset without adding row widgets.
 
 Verification and live-source evidence are recorded in [VERIFICATION](../VERIFICATION.md).

@@ -235,6 +235,20 @@ class ListingWidgetTests(ListingTestCase):
         self.tabs.setCurrentIndex(0);self.app.processEvents()
         self.assertFalse(self.panel.timer.isActive());self.assertFalse(self.service.interests)
 
+    def test_loaded_results_reveal_once_and_unchanged_refresh_does_not_restart_motion(self):
+        self.tabs.setCurrentWidget(self.panel);self.until(lambda:bool(self.fetcher.requests))
+        self.app.setProperty('reduceMotion',False);self.accept()
+        view=self.panel.listing_view
+        self.assertTrue(view.revealing);self.assertEqual(view.animation.duration(),220)
+        view.animation.pause();view.animation.setCurrentTime(110)
+        held=view.alpha;row=view.rows[0];height=view.height()
+        for _ in range(5):self.panel.refresh()
+        self.assertEqual(view.alpha,held);self.assertEqual(view.animation.currentTime(),110)
+        self.assertIs(view.rows[0],row);self.assertEqual(view.height(),height)
+        self.assertEqual(len(self.fetcher.requests),1)
+        self.tabs.setCurrentIndex(0);self.tabs.finish_slide();self.app.processEvents()
+        self.assertEqual(view.animation.state(),view.animation.State.Stopped)
+
     def test_minimized_window_releases_demand_and_preserves_rows(self):
         self.tabs.setCurrentWidget(self.panel);self.until(lambda:bool(self.fetcher.requests));self.accept()
         self.host.showMinimized();self.app.processEvents();self.panel.sync()

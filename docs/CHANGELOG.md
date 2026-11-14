@@ -32,7 +32,8 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 - Item cards in Prices and Database have a **Where seen** tab for recent shops,
   with seller, channel/FM room or map, asking price, quantity and sighting age.
   Listings load on demand and stay cached for 15 minutes, including empty
-  results. Failed refreshes keep previous sightings with their original ages.
+  results, with a smooth reveal as locations arrive. Failed refreshes keep
+  previous sightings with their original ages.
 
 - Blue item-description prices retain their verified item through temporary OCR
   misses and small cursor movements, including movement during the first read.

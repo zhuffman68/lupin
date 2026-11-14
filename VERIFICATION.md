@@ -1,5 +1,21 @@
 # Verification — 2026-11-14
 
+## Shop-location result reveal — 2026-11-14
+
+First-loaded Where seen results use a 220 ms fade and eight-pixel upward
+settling motion in the existing virtual painted viewport. Final content height
+is retained throughout. Hidden first loads wait for visibility, cached return
+does not replay the effect, and hiding/Reduce motion stops it. Unchanged data
+and age updates retain the current reveal clock; nonempty data refreshes retain
+their existing 130 ms fade. Pointer hit testing follows the painted offset.
+
+All **53 focused tests pass in 22.533 s** in private Xvfb/D-Bus/HOME/XDG state
+at reduced priority. Coverage includes actual initial/mid/final painted pixels,
+fixed height, 100-row visible-only painting/no row widgets, deferred first show,
+cached reopen, Reduce motion, pointer geometry, one request per lookup, no
+restart on unchanged refresh, item reuse and Prices navigation. No new capture,
+network policy or installed-package change is introduced.
+
 ## Repeated card rendering and crowded hover checks — 2026-11-14
 
 The next unprofiled live sample still caught intermittent 24–63 ms card-render
