@@ -230,8 +230,8 @@ class ListingWidgetTests(ListingTestCase):
         self.assertEqual(len(self.panel.rows),1);row=self.panel.rows[0]
         for _ in range(5):self.panel.refresh()
         self.assertIs(self.panel.rows[0],row)
-        self.assertIn('CH 3 · FM 7',row.place.text())
-        self.assertGreater(row.width(),100)
+        self.assertIn('CH 3 · FM 7',row.listing.place)
+        self.assertGreater(self.panel.listing_view.width(),100)
         self.tabs.setCurrentIndex(0);self.app.processEvents()
         self.assertFalse(self.panel.timer.isActive());self.assertFalse(self.service.interests)
 

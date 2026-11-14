@@ -195,6 +195,10 @@ class ReferenceMedia(QObject):
 
 
 class ReferenceSprite(QWidget):
+    def redraw(self,*_):
+        from .slide_surface import invalidate_surface
+        invalidate_surface(self);super().update()
+
     def __init__(self,media,parent=None):
         super().__init__(parent);self.media=media;self.movie=None;self.url='';self.icon='';self.active=False;self.image=QImage()
         self.setFixedSize(56,56);self.setAccessibleName('Reference image')
@@ -204,7 +208,7 @@ class ReferenceSprite(QWidget):
         target=animation or icon
         if target==self.url and icon==self.icon:self.sync();return
         if self.movie:self.movie.stop();self.movie.deleteLater();self.movie=None
-        self.url=target;self.icon=icon;self.image=self.media.image(icon);self.received(target);self.update()
+        self.url=target;self.icon=icon;self.image=self.media.image(icon);self.received(target);self.redraw()
 
     def received(self,url):
         if url not in (self.url,self.icon):return
@@ -214,8 +218,8 @@ class ReferenceSprite(QWidget):
             if path is not None:
                 if self.movie:self.movie.stop();self.movie.deleteLater()
                 self.movie=QMovie(str(path),parent=self);self.movie.setCacheMode(QMovie.CacheMode.CacheNone)
-                self.movie.frameChanged.connect(lambda *_:self.update());self.movie.jumpToFrame(0)
-        self.sync();self.update()
+                self.movie.frameChanged.connect(self.redraw);self.movie.jumpToFrame(0)
+        self.sync();self.redraw()
 
     def sync(self):
         if self.movie:

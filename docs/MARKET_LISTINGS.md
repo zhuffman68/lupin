@@ -26,7 +26,7 @@ minimizing the view removes pending demand and its age timer. An already started
 request may complete into the cache.
 
 The hidden tab does not build its body, query its saved state or construct
-sighting-row widgets. Build and refresh that presentation only when explicitly
+sighting records. Build and refresh that presentation only when explicitly
 selected and visible. Hidden source changes leave retained rows alone; opening
 the tab reconciles them with the latest cached snapshot. This keeps cached
 popular items from adding hundreds of widgets to an unrelated card transition.
@@ -93,8 +93,12 @@ separate from full-market diagnostics. No seller/chat/draft text enters logs.
   unit price. The GUI's small coin remains the currency indicator.
 
 Subtabs use the existing slide animation and fit the minimum-width selected
-card. Rows scroll within the panel. Only changed listing data rebuilds rows;
-minute age updates retain their widgets. Hidden pages perform no age animation
-or background listing refresh. Reduce motion uses the existing app policy.
+card. `listing_rows.py` paints exposed sightings inside one scrolling widget;
+a 100-row response creates lightweight records rather than hundreds of labels
+and layouts. Only changed listing data replaces records. Minute age updates
+retain records and visible rolling digits or text fades through shared
+160/110 ms clocks. Hidden rows do not acquire independent animations. Hidden
+pages perform no age animation or background listing refresh. Reduce motion
+uses the existing app policy.
 
 Verification and live-source evidence are recorded in [VERIFICATION](../VERIFICATION.md).

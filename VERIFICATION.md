@@ -1,5 +1,45 @@
 # Verification — 2026-11-13
 
+## Rendered card resizing and frame pacing — 2026-11-14
+
+The complete regression run passes **1,468 tests, three skipped, 202.542 s**.
+Separate **41-test guards at 2×** and **42 final guards at 1.25× scale** cover
+real intermediate card sizes,
+rapid retargeting, live cached-page updates, keyboard tab navigation, exact
+rendered card endpoints, released buffers and visible-only sighting-row work.
+GUI/helper checks use private Xvfb, D-Bus and HOME/XDG with software rendering.
+
+- Detail tabs ease card height over **220 ms** without per-frame text reflow or
+  a late clipping jump. Automatic cards follow the same height clock. Switching
+  items interpolates the styled frame with native-size foreground pixels and
+  the full **130 ms** fade/lift; interrupted transitions retain the visible state.
+  Cached thumbnails are hydrated before showing the card, avoiding a blank
+  image during that reveal. Late image arrivals keep their own fade.
+- Main slides remain **260 ms**, watched expansion **220 ms**, rolls **160 ms**
+  and ordinary wheel easing **125 ms**. Temporary opaque composition eliminates
+  redundant underlying painting while region invalidation keeps live values,
+  controls, images and nested motion current. Real widget input/focus is retained.
+- A 24-action real-event-loop xcb run uses copied local database/price data and
+  offline capture/images/100-row sightings. Its 60 fps lossless recording and
+  rendered frame strips were inspected. At **520 × 840 / 1×**, average main-slide
+  paint CPU drops **3.87 → 0.65 ms**, and item replacement **3.80 → 0.82 ms**,
+  compared with `d2e8dfa`. Sampled moving-frame gaps stay below **18.4 ms**.
+- A **460 × 840 / 2×** sequence includes watched expansion, item growth/shrink,
+  100-entry history insertion/scrolling and rolling figures. Its sampled moving
+  frame gaps stay below **20 ms**, with paint callbacks below **10 ms**.
+  Sighting rows use one virtual viewport and shared age-motion clocks, preserving
+  text fades/number rolls without hundreds of row widgets.
+- Idle samples leave **no slide/card surfaces**, using **4.56/5.34 ms** of
+  UI-thread CPU over 1.5 seconds. Whole fixture peak RSS is approximately
+  **207/222 MiB**. These are offline view measurements, not live OCR/translation
+  memory or physical compositor/native Windows FPS guarantees. Cold card setup
+  remains roughly **50–80 ms** in the sampled real-database actions, separately
+  from the animation's frame delivery.
+
+Evidence is private under `evidence/smooth-motion-2026-11-14/`; architecture and
+measurement details are in [ITEM_CARDS](docs/ITEM_CARDS.md) and
+[PERFORMANCE_PASS](docs/PERFORMANCE_PASS.md). No installers or releases were built.
+
 ## Preserved animations and lower frame work — 2026-11-14
 
 The complete regression run passes **1,452 tests, three skipped, 226.484 s**.

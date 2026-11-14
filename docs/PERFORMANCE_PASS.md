@@ -255,6 +255,63 @@ the vendor pin are unchanged. [ITEM_CARDS.md](ITEM_CARDS.md) and
 
 ## Acceptance
 
+### Rendered motion follow-up — 2026-11-14
+
+The card-size changes are now animated, rather than established immediately
+behind a slide. Owned tab geometry avoids the native tab widget clipping new
+content until a resize ends. Detail height uses the existing 220 ms subtab curve,
+and automatic-card canvases follow its exact delta. Replacements interpolate a
+native styled border around unscaled foreground text/images with the full
+130 ms fade/lift. Retargeting starts from the visible frame/height, including
+rapid reversal before the first height tick.
+
+Page slides use transient opaque composition, repainting affected regions for
+live text, digits, models, images, controls and nested animation. Real widgets
+retain input/focus. All images, connections and own-widget event filters are
+released when the slide finishes or hides. This adds no idle frame loop.
+Watched expansion still moves a fixed content canvas over 220 ms; it has not
+been replaced with an instant swap. A sighting response now creates one virtual
+viewport with at most 100 lightweight records, instead of a row widget tree.
+Visible age digits/fades retain shared 160/110 ms clocks.
+
+The private xcb/software-rendered check uses a real Qt event loop, copied local
+reference/price data, offline capture/image/listing services, and lossless
+60 fps recording. It covers all four tabs, watched expansion, item subtab
+growth/shrinkage, equipment/consumable/scroll replacement, search/clearing,
+100-entry history insertion/scrolling and rolling figures. Rendered strips were
+inspected alongside paint-event timing; deterministic tests also compare exact
+native endpoint pixels and live partial updates.
+
+At 520 × 840 / 1× scale, the 24-action final sample records:
+
+| Moving view | Mean paint CPU per frame | Largest observed moving-frame gap |
+| --- | ---: | ---: |
+| Main navigation | 0.65 ms | 16.80 ms |
+| Item replacements | 0.82 ms | 17.29 ms |
+| Item detail tabs | 2.86 ms | 17.95 ms |
+| Watched expansion/collapse | 4.19 ms | 18.31 ms |
+| History insertion/scrolling | 1.00 ms | 17.11 ms |
+
+The `d2e8dfa` comparison sequence averaged 3.87 ms for main navigation and
+3.80 ms for replacements: approximately 83%/78% less paint CPU in these samples.
+Animation durations remain intact. Card preparation is a separate cost, roughly
+50–80 ms in the sampled real-database selections; these figures do not claim
+sub-frame construction or eliminate source/network latency.
+
+A separate 460 × 840 / 2× scale sequence keeps sampled moving-frame gaps below
+20 ms and paint callbacks below 10 ms, including watched expansion. Idle samples
+use 4.56/5.34 ms of UI-thread CPU over 1.5 seconds, with no retained slide/card
+surfaces. Whole fixture-process peak RSS is approximately 207/222 MiB; this is
+not a live OCR/translation memory figure or the allocation cost of animations.
+Other host workloads are left running. These checks establish the tested Qt
+render path, not physical compositor presentation, native Windows performance
+or a universal FPS guarantee.
+
+Evidence, recordings and profiles are under
+`evidence/smooth-motion-2026-11-14/`. Current regression results are recorded in
+[VERIFICATION.md](../VERIFICATION.md). No installer, release or game-reader
+change is part of this animation follow-up.
+
 The scrolling/card-opening follow-up adds one bounded wheel animation per own
 viewport, preserves direct trackpad/scrollbar input and disables motion when
 hidden or reduced. Reference-list media demand is coalesced during motion, and

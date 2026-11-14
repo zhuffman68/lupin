@@ -263,6 +263,7 @@ class ContextUiTests(unittest.TestCase):
         self.assertEqual(card.tabs.currentIndex(),1);self.assertTrue(card.tabs.sliding)
         self.assertEqual(card.tabs.animation.currentTime(),130)
         card.tabs.animation.resume();card.tabs.animation.setCurrentTime(card.tabs.animation.duration())
+        card.tabs.finish_height()
         self.assertFalse(card.tabs.sliding)
         self.assertTrue(card.tabs.currentWidget().isVisible());self.assertTrue(card.tabs.stack.layout().isEnabled())
         self.assertEqual(card.tabs.currentWidget().geometry(),card.tabs.stack.contentsRect())

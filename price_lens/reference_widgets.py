@@ -4,6 +4,7 @@ from PySide6.QtCore import QSize,Qt,Signal,QRectF,QPointF,QTimer
 from PySide6.QtGui import QColor,QFont,QFontMetrics,QIcon,QImage,QPainter,QPixmap,QTextLayout,QTextOption
 from PySide6.QtWidgets import QListWidget,QListWidgetItem,QWidget,QStyledItemDelegate,QStyle
 from .motion import ContentArea,enabled
+from .card_morph import background
 from . import gui_currency
 from .number_motion import NumberRoll
 
@@ -190,9 +191,12 @@ class _Slide(QWidget):
     def __init__(self,before,after,direction,parent):
         super().__init__(parent);self.before=before;self.after=after;self.direction=direction;self.progress=0.0
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self.background_colour=background(parent)
 
     def paintEvent(self,event):
-        painter=QPainter(self);offset=round(self.width()*self.progress)*self.direction
+        painter=QPainter(self);painter.fillRect(self.rect(),self.background_colour)
+        offset=round(self.width()*self.progress)*self.direction
         painter.drawPixmap(-offset,0,self.before);painter.drawPixmap(self.direction*self.width()-offset,0,self.after)
 
 

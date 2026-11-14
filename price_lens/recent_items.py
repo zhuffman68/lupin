@@ -11,6 +11,7 @@ from .domain import age_text,compare
 from .gui_currency import paint_icon
 from .number_motion import NumberRoll
 from .item_identity import observed_item
+from .slide_surface import invalidate_surface
 
 
 class ActiveCards(QObject):
@@ -228,7 +229,8 @@ class RecentItems(QWidget):
             if item is not None:
                 rect=self.rows.visualItemRect(item).intersected(area)
                 if not rect.isEmpty():dirty|=QRegion(rect)
-        if not dirty.isEmpty():self.rows.viewport().update(dirty)
+        if not dirty.isEmpty():
+            invalidate_surface(self.rows.viewport(),dirty);self.rows.viewport().update(dirty)
 
     def advance(self,value):
         for identity in self.animating:
@@ -250,7 +252,8 @@ class RecentItems(QWidget):
             identity=self.rows.identity(item)
             if identity in self.rows.motion:
                 dirty|=QRegion(self.rows.visualItemRect(item).united(before.get(identity,QRect())).intersected(area))
-        if not dirty.isEmpty():self.rows.viewport().update(dirty)
+        if not dirty.isEmpty():
+            invalidate_surface(self.rows.viewport(),dirty);self.rows.viewport().update(dirty)
         parent=self.parentWidget()
         if parent and parent.layout():parent.layout().activate()
         visible_ids=tuple(item.game_id for item in self.visible_items())

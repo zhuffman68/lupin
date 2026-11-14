@@ -1,13 +1,12 @@
 """Persistent price cards: update fields in place instead of rebuilding on every quote."""
-from PySide6.QtCore import Qt,QTimer,Signal
+from PySide6.QtCore import Qt,QTimer,Signal,QVariantAnimation,QEasingCurve,QSize,QRect
 from PySide6.QtWidgets import QFrame,QHBoxLayout,QPushButton,QVBoxLayout,QWidget,QSizePolicy
 
 from .domain import WORLD,age_text,compare
-from .motion import AnimatedTabs,RollingLabel,visibility
+from .motion import AnimatedTabs,RollingLabel,visibility,enabled
 from .ui_components import COLORS,mesos,text_label
 from .thumbnails import ItemImage
 from .watchlist_ui import WatchButton
-from .widget_lifetime import retire_widget
 
 
 LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant unverified',
@@ -15,29 +14,92 @@ LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant
 
 
 class ItemDetailTabs(AnimatedTabs):
-    """Natural-height Overview; bounded scrolling source and shop lists."""
+    """Owned tab geometry: stable destination pages inside an animated card."""
     height_changed=Signal()
     def __init__(self,parent=None):
-        super().__init__(parent);self.animation.setDuration(220)
+        super().__init__(parent);self.setObjectName('itemDetailTabs')
+        self.animation.setDuration(220)
         self.measure=QTimer(self);self.measure.setSingleShot(True);self.measure.setInterval(0)
         self.measure.timeout.connect(self.fit_page)
         self.currentChanged.connect(lambda *_:self.measure.start())
+        self.height_animation=QVariantAnimation(self);self.height_animation.setDuration(220)
+        self.height_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.height_animation.valueChanged.connect(self.resize_height)
+        self.height_animation.finished.connect(self.finish_height)
+        self.resizing=False;self.target_height=None;self.visual_height=0
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
 
-    def fit_page(self):
+    def addTab(self,page,title):
+        index=super().addTab(page,title);self.measure.start();return index
+
+    def removeTab(self,index):
+        super().removeTab(index);self.measure.start()
+
+    def setTabText(self,index,title):super().setTabText(index,title);self.measure.start()
+    def sizeHint(self):return QSize(200,self.height())
+    def minimumSizeHint(self):return QSize(0,self.height())
+
+    def motion_rect(self):
+        return QRect(0,0,self.width(),max(0,(self.target_height or self.height())-self.bar_height()))
+
+    def place_children(self):
+        bar_height=self.bar_height();width=min(self.width(),self.bar.sizeHint().width())
+        self.bar.setGeometry((self.width()-width)//2,0,width,max(0,bar_height-4))
+        height=max(self.visual_height,(self.target_height or self.height())-bar_height) if self.resizing else max(0,self.height()-bar_height)
+        self.stack.setGeometry(0,bar_height,self.width(),height)
+
+    def page_height(self):
         page=self.currentWidget()
-        if page is None:return
+        if page is None:return self.height()
         content=180
         if self.tabText(self.currentIndex())=='Overview' and page.layout():
             layout=page.layout();width=max(140,self.width()-2)
             content=max(42,layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else layout.sizeHint().height())
-        height=content+self.tabBar().sizeHint().height()+4
-        if self.height()!=height:self.setFixedHeight(height);self.height_changed.emit()
+        return content+self.bar_height()
+
+    def prepare_page(self,index):self.fit_page()
+
+    def fit_page(self):
+        height=self.page_height()
+        if self.resizing and height==self.target_height:return
+        if self.height()==height:
+            if self.resizing:self.target_height=height;self.finish_height()
+            return
+        current=self.height();self.height_animation.stop();self.resizing=False
+        if not enabled(self) or self.target_height is None:
+            self.target_height=height;self.setFixedHeight(height);self.place_children();self.height_changed.emit();return
+        self.visual_height=max(self.stack.height(),height-self.bar_height())
+        self.target_height=height;self.resizing=True;self.hold_layout('height');self.place_children()
+        self.base=self.motion_rect();self.slide_width=self.base.width()
+        for index in range(self.count()):self.widget(index).resize(self.base.size())
+        self.height_animation.setStartValue(float(current));self.height_animation.setEndValue(float(height));self.height_animation.start()
+
+    def resize_height(self,value):
+        if not enabled(self):self.finish_height();return
+        self.setFixedHeight(round(value));self.height_changed.emit()
+
+    def finish_height(self):
+        self.height_animation.stop();self.resizing=False
+        if self.target_height is not None:self.setFixedHeight(self.target_height)
+        self.visual_height=0;self.place_children()
+        self.release_layout('height')
+        self.height_changed.emit()
 
     def resizeEvent(self,event):
+        self.place_children()
+        if self.resizing and event.oldSize().width()==event.size().width():return
         super().resizeEvent(event);self.measure.start()
 
     def showEvent(self,event):
-        super().showEvent(event);self.measure.start()
+        super().showEvent(event)
+        if self.height_animation.state()==self.height_animation.State.Paused:
+            if enabled(self):self.height_animation.resume()
+            else:self.finish_height()
+        self.measure.start()
+
+    def hideEvent(self,event):
+        if self.height_animation.state()==self.height_animation.State.Running:self.height_animation.pause()
+        super().hideEvent(event)
 
 
 def display_age(quote,now,ttl):
@@ -77,11 +139,9 @@ class PriceCard(QFrame):
         if watchlist is not None:self.watch_button.bind(watchlist)
         header.addWidget(self.watch_button,0,Qt.AlignmentFlag.AlignTop);layout.addWidget(self.header_widget)
         self.selected_mode=bool(data.get('selected'))
-        self.columns_widget=QWidget();self.columns_widget.setStyleSheet('background:transparent')
-        self.columns=QHBoxLayout(self.columns_widget);self.columns.setContentsMargins(0,0,0,0);self.columns.setSpacing(10);layout.addWidget(self.columns_widget)
         self.price_column=QWidget();self.price_column.setStyleSheet('background:transparent')
         values=QVBoxLayout(self.price_column);values.setContentsMargins(0,0,0,0);values.setSpacing(6)
-        self.columns.addWidget(self.price_column,4)
+        layout.addWidget(self.price_column)
         if not self.selected_mode:field("status",values)
         numbers=QHBoxLayout()
         self.store=QWidget()
@@ -121,12 +181,7 @@ class PriceCard(QFrame):
         self.update_data(**data)
 
     def set_panel(self,panel):
-        self.layout().removeWidget(self.columns_widget)
-        self.columns.removeWidget(self.price_column)
-        self.price_column.setParent(self);self.price_column.show()
-        self.layout().insertWidget(1,self.price_column)
         panel.setMinimumWidth(0);self.layout().addWidget(panel)
-        retire_widget(self,self.columns_widget)
         self.sync_summary_size()
 
     def sync_summary_size(self):
@@ -134,7 +189,7 @@ class PriceCard(QFrame):
         width=max(120,self.width()-24-40-32-16)
         title=max(self.fields['name'].fontMetrics().height(),self.fields['name'].heightForWidth(width))
         context=self.fields['context'].fontMetrics().height()+4 if self.fields['context'].text() else 0
-        self.header_widget.setFixedHeight(max(40,title+context))
+        self.header_widget.setFixedHeight(max(42,title+context))
         # Numbers, captions and metadata keep stable rows as price/count digits
         # change. Optional set units depend on the item, never the quote age.
         self.price_column.setFixedHeight(66+(20 if self.fields['units'].text() else 0))

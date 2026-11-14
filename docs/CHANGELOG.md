@@ -8,9 +8,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 ## Unreleased — performance and resource improvements
 
 - Smoother wheel scrolling and less work during page slides, watched-list
-  expansion and rolling numbers. Full item-card opening/closing animations are
-  retained. Hidden shop sightings and repeated status updates no longer add
-  unnecessary work while navigating.
+  expansion and rolling numbers. Item cards resize smoothly between details
+  and different items, with steadier text and interrupted transitions. Full
+  opening/closing effects are retained. Large shop-sighting lists paint only
+  visible rows; hidden content and unchanged status do less work.
 
 - Searched items and inventory/equipment descriptions share detailed item cards.
   Click a shop row to open the same view with its asking price. Full-width tabs,

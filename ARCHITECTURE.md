@@ -1040,10 +1040,20 @@ fade/lift transition. The common factory initializes its actual quote/offer once
 Number rolls cache glyph advances and wrapped labels retain up to eight measured
 heights, invalidated by text, font/style and geometry inputs. Resting labels do
 not walk ancestors on every paint. Watched expansion settles the affected owner
-layouts without invalidating the main window/private page stack. Live tab slides
-show only pages in their travel range. Database count/date summaries refresh
+layouts without invalidating the main window/page stack. Owned tab bars defer
+the native stack selection until the slide completes, preventing an early hide
+from finishing child animations. Temporary opaque surfaces composite the moving
+pages, with own-widget/model/image/number invalidation for live partial updates.
+Only pages in the travel range participate. Pictures, observers and event filters
+are released on completion/hide; no desktop filter or idle frame timer exists.
+Item-detail height follows a 220 ms curve with fixed destination layout, and
+automatic card canvases follow that same clock. Card replacement interpolates a
+native styled border around unscaled, crossfading foreground pixels. Interrupted
+motion starts from its current rendered state. Database count/date summaries refresh
 when its updated signal invalidates them; pending/error text stays live. Hidden
 Where seen panels neither build their body nor render saved rows until selected.
+Their bounded sighting records use one virtual painted viewport, with shared
+age-roll/fade clocks and visible-row painting rather than per-row widget trees.
 Performance changes must retain animation effects and durations; Reduce motion
 and hidden surfaces remain the explicit exceptions.
 

@@ -37,10 +37,13 @@ scroll area around another scrolling list. Cash items retain Sources/Where seen
 without an irrelevant Overview.
 
 Sizing is established before inserting a new card and measured again on width
-or tab changes. Automatic cards notify their canvas when that height changes;
-the canvas adjusts through its normal height animation. CardArea invalidates
-application layouts without descending into Qt's private tab-container layouts.
-Item tabs retain their existing slide and reduced-motion behavior.
+or tab changes. `ItemDetailTabs` eases its height over 220 ms while its pages
+remain laid out at the destination size. Growing content is revealed through
+the moving viewport rather than squeezed or clipped until the final frame.
+Automatic cards pass the exact height delta to their `CardArea`; a second height
+animation must not trail the tab's clock. Retargeting starts at the visible
+height, including a return before the first tick. Quote updates retain the
+current geometry and transition clock.
 
 Opening and closing a selected item in Prices retain the full 130 ms composited
 fade/lift transition. The factory initializes the price summary with the actual
@@ -48,13 +51,29 @@ selected quote/offer once, avoiding temporary empty-price renders. Do not replac
 this motion with an immediate swap or a shortened fade to meet performance
 targets. Page slides, watched-section expansion and rolling numbers also retain
 their durations; only Reduce motion and hidden surfaces bypass their effects.
+Cached thumbnails are populated before the new card is shown, so the full card
+reveal includes its image instead of capturing an inner image fade at zero.
+
+`card_morph.py` interpolates the actual styled frame when replacing cards of
+different sizes. Foreground text and images keep their native size and crossfade
+with the existing short lift; the complete card is never stretched as a bitmap.
+Clipping follows its outer viewport. An interruption captures the currently
+visible composition, avoiding a jump to an obsolete endpoint.
 
 Animation work is bounded independently of its duration. Number rolls reuse
 glyph advances, wrapped labels cache a small set of measured heights, and
 unchanged capture/translation status cannot repeatedly repolish its style.
 Watched expansion settles only the affected owner layouts, stopping before
-Qt's private page stack. Adjacent tab slides keep unrelated pages hidden; a
-longer slide still shows every page in its travel range, with live page content.
+the main page stack. `AnimatedTabs` owns its tab bar/stack geometry and changes
+the native current page after the slide, so Qt cannot prematurely hide the
+departing page or end its child animations. Adjacent slides keep unrelated
+pages hidden; a longer slide shows every page in its travel range.
+`slide_surface.py` temporarily composites opaque page images to avoid painting
+the complete widget tree each frame. Own-widget text, rolling digits, models,
+images, control state and geometry changes invalidate affected regions. Nested
+motion propagates into its containing surface. The real widgets keep focus and
+input; there is no application-wide or desktop input filter. Completion/hide
+disconnects observers and releases pictures, with no resting animation timer.
 Database count/date summaries refresh on database updates rather than each
 navigation/status tick.
 
@@ -93,6 +112,10 @@ the selected visible item tab supplies demand; moving through descriptions does
 not preload every item's listings. Its body and cached sighting rows are also
 created only when that tab is visible; hidden refresh signals do not build or
 rebuild them. Previously displayed rows remain retained for the next visit.
+`listing_rows.py` holds at most 100 lightweight sighting records in one painted
+viewport, without a widget tree per seller. Only exposed rows paint. Minute age
+changes retain visible rolling digits/fades using shared clocks rather than one
+animation per row; unchanged refreshes do not restart them.
 A new automatic item starts on its default
 tab. Visibility uses explicit owner/subtab state, never parent walks through
 Qt's private stacked widgets. Shared image demand includes the visible automatic

@@ -382,6 +382,7 @@ class LensWindow(QMainWindow):
         self.cards_stack=QVBoxLayout(self.cards)
         self.cards_stack.setContentsMargins(0,0,0,0);self.cards_stack.setSpacing(0)
         self.card_area=CardArea(self.cards)
+        self.card_area.frame_target=self.description_frame
         card_content=QVBoxLayout(self.card_area.content);card_content.setContentsMargins(0,0,0,0);card_content.setSpacing(8)
         card_content.addWidget(self.summary)
         self.card_list=QWidget(self.card_area.content);card_content.addWidget(self.card_list)
@@ -432,6 +433,7 @@ class LensWindow(QMainWindow):
         self.prices_layout=prices_layout
         prices_layout.addWidget(self.search_panel)
         self.price_content=ContentArea()
+        self.price_content.frame_target=self.selected_detail_frame
         self.price_content_layout=QVBoxLayout(self.price_content)
         self.price_content_layout.setContentsMargins(0,0,0,0)
         self.price_content_layout.setSpacing(8)
@@ -987,6 +989,15 @@ class LensWindow(QMainWindow):
     def visible_description_card(self):
         return next((card for card in self.card_views.values() if isinstance(card,EntryDetails) and card.isVisible()),None)
 
+    def selected_detail_frame(self):
+        card=getattr(self.search_panel,'price_view',None)
+        if card is None or card.isHidden():return None
+        return card.summary_card if isinstance(card,EntryDetails) else card
+
+    def description_frame(self):
+        card=next((card for card in getattr(self,'card_views',{}).values() if isinstance(card,EntryDetails) and not card.isHidden()),None)
+        return card.summary_card if card else None
+
     def price_reference_demand(self):
         if self.search_panel.selected:return self.search_panel.reference_demand()
         card=self.visible_description_card()
@@ -1003,6 +1014,12 @@ class LensWindow(QMainWindow):
     def schedule_card_fit(self):
         if getattr(self,'card_fit_pending',False):return
         self.card_fit_pending=True;QTimer.singleShot(0,self.fit_screen_cards)
+
+    def detail_card_resized(self,card):
+        height=card.tabs.height();previous=getattr(card,'detail_height',height);card.detail_height=height
+        if card.tabs.resizing and self.card_area.animation.state()==self.card_area.animation.State.Stopped:
+            if height!=previous:self.card_area.follow_height(height-previous)
+        else:self.schedule_card_fit()
 
     def fit_screen_cards(self):
         self.card_fit_pending=False
@@ -2329,7 +2346,8 @@ class LensWindow(QMainWindow):
                         card.update_data(**data);self.card_views[key]=card
                     elif detailed:
                         card=self.card_views[key]=make_item_card(self.search_panel,item,record,automatic=True,**data)
-                        card.tabs.height_changed.connect(self.schedule_card_fit)
+                        card.detail_height=card.tabs.height()
+                        card.tabs.height_changed.connect(lambda card=card:self.detail_card_resized(card))
                     else:
                         card=self.card_views[key]=price_card(watchlist=self.watchlist,**data)
                         card.set_selectable(not hovered and item is not None)

@@ -446,15 +446,19 @@ class PriceSearch(QWidget):
                 if card:self.detail_layout.removeWidget(card);retire_widget(self,card)
                 else:retire_widget(self,self.watch_button)
                 card=self.price_view=make_item_card(self,self.selected,record,**data);self.watch_button=card.watch_button
+                # Populate before showing: the surrounding card transition
+                # already reveals the image. Capturing an inner fade at zero
+                # would leave a blank icon until that transition ends.
+                card.hide()
                 self.detail_layout.insertWidget(0,card)
                 if previous:card.restore(previous)
             else:card.update_data(**data,selected=True)
             self.card_item = self.selected.game_id
-            card.show()
             if self.thumbnails:
                 image=self.thumbnails.image(self.selected.game_id)
                 card.thumbnail.show()
                 if not image.isNull() or not record:card.thumbnail.set_image(image)
+            card.show()
             if changed and self.inline_detail:incoming=card
             self.request_thumbnails()
             self.reference_changed.emit()

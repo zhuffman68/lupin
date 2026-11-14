@@ -4,13 +4,13 @@ from urllib.parse import quote
 from shiboken6 import isValid
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QPushButton, QVBoxLayout, QWidget
 
 from .domain import age_text
 from .market_listings import provider_id
-from .motion import MotionLabel, RollingLabel
+from .motion import MotionLabel
 from .smooth_scroll import SmoothScrollArea
-from .ui_components import mesos
+from .listing_rows import ListingRow,ListingRows
 
 
 def label(value='', *, muted=False, bold=False):
@@ -18,36 +18,6 @@ def label(value='', *, muted=False, bold=False):
     widget.setWordWrap(True)
     widget.setStyleSheet(f'background:transparent;border:0;font-size:10px;color:{"#a7b7cd" if muted else "#e4eaf3"};font-weight:{650 if bold else 400};')
     return widget
-
-
-class ListingRow(QFrame):
-    def __init__(self, listing, per_set=False):
-        super().__init__()
-        self.listing = listing
-        self.setObjectName('whereSeenRow')
-        self.setStyleSheet('QFrame#whereSeenRow{background:#263345;border:0;border-radius:6px;}')
-        body = QVBoxLayout(self)
-        body.setContentsMargins(7,6,7,6)
-        body.setSpacing(3)
-        head = QHBoxLayout()
-        head.setSpacing(6)
-        head.addWidget(label(listing.seller, bold=True), 1)
-        price = RollingLabel(mesos(listing.price)+' mesos')
-        price.setStyleSheet('background:transparent;font-size:12px;font-weight:650;color:#efd09a;')
-        head.addWidget(price, 0, Qt.AlignmentFlag.AlignRight)
-        body.addLayout(head)
-        self.place = label(listing.place)
-        body.addWidget(self.place)
-        self.age = label(muted=True)
-        body.addWidget(self.age)
-        quantity = f'For {listing.quantity:,} {"sets" if per_set else "items"}' if listing.quantity != 1 else 'For 1 set' if per_set else 'For 1 item'
-        if listing.stock is not None:
-            quantity += f' · stock {listing.stock:,}'
-        self.quantity = quantity
-        self.setToolTip(listing.location)
-
-    def update_age(self, now):
-        self.age.setText(f'{self.quantity} · seen {age_text(max(0,now-self.listing.last_seen))} ago')
 
 
 class WhereSeenPanel(SmoothScrollArea):
@@ -82,10 +52,8 @@ class WhereSeenPanel(SmoothScrollArea):
         self.body.addWidget(self.status)
         self.note = label('Recent shop sightings; availability may have changed.', muted=True)
         self.body.addWidget(self.note)
-        self.listing_body = QVBoxLayout()
-        self.listing_body.setContentsMargins(0,0,0,0)
-        self.listing_body.setSpacing(5)
-        self.body.addLayout(self.listing_body)
+        self.listing_view=ListingRows(content)
+        self.body.addWidget(self.listing_view)
         self.more = label('Showing up to 100 reported sightings.', muted=True)
         self.more.hide()
         self.body.addWidget(self.more)
@@ -150,16 +118,11 @@ class WhereSeenPanel(SmoothScrollArea):
         signature = snapshot.rows if snapshot else ()
         if signature != self.signature:
             self.signature = signature
-            for row in self.rows:
-                self.listing_body.removeWidget(row)
-                row.hide()
-                row.deleteLater()
             self.rows = [ListingRow(row,self.item.per_set) for row in signature]
-            for row in self.rows:
-                self.listing_body.addWidget(row)
+            for row in self.rows:row.update_age(now)
+            self.listing_view.set_rows(self.rows)
         self.more.setVisible(bool(snapshot and snapshot.more))
-        for row in self.rows:
-            row.update_age(now)
+        self.listing_view.refresh_ages(now)
 
     def showEvent(self,event):
         super().showEvent(event)
@@ -179,7 +142,8 @@ class WhereSeenPanel(SmoothScrollArea):
         return super().eventFilter(watched,event)
 
 
-ITEM_TAB_STYLE = ('QTabWidget{background:transparent;} QTabWidget::pane{border:0;padding:0;}'
+ITEM_TAB_STYLE = ('QWidget#itemDetailTabs,QWidget#itemDetailTabs QWidget{background:transparent;}'
+                  'QTabWidget{background:transparent;} QTabWidget::pane{border:0;padding:0;}'
                   'QTabWidget QWidget{background:transparent;} QTabWidget::tab-bar{alignment:center;}'
                   'QTabBar::tab{font-size:10px;padding:6px 5px;margin:0 1px 0 0;border-radius:5px;color:#b5c3d6;}'
                   'QTabBar::tab:selected{background:#3a495f;color:#f1dfbf;} QScrollArea{border:0;}')

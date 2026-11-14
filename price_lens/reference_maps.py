@@ -6,6 +6,10 @@ from PySide6.QtWidgets import QApplication,QFrame,QHBoxLayout,QToolButton,QWidge
 
 
 class MapPreview(QWidget):
+    def redraw(self,*_):
+        from .slide_surface import invalidate_surface
+        invalidate_surface(self);super().update()
+
     chosen=Signal(int)
     map_chosen=Signal(int)
     MAX_ZOOM=8.0
@@ -31,7 +35,7 @@ class MapPreview(QWidget):
         self.portals_button=QToolButton(self.layers);self.portals_button.setText('○ Portals');self.portals_button.setToolTip('Show portals and their destinations')
         self.spawns_button=QToolButton(self.layers);self.spawns_button.setObjectName('spawnLayer');self.spawns_button.setText('• Spawns');self.spawns_button.setToolTip('Show monster spawn points')
         for button in (self.portals_button,self.spawns_button):
-            button.setCheckable(True);button.setChecked(True);button.toggled.connect(self.update);layers.addWidget(button)
+            button.setCheckable(True);button.setChecked(True);button.toggled.connect(self.redraw);layers.addWidget(button)
         self.spawns_button.hide();self.layers.adjustSize()
         self.setToolTip('Scroll to zoom · drag to pan · double-click to fit')
 
@@ -45,7 +49,7 @@ class MapPreview(QWidget):
                 and preview.cacheKey()==self.preview_image.cacheKey()):return
         self.geometry_proof=proof;self.names=names;self.destinations=destinations;self.preview_image=preview
         self.spawns_button.setVisible(bool(names));self.layers.adjustSize()
-        self.markers=[];self.portal_markers=[];self._hover=None;self.clamp_pan();self.update()
+        self.markers=[];self.portal_markers=[];self._hover=None;self.clamp_pan();self.redraw()
 
     def image(self):
         if self.geometry_proof and self.geometry_proof.get('preview') and not self.preview_image.isNull():return self.preview_image
@@ -92,10 +96,10 @@ class MapPreview(QWidget):
         ratio=zoom/self.zoom;relative=anchor-old.topLeft();width,height=old.width()*ratio,old.height()*ratio
         left=anchor.x()-relative.x()*ratio;top=anchor.y()-relative.y()*ratio
         self.zoom=zoom;self.pan=QPointF(left+width/2,top+height/2)-self.viewport_rect().center()
-        self.clamp_pan();self.update_controls();QToolTip.hideText();self.update()
+        self.clamp_pan();self.update_controls();QToolTip.hideText();self.redraw()
 
     def fit(self):
-        self.zoom=1.0;self.pan=QPointF();self._hover=None;self.update_controls();self.update()
+        self.zoom=1.0;self.pan=QPointF();self._hover=None;self.update_controls();self.redraw()
 
     def view_state(self):return dict(zoom=self.zoom,x=self.pan.x(),y=self.pan.y(),portals=self.portals_button.isChecked(),spawns=self.spawns_button.isChecked())
 
@@ -106,7 +110,7 @@ class MapPreview(QWidget):
         self.zoom=max(1.0,min(self.MAX_ZOOM,values[0]));self.pan=QPointF(values[1],values[2])
         for key,button in (('portals',self.portals_button),('spawns',self.spawns_button)):
             if type(state.get(key)) is bool:button.setChecked(state[key])
-        self.clamp_pan();self.update_controls();self.update()
+        self.clamp_pan();self.update_controls();self.redraw()
 
     def resizeEvent(self,event):
         super().resizeEvent(event);self.controls.move(max(5,self.width()-self.controls.width()-6),self.height()-self.controls.height()-5)
@@ -165,11 +169,11 @@ class MapPreview(QWidget):
             delta=point-self._press
             if delta.manhattanLength()>=QApplication.startDragDistance():self._dragging=True
             if self._dragging:
-                self.pan=self._pan_start+delta;self.clamp_pan();self.setCursor(Qt.CursorShape.ClosedHandCursor);QToolTip.hideText();self.update();return
+                self.pan=self._pan_start+delta;self.clamp_pan();self.setCursor(Qt.CursorShape.ClosedHandCursor);QToolTip.hideText();self.redraw();return
         portal=self.portal_at(point) if self.viewport_rect().contains(point) else None
         identity=None if portal else self.target_at(point)
         hover=(portal[1]['name'],portal[1]['dest_map_id']) if portal else None
-        if hover!=self._hover:self._hover=hover;self.update()
+        if hover!=self._hover:self._hover=hover;self.redraw()
         if portal:
             _,record,destination=portal;local=record['dest_map_id']==self.row.get('id')
             caption=destination.get('name','Destination not confirmed')
@@ -210,4 +214,4 @@ class MapPreview(QWidget):
         else:super().mouseDoubleClickEvent(event)
 
     def leaveEvent(self,event):
-        self._hover=None;QToolTip.hideText();self.update();super().leaveEvent(event)
+        self._hover=None;QToolTip.hideText();self.redraw();super().leaveEvent(event)

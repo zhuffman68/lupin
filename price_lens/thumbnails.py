@@ -78,13 +78,17 @@ class ItemImage(QWidget):
         self.animation.valueChanged.connect(self.advance)
         self.setToolTip('Classic World item image')
 
-    def advance(self,value):self.alpha=float(value);self.update()
+    def advance(self,value):
+        from .slide_surface import invalidate_surface
+        self.alpha=float(value);invalidate_surface(self);self.update()
 
     def set_image(self,image):
         if self.image.cacheKey()==image.cacheKey():return
         self.animation.stop();self.image=image
         if enabled(self) and not image.isNull():self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
         else:self.alpha=1.0
+        from .slide_surface import invalidate_surface
+        invalidate_surface(self)
         self.update()
 
     def paintEvent(self,event):

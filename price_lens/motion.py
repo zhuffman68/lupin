@@ -1,14 +1,16 @@
 """Short, interruptible QWidget motion; idle and hidden widgets do no animation work."""
 import re
 import math
-from PySide6.QtCore import QEasingCurve,QPoint,Qt,QVariantAnimation,QSize,QRect
+from PySide6.QtCore import QEasingCurve,QPoint,Qt,QVariantAnimation,QSize,QRect,Signal
 from PySide6.QtGui import QPainter, QPalette,QPixmap
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QTabWidget, QWidget,QSizePolicy,QStackedWidget,QStyle,QStyleOption,QScrollArea,QScrollBar
+from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QLabel, QTabWidget, QWidget,QSizePolicy,QStackedWidget,QStyle,QStyleOption,QScrollArea,QScrollBar,QTabBar
 from shiboken6 import isValid
 from .number_motion import NumberRoll
 from . import gui_currency
 from .widget_lifetime import retire_widget
 from .smooth_scroll import smooth_scrolling
+from .slide_surface import SlideSurface,invalidate_surface
+from .card_morph import CardMorph,capture_card,background
 
 
 def enabled(widget):
@@ -61,10 +63,11 @@ class MotionLabel(QLabel):
 
     def _alpha(self, value):
         self.alpha = float(value)
+        invalidate_surface(self)
         self.update()
 
     def _digits(self,value):
-        self.number_roll.progress=float(value);self.update()
+        self.number_roll.progress=float(value);invalidate_surface(self);self.update()
 
     def clear(self):self.setText('')
 
@@ -81,6 +84,7 @@ class MotionLabel(QLabel):
         self.digits.stop()
         self.number_roll.set_text(gui_currency.visual_text(value),animate and only_numbers)
         super().setText(value)
+        invalidate_surface(self)
         if animate and only_numbers:
             self.alpha=1.0
             self.digits.setStartValue(0.0);self.digits.setEndValue(1.0);self.digits.start()
@@ -181,14 +185,32 @@ def fade_away(widget):
     snapshot.show();snapshot.raise_();animation.start()
 
 
+def card_pixels(area,pixels,*,current=False,root=None):
+    if pixels is None:return None
+    frame=getattr(area,'outgoing',None)
+    if not current and frame is not None and getattr(frame,'morph',None):
+        return frame.morph.snapshot(pixels,frame.progress)
+    target=getattr(area,'frame_target',None)
+    return capture_card(target(),root or area,pixels) if target else None
+
+
 class _ContentFrame(QWidget):
-    def __init__(self,before,after,parent):
+    def __init__(self,before,after,parent,old_card=None,new_card=None):
         super().__init__(parent);self.before=before;self.after=after;self.progress=0.0
+        self.morph=CardMorph(before,after,old_card,new_card,self) if old_card or new_card else None
+        if self.morph:self.before=self.morph.before;self.after=self.morph.after
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self.background_colour=background(parent)
+
+    def replace_after(self,pixels,card):
+        self.after=pixels
+        if self.morph:
+            self.morph.replace_after(pixels,card);self.after=self.morph.after
 
     def paintEvent(self,event):
-        painter=QPainter(self);option=QStyleOption();option.initFrom(self)
-        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget,option,painter,self)
+        painter=QPainter(self);painter.fillRect(self.rect(),self.background_colour)
+        if self.morph:self.morph.paint(painter,self.progress);return
         # Retain outgoing pixels while the incoming page settles. There must
         # never be a blank midpoint, including when a transition is interrupted.
         progress=self.progress
@@ -202,7 +224,7 @@ class ContentArea(QWidget):
     """Replace content in one layout, without animating its height."""
     def __init__(self,parent=None):
         super().__init__(parent)
-        self.before=None;self.outgoing=None
+        self.before=None;self.before_card=None;self.frame_target=None;self.outgoing=None
         self.animation=QVariantAnimation(self);self.animation.setDuration(130)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.animation.valueChanged.connect(self.advance)
@@ -210,23 +232,26 @@ class ContentArea(QWidget):
 
     def begin(self):
         pixels=self.grab() if enabled(self) and not self.size().isEmpty() else None
-        self.finish();self.before=pixels
+        card=card_pixels(self,pixels)
+        self.finish();self.before=pixels;self.before_card=card
 
     def complete(self):
-        pixels=self.before;self.before=None
+        pixels=self.before;old_card=self.before_card;self.before=None;self.before_card=None
         if pixels is None or not enabled(self):return
         if self.layout():self.layout().activate()
-        self.outgoing=_ContentFrame(pixels,self.grab(),self)
+        after=self.grab();new_card=card_pixels(self,after,current=True)
+        self.outgoing=_ContentFrame(pixels,after,self,old_card,new_card)
         self.outgoing.setGeometry(self.rect())
         self.outgoing.show();self.outgoing.raise_()
         self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
 
     def advance(self,progress):
         if not enabled(self):self.finish();return
-        if self.outgoing:self.outgoing.progress=float(progress);self.outgoing.update()
+        if self.outgoing:
+            self.outgoing.progress=float(progress);invalidate_surface(self.outgoing);self.outgoing.update()
 
     def finish(self):
-        self.animation.stop();self.before=None
+        self.animation.stop();self.before=None;self.before_card=None
         if self.outgoing:
             retire_widget(self,self.outgoing);self.outgoing=None
 
@@ -247,7 +272,7 @@ class CardArea(QWidget):
     """
     def __init__(self,parent=None):
         super().__init__(parent)
-        self.content=QWidget(self);self.before=None;self.outgoing=None
+        self.content=QWidget(self);self.before=None;self.before_card=None;self.frame_target=None;self.outgoing=None
         self.full_height=0;self.start_height=0;self.setFixedHeight(0)
         self.animation=QVariantAnimation(self);self.animation.setDuration(180)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
@@ -257,7 +282,8 @@ class CardArea(QWidget):
     def begin(self):
         current_height=self.height()
         pixels=(self.grab() if current_height>0 else QPixmap()) if enabled(self) else None
-        self.finish();self.setFixedHeight(current_height);self.before=pixels;self.start_height=current_height
+        card=card_pixels(self,pixels,root=self.content)
+        self.finish();self.setFixedHeight(current_height);self.before=pixels;self.before_card=card;self.start_height=current_height
 
     def measure(self):
         layout=self.content.layout()
@@ -280,7 +306,7 @@ class CardArea(QWidget):
         return max(0,layout.totalHeightForWidth(self.width()) if layout.hasHeightForWidth() else layout.totalSizeHint().height())
 
     def complete(self):
-        pixels=self.before;self.before=None
+        pixels=self.before;old_card=self.before_card;self.before=None;self.before_card=None
         target=self.measure()
         if pixels is None and self.animation.state()!=self.animation.State.Stopped and enabled(self):
             # Quote/age changes update the destination pixels, without restarting
@@ -291,7 +317,8 @@ class CardArea(QWidget):
             self.full_height=target;self.content.resize(self.width(),target)
             if self.content.layout():self.content.layout().activate()
             if self.outgoing:
-                self.outgoing.after=self.content.grab() if target else QPixmap()
+                after=self.content.grab() if target else QPixmap()
+                self.outgoing.replace_after(after,card_pixels(self,after,current=True,root=self.content))
                 self.outgoing.setGeometry(0,0,self.width(),max(self.height(),target,round(self.start_height)))
                 self.outgoing.update()
             return
@@ -307,7 +334,7 @@ class CardArea(QWidget):
                 self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
             return
         after=self.content.grab() if self.full_height else QPixmap()
-        self.outgoing=_ContentFrame(pixels,after,self)
+        self.outgoing=_ContentFrame(pixels,after,self,old_card,card_pixels(self,after,current=True,root=self.content))
         self.outgoing.setGeometry(0,0,self.width(),max(self.start_height,self.full_height))
         self.content.hide();self.outgoing.show();self.outgoing.raise_()
         self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
@@ -316,12 +343,20 @@ class CardArea(QWidget):
         if not enabled(self):self.finish();return
         progress=float(progress)
         self.setFixedHeight(round(self.start_height+(self.full_height-self.start_height)*progress))
-        if self.outgoing:self.outgoing.progress=progress;self.outgoing.update()
+        if self.outgoing:
+            self.outgoing.progress=progress;invalidate_surface(self.outgoing);self.outgoing.update()
         parent=self.parentWidget()
         if parent and parent.layout():parent.layout().activate()
 
+    def follow_height(self,delta):
+        """A child owns this resize clock; do not start a second easing curve."""
+        self.full_height=max(0,self.full_height+delta)
+        self.content.resize(self.width(),self.full_height)
+        self.setFixedHeight(self.full_height)
+        if self.content.layout():self.content.layout().activate()
+
     def finish(self):
-        self.animation.stop();self.before=None
+        self.animation.stop();self.before=None;self.before_card=None
         if self.outgoing:
             retire_widget(self,self.outgoing);self.outgoing=None
         self.setFixedHeight(self.full_height)
@@ -394,14 +429,16 @@ def fading_visibility(widget,shown):
     animation.finished.connect(finish);animation.start()
 
 
-class AnimatedTabs(QTabWidget):
-    def __init__(self,parent=None):
-        super().__init__(parent)
+class TabMotion:
+    """Retargetable page motion, independent of native stack visibility changes."""
+    def init_motion(self,stack):
         self.previous_page=None
         self.previous_index=0
         self.sliding=False
         self.scroll=0.0
-        self.stack=None
+        self.stack=stack
+        self.surface=None
+        self.layout_locks=set();self.layout_enabled=True
         self.mouse_before={}
         self.moving_pages=[]
         self.animation=QVariantAnimation(self)
@@ -418,17 +455,21 @@ class AnimatedTabs(QTabWidget):
         self.previous_index=index
         if not page or not previous or not enabled(self):
             self.finish_slide();return
-        stack=self.findChild(QStackedWidget,'qt_tabwidget_stackedwidget',Qt.FindChildOption.FindDirectChildrenOnly)
-        if stack is None:return
+        stack=self.stack
+        if stack is None or not isValid(stack):return
         self.animation.stop()
         if not self.sliding:
-            self.stack=stack;self.base=stack.contentsRect();self.slide_width=self.base.width()
+            self.stack=stack;self.base=self.motion_rect();self.slide_width=self.base.width()
             if self.slide_width<=0:return
             self.scroll=float(old_index)
-            self.layout_enabled=stack.layout().isEnabled()
-            stack.layout().setEnabled(False)
+            self.hold_layout('slide')
             self.sliding=True
         stack.setUpdatesEnabled(False)
+        if self.surface is None:
+            self.surface=SlideSurface(self,stack)
+            self.surface.pages={old_index:previous};self.surface.capture(old_index)
+        self.prepare_page(index)
+        self.base=self.motion_rect();self.slide_width=self.base.width()
         first=max(0,math.floor(min(self.scroll,index)))
         last=min(self.count()-1,math.ceil(max(self.scroll,index)))
         self.moving_pages=[]
@@ -442,9 +483,25 @@ class AnimatedTabs(QTabWidget):
             else:child.hide()
         self.move_pages(self.scroll)
         page.raise_();stack.setUpdatesEnabled(True)
+        self.surface.set_pages(self.moving_pages)
         self.animation.setStartValue(self.scroll)
         self.animation.setEndValue(float(index))
         self.animation.start()
+
+    def prepare_page(self,index):pass
+
+    def motion_rect(self):return self.stack.contentsRect()
+
+    def hold_layout(self,reason):
+        if self.stack is None or not isValid(self.stack):return
+        if not self.layout_locks:
+            self.layout_enabled=self.stack.layout().isEnabled();self.stack.layout().setEnabled(False)
+        self.layout_locks.add(reason)
+
+    def release_layout(self,reason):
+        self.layout_locks.discard(reason)
+        if not self.layout_locks and self.stack is not None and isValid(self.stack):
+            self.stack.layout().setEnabled(self.layout_enabled);self.stack.layout().activate()
 
     def move_pages(self,value):
         if not self.sliding:return
@@ -453,21 +510,24 @@ class AnimatedTabs(QTabWidget):
         self.scroll=float(value)
         for i,child in self.moving_pages:
             child.move(self.base.left()+round((i-self.scroll)*self.slide_width),self.base.top())
+        if self.surface:self.surface.frame()
 
     def finish_slide(self):
         self.animation.stop()
+        if self.surface:self.surface.dispose();self.surface=None
         if not self.sliding:return
         self.sliding=False;self.moving_pages=[];stack=self.stack
         if stack is None or not isValid(stack):
-            self.stack=None;self.mouse_before.clear();return
+            self.stack=None;self.mouse_before.clear();self.layout_locks.clear();return
         current=self.currentWidget()
         stack.setUpdatesEnabled(False)
+        stack.setCurrentIndex(self.currentIndex())
         for i in range(self.count()):
             child=self.widget(i)
             child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents,self.mouse_before.get(child,False))
-            child.setGeometry(stack.contentsRect());child.setVisible(child is current)
+            child.setGeometry(self.motion_rect());child.setVisible(child is current)
         self.mouse_before.clear()
-        stack.layout().setEnabled(self.layout_enabled);stack.layout().activate()
+        self.release_layout('slide')
         stack.setUpdatesEnabled(True)
 
     def hideEvent(self,event):
@@ -479,13 +539,79 @@ class AnimatedTabs(QTabWidget):
             if self.stack is None or not isValid(self.stack):self.finish_slide();return
             # Status text and page layouts can resize the viewport during a tab
             # change. Scroll in page units so the same animation/easing survives.
-            self.base=self.stack.contentsRect();self.slide_width=self.base.width()
+            self.base=self.motion_rect();self.slide_width=self.base.width()
             if self.slide_width<=0:
                 self.finish_slide();return
             self.stack.setUpdatesEnabled(False)
             for _,child in self.moving_pages:child.resize(self.base.size())
             self.move_pages(self.scroll)
+            if self.surface:
+                self.surface.setGeometry(self.stack.contentsRect())
+                for page in self.surface.pages.values():self.surface.invalidate(page)
             self.stack.setUpdatesEnabled(True)
+
+
+class AnimatedTabs(TabMotion,QWidget):
+    currentChanged=Signal(int)
+    tabBarClicked=Signal(int)
+
+    def __init__(self,parent=None):
+        super().__init__(parent)
+        self.setObjectName('motionTabs')
+        self.bar=QTabBar(self);self.bar.setExpanding(False);self.bar.setDrawBase(False)
+        self.init_motion(QStackedWidget(self))
+        self.bar.currentChanged.connect(self.select_page)
+        self.bar.tabBarClicked.connect(self.tabBarClicked.emit)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Expanding)
+        self.setStyleSheet('QWidget#motionTabs,QWidget#motionTabs > QStackedWidget{background:transparent;border:0;}')
+
+    def addTab(self,page,title):
+        index=self.stack.addWidget(page);self.bar.addTab(title);self.place_children();return index
+
+    def removeTab(self,index):
+        page=self.widget(index)
+        if page:self.stack.removeWidget(page)
+        self.bar.removeTab(index);self.place_children()
+
+    def tabBar(self):return self.bar
+    def count(self):return self.bar.count()
+    def currentIndex(self):return self.bar.currentIndex()
+    def currentWidget(self):return self.widget(self.currentIndex())
+    def widget(self,index):return self.stack.widget(index)
+    def setCurrentIndex(self,index):self.bar.setCurrentIndex(index)
+    def setCurrentWidget(self,page):self.setCurrentIndex(self.stack.indexOf(page))
+    def tabText(self,index):return self.bar.tabText(index)
+    def setTabText(self,index,title):self.bar.setTabText(index,title);self.place_children()
+    def sizeHint(self):return QSize(400,400)
+    def minimumSizeHint(self):return QSize(0,0)
+
+    def select_page(self,index):
+        if self.previous_page is None or not enabled(self):self.stack.setCurrentIndex(index)
+        focus=QApplication.focusWidget();previous=self.previous_page
+        self.currentChanged.emit(index)
+        page=self.currentWidget()
+        if previous is not None and focus is not None and previous.isAncestorOf(focus) and page is not None:
+            target=page.focusWidget() or page;target.setFocus(Qt.FocusReason.TabFocusReason)
+
+    def bar_height(self):return 0 if self.bar.isHidden() else self.bar.sizeHint().height()+4
+
+    def place_children(self):
+        height=self.bar_height();width=min(self.width(),self.bar.sizeHint().width())
+        self.bar.setGeometry((self.width()-width)//2,0,width,max(0,height-4))
+        self.stack.setGeometry(0,height,self.width(),max(0,self.height()-height))
+
+    def resizeEvent(self,event):
+        self.place_children();super().resizeEvent(event)
+
+    def showEvent(self,event):
+        self.place_children();super().showEvent(event)
+
+    def keyPressEvent(self,event):
+        if event.key() in (Qt.Key.Key_Tab,Qt.Key.Key_Backtab) and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            step=-1 if event.key()==Qt.Key.Key_Backtab or event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1
+            if self.count():self.setCurrentIndex((self.currentIndex()+step)%self.count())
+            event.accept();return
+        super().keyPressEvent(event)
 
 
 class RollingLabel(QLabel):
@@ -507,7 +633,7 @@ class RollingLabel(QLabel):
 
     def minimumSizeHint(self):return self.sizeHint()
 
-    def advance(self,value):self.roll.progress=float(value);self.update()
+    def advance(self,value):self.roll.progress=float(value);invalidate_surface(self);self.update()
 
     def clear(self):self.setText('')
 
@@ -515,6 +641,7 @@ class RollingLabel(QLabel):
         if text==self.text():return
         self.animation.stop()
         super().setText(text)
+        invalidate_surface(self)
         if self.roll.set_text(gui_currency.visual_text(text),enabled(self)):
             self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
 
