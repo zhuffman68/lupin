@@ -9,6 +9,45 @@ from PySide6.QtGui import QImage
 import numpy as np
 import time
 from math import ceil,floor
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PreparedBounds:
+    """Source-only geometry; never item identity or current-frame authority."""
+    request: object
+    image: QImage
+    exclude: tuple
+    entries: tuple
+
+    def lookup(self,request,image,area,exclude):
+        if request is not self.request or tuple(rect.getRect() for rect in exclude)!=self.exclude:return False,None
+        if image.cacheKey()!=self.image.cacheKey() and image!=self.image:return False,None
+        try:key=tuple(int(area[k]) for k in ('x','y','width','height'))
+        except (KeyError,TypeError,ValueError):return False,None
+        for seed,bounds in self.entries:
+            if seed==key:return True,QRect(*bounds) if bounds is not None else None
+        return False,None
+
+
+def prepare_bounds(request,image,result):
+    """Prepare at most two legacy title geometries on the source-check worker."""
+    from .tooltip_association import association_state
+    if association_state(result.get('tooltipAssociation'))!='normal':return None
+    tooltip=result.get('tooltip');hover=result.get('hover')
+    other=hover.get('tooltip') if isinstance(hover,dict) else None
+    candidates=[other]
+    if not isinstance(result.get('tooltipPanel'),dict):candidates.append(tooltip)
+    exclude=tuple(QRect(*rect) for rect in request.annotations);entries={}
+    for value in candidates:
+        found=value.get('found') if isinstance(value,dict) else None
+        area=found.get('area') if isinstance(found,dict) else None
+        if not isinstance(area,dict):continue
+        parts=tuple(area.get(k) for k in ('x','y','width','height'))
+        if any(type(v) is not int for v in parts) or parts in entries:continue
+        bounds=description_bounds(image,area,exclude)
+        entries[parts]=bounds.getRect() if bounds is not None else None
+    return PreparedBounds(request,QImage(image),tuple(rect.getRect() for rect in exclude),tuple(entries.items())) if entries else None
 
 
 def _visible_region(rect,exclude):
@@ -16,6 +55,12 @@ def _visible_region(rect,exclude):
     for covered in exclude:
         if rect.intersects(covered):visible=visible.subtracted(QRegion(covered.adjusted(-1,-1,1,1)))
     return visible
+
+
+def _purple_pixels(rgb):
+    channels=rgb.astype(np.int16);r,g,b=channels[:,0],channels[:,1],channels[:,2]
+    high=np.maximum(r,g)
+    return (r<=155)&(g<=160)&(b>=high+18)&(b*100>=high*116)
 
 
 def _description_body(image,rect,exclude=()):
@@ -39,7 +84,8 @@ def _description_body(image,rect,exclude=()):
     # Dense native pixels avoid a one-pixel geometry shift moving a sparse
     # sample grid onto the item art/text and toggling an otherwise stable pane.
     total=int(visible.sum())
-    return total>=24 and int(((rgb.max(axis=2)<185)&visible).sum())>=total*.60
+    dark=(rgb[:,:,0]<185)&(rgb[:,:,1]<185)&(rgb[:,:,2]<185)
+    return total>=24 and int((dark&visible).sum())>=total*.60
 
 
 def _rim_pixels(image,exclude=(),*,native_scale=None):
@@ -93,8 +139,12 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
             cy=np.minimum(yy+phase+outer,height-1) if horizontal else yy
             a=rgb[ay,ax].astype(np.int16)
             b=rgb[by,bx].astype(np.int16);c=rgb[cy,cx].astype(np.int16)
-            paired=(a.max(axis=2)<180)&(c.max(axis=2)<180)&(np.abs(a-c).max(axis=2)<=endpoint_tolerance)
-            contrast=np.any(((b-a>=18)&(b-c>=18))|((a-b>=18)&(c-b>=18)),axis=2)
+            delta=np.abs(a-c)
+            paired=((a[:,:,0]<180)&(a[:,:,1]<180)&(a[:,:,2]<180)
+                    &(c[:,:,0]<180)&(c[:,:,1]<180)&(c[:,:,2]<180)
+                    &(delta[:,:,0]<=endpoint_tolerance)&(delta[:,:,1]<=endpoint_tolerance)&(delta[:,:,2]<=endpoint_tolerance))
+            channels=((b-a>=18)&(b-c>=18))|((a-b>=18)&(c-b>=18))
+            contrast=channels[:,:,0]|channels[:,:,1]|channels[:,:,2]
             found|=valid&paired&contrast
         valid=np.ones(xx.shape,dtype=bool)
         for rect in covered:
@@ -128,8 +178,15 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
             scores=np.divide(hit,count,out=np.zeros(hit.shape,dtype=float),where=count>=4)
             result[right]=dict(zip(ys.tolist(),scores.tolist()))
         return result
+    def column_samples(xs,ys,_keep=rgba):
+        """Keep the scalar stroke's True/False/unknown result for each row."""
+        xs,ys,found,valid=grid(xs,ys,False)
+        if found is None:return ()
+        values=found.astype(object);values[~valid]=None
+        return tuple(values[:,index].tolist() for index in range(len(xs)))
     rim.axis_scores=axis_scores
     rim.cap_scores=cap_scores
+    rim.column_samples=column_samples
     return rim
 
 
@@ -242,10 +299,15 @@ def _framed_bounds(image,name,exclude=(),*,allow_masked_edge=False,rim_pixels=No
     if right is None:right=candidates[0] if candidates else None
     if right is None:return None
     seed=name.center().y();edges=[]
+    # Both rails use the same predicate/masks as individual rim queries. Batch
+    # their bounded vertical search instead of calling Python for every pixel.
+    sample_top=max(0,name.top()-96)
+    samples=(rim.column_samples((left,right),range(sample_top,min(image.height(),name.top()+900)))
+             if hasattr(rim,'column_samples') else ())
     for direction,limit in ((-1,max(-1,name.top()-96)),(1,min(image.height(),name.top()+900))):
         last=seed;gap=0
         for y in range(seed,limit,direction):
-            a,b=rim(left,y),rim(right,y)
+            a,b=(samples[0][y-sample_top],samples[1][y-sample_top]) if samples else (rim(left,y),rim(right,y))
             if a is None and b is None:continue
             if a or b:last=y;gap=0
             else:gap+=1
@@ -302,8 +364,11 @@ def _framed_bounds(image,name,exclude=(),*,allow_masked_edge=False,rim_pixels=No
     return QRect(left,top-1,right-left+3,bottom-top+3).intersected(image.rect())
 
 
-def description_bounds(image,area,exclude=(),*,source_verified=False):
+def description_bounds(image,area,exclude=(),*,source_verified=False,prepared=None,request=None):
     if image is None or image.isNull() or not area:return None
+    if not source_verified and isinstance(prepared,PreparedBounds):
+        ready,bounds=prepared.lookup(request,image,area,exclude)
+        if ready:return bounds
     name=QRect(*(int(area[k]) for k in ('x','y','width','height')))
     # A tooltip can extend past a cropped fixture or the shared display edge.
     # Its recognized name line is allowed to be clipped there as well.
@@ -313,8 +378,19 @@ def description_bounds(image,area,exclude=(),*,source_verified=False):
     if not source_verified and sum(part.width()*part.height() for part in visible)<name.width()*name.height()*.25:return None
     framed=_framed_bounds(image,name,exclude)
     if framed is not None:return framed if _description_body(image,framed,exclude) else None
+    pixels=None;fill_rows={};fill_columns={};vertical=False
+    if image.format()==QImage.Format.Format_RGBA8888:
+        raw=np.frombuffer(image.constBits(),dtype=np.uint8).reshape(image.height(),image.bytesPerLine())
+        pixels=raw[:,:image.width()*4].reshape(image.height(),image.width(),4)[:,:,:3]
     def fill(x,y):
         if not(0<=x<image.width() and 0<=y<image.height()):return False
+        if pixels is not None:
+            if y in fill_rows:return fill_rows[y][x]
+            if vertical:
+                if x not in fill_columns:fill_columns[x]=_purple_pixels(pixels[:,x]).tolist()
+                return fill_columns[x][y]
+            fill_rows[y]=_purple_pixels(pixels[y]).tolist()
+            return fill_rows[y][x]
         c=image.pixelColor(x,y);r,g,b=c.red(),c.green(),c.blue()
         return 0<=r<=155 and 0<=g<=160 and b>=max(r,g)+18 and b*100>=max(r,g)*116
     best=None
@@ -338,12 +414,18 @@ def description_bounds(image,area,exclude=(),*,source_verified=False):
     # over a wider purple span, even if the other side of this panel is covered.
     rim=_rim_pixels(image)
     ys=range(max(0,name.top()-1),min(image.height(),name.top()+max(123,name.height()*8)),6)
-    divider=next((x for x in range(max(left+60,name.right()+1),min(right,image.width()-6))
-                  if len(ys)>=5 and sum(rim(x,y) for y in ys)>=max(3,len(ys)*.65)),None)
+    columns=range(max(left+60,name.right()+1),min(right,image.width()-6));scores={}
+    if len(ys)>=5:
+        # The unmasked scalar rule is sum >= max(3, len(ys)*.65).
+        # With five or more samples that is exactly the same 65% score.
+        chunk=max(1,90_000//len(ys))
+        for offset in range(0,len(columns),chunk):scores.update(rim.axis_scores(columns[offset:offset+chunk],ys))
+    divider=next((x for x in columns if scores.get(x,0)>=.65),None)
     if divider is not None:right=divider+2
     spans=[]
     # The cyan name bullet or item art can interrupt one gutter column.
     # Try both inner edges rather than treating that interruption as the end.
+    vertical=True
     for column in (left+1,min(right,left+3),min(right,left+5),max(left,right-2)):
         top=bottom=seed_y
         for direction in (-1,1):
@@ -503,7 +585,7 @@ class TooltipReference:
             if pointer is None or self.pointer is None or max(abs(a-b) for a,b in zip(pointer,self.pointer))>8:return None
         return self.found if self.title.matches(image,panel=self.panel,pointer=pointer,exclude=exclude) else None
 
-    def observe(self,found,image,pointer,allow=True,now=None,*,context=None,title=None,exclude=()):
+    def observe(self,found,image,pointer,allow=True,now=None,*,context=None,title=None,exclude=(),prepared=None,request=None):
         now=time.monotonic() if now is None else now
         if not allow:self.clear();return None
         if self.context is not None and context is not None and context.token!=self.context.token:self.clear()
@@ -511,7 +593,7 @@ class TooltipReference:
         if found:
             area=found['area'];self.name=QRect(*(area[k] for k in ('x','y','width','height'))).intersected(image.rect())
             self.title=title or (context.title if context is not None else None)
-            self.panel=context.panel if context is not None else QRect(*self.title.panel) if self.title is not None and self.title.panel is not None else description_bounds(image,area)
+            self.panel=context.panel if context is not None else QRect(*self.title.panel) if self.title is not None and self.title.panel is not None else description_bounds(image,area,prepared=prepared,request=request)
             self.pixels=self.signature(image,self.name)
             self.found=found;self.pointer=pointer;self.at=now;self.context=context
             return found

@@ -236,6 +236,11 @@ Full-image NPC discovery runs off the GUI on one bounded immutable-source job.
 Retain its original active request/deadline and partial/final ordering. A failure
 cannot mean no NPC; cancellation and late replies retain the ordinary capture,
 viewport, latest-control and independent inventory checks before publication.
+The same job prepares at most two ordinary legacy-description bounds. Reuse
+requires the identical request, exact source pixels, title rectangle and complete
+annotation masks. Prepared missing geometry is distinct from unprepared data.
+Neither prepared bounds nor faster batched pixel predicates establish identity
+or current-frame/offer authority; stronger source-verified discovery stays separate.
 
 Pickup-only admission remains independent of EXP numerical candidates. Bind
 each job to its captured character proof: a missing proof holds that job, while

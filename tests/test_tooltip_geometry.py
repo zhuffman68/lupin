@@ -11,6 +11,57 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class TooltipGeometryTests(unittest.TestCase):
+    def test_batched_legacy_colours_match_the_original_predicate_at_thresholds(self):
+        from itertools import product
+        from price_lens.tooltip_geometry import _purple_pixels
+        levels=(0,17,18,19,154,155,156,159,160,161,184,185,237,238,254,255)
+        pixels=np.array(list(product(levels,repeat=3)),dtype=np.uint8)
+        expected=[0<=r<=155 and 0<=g<=160 and b>=max(r,g)+18 and b*100>=max(r,g)*116
+                  for r,g,b in pixels.astype(int).tolist()]
+        self.assertEqual(_purple_pixels(pixels).tolist(),expected)
+
+    def test_batched_rail_samples_equal_individual_strokes_at_scales_masks_and_edges(self):
+        from price_lens.tooltip_geometry import _rim_pixels
+        from PySide6.QtGui import QPainter
+        rng=np.random.default_rng(982)
+        palette=np.array(((0,0,0),(179,179,179),(180,180,180),(20,25,30),
+                          (38,43,48),(100,105,110),(155,170,179),(84,90,94)),dtype=np.uint8)
+        pixels=np.empty((69,83,4),dtype=np.uint8)
+        pixels[:,:,:3]=palette[rng.integers(0,len(palette),(69,83))];pixels[:,:,3]=255
+        image=QImage(pixels.tobytes(),83,69,83*4,QImage.Format.Format_RGBA8888).copy()
+        painter=QPainter(image)
+        for width in (1,2,3):
+            x=10+width*12
+            for dx,color in ((0,'#302a45'),(width,'#70718a'),(2*width,'#302a45')):
+                painter.fillRect(x+dx,5,width,50,QColor(color))
+        painter.end()
+        xs=(0,22,34,46,80,82);ys=range(69)
+        for scale in (None,1,1.25,1.5,2):
+            for masks in ((),(QRect(20,20,20,12),QRect(70,50,13,19)),(image.rect(),)):
+                with self.subTest(scale=scale,masks=masks):
+                    rim=_rim_pixels(image,masks,native_scale=scale)
+                    columns=rim.column_samples(xs,ys)
+                    self.assertEqual(columns,tuple([rim(x,y) for y in ys] for x in xs))
+
+    def test_description_body_keeps_the_strict_channel_threshold_and_masked_fraction(self):
+        from price_lens.tooltip_geometry import _description_body
+        rng=np.random.default_rng(815)
+        colors=np.array(((184,184,184),(185,0,0),(0,185,0),(0,0,185),(0,0,0),(255,255,255)),dtype=np.uint8)
+        for fraction in (.59,.60,.61):
+            rgba=np.empty((40,60,4),dtype=np.uint8);rgba[:,:,:3]=colors[1:][rng.integers(0,len(colors)-1,(40,60))];rgba[:,:,3]=255
+            rgba[6:34,6:54,:3]=185
+            inner=rgba[6:34,6:54,:3];count=round(28*48*fraction)
+            yy,xx=np.unravel_index(np.arange(count),(28,48));inner[yy,xx]=colors[0]
+            image=QImage(rgba.tobytes(),60,40,60*4,QImage.Format.Format_RGBA8888).copy()
+            for masks in ((),(QRect(10,9,13,18),),(image.rect(),)):
+                visible=np.ones((28,48),dtype=bool)
+                for mask in masks:
+                    part=mask.adjusted(-1,-1,1,1).intersected(QRect(6,6,48,28))
+                    if not part.isEmpty():visible[part.top()-6:part.bottom()-5,part.left()-6:part.right()-5]=False
+                total=int(visible.sum())
+                expected=total>=24 and int(((inner.max(axis=2)<185)&visible).sum())>=total*.60
+                self.assertEqual(_description_body(image,image.rect(),masks),expected)
+
     def test_excluded_frame_checks_do_not_allocate_display_sized_masks(self):
         from price_lens.tooltip_geometry import _rim_pixels
         image=QImage(3840,2160,QImage.Format.Format_RGBA8888);image.fill(QColor('#55507a'))

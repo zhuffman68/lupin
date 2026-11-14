@@ -1726,6 +1726,7 @@ class LensWindow(QMainWindow):
         self.ocr_ms = result.get("atMs")
         shop = result.get("shop")
         request=result.get('_submitted_request')
+        prepared=result.get('_prepared_description_bounds')
         if isinstance(request,SubmittedRequest):image=request.source_image()
         else:
             image = getattr(self.reader,"submitted_image",self.reader.image)
@@ -1767,7 +1768,7 @@ class LensWindow(QMainWindow):
         bounds=(context.panel if context is not None and state=='inventory-primary' else
                 self.shop_tooltip_rect if reuse_panel else
                 supplied_panel if supplied_panel is not None else
-                description_bounds(image,native.get('area'),exclusions) if native else None)
+                description_bounds(image,native.get('area'),exclusions,prepared=prepared,request=request) if native else None)
         # A known list slot supplies identity when our own price labels hide
         # the title. It cannot anchor a panel by itself: independently visible
         # native body pixels and the same shop's exposed guards are required.
@@ -1837,7 +1838,7 @@ class LensWindow(QMainWindow):
                 near = read_point is not None and box.adjusted(-640, -640, 640, 640).contains(QPoint(*read_point))
                 popup=context.panel if context is not None else (
                     supplied_panel if supplied_panel is not None and supplied_panel.contains(box) else
-                    bounds if bounds is not None and bounds.contains(box) else description_bounds(image,area,exclusions))
+                    bounds if bounds is not None and bounds.contains(box) else description_bounds(image,area,exclusions,prepared=prepared,request=request))
                 pinned=bool(found.get('pinned') and popup and still_present(latest,popup,exclusions))
                 moved = read_point is None or max(abs(pointer[0] - read_point[0]), abs(pointer[1] - read_point[1])) > 64
                 if context is not None and state=='inventory-primary':near=True;moved=False
@@ -1897,7 +1898,8 @@ class LensWindow(QMainWindow):
         newly_read=found is not None
         found=self.tooltip_reference.observe(found,latest,pointer,
             allow=bool(held_description or eligible and (not raw_found or not raw_found.get('name') or found is not None)),
-            context=context if state=='inventory-primary' else None,title=title_proof,exclude=self.annotation_exclusions())
+            context=context if state=='inventory-primary' else None,title=title_proof,exclude=self.annotation_exclusions(),
+            prepared=prepared,request=request)
         self.tooltip_context=self.tooltip_reference.context if found else None
         self.reader.tooltip_title_proof=self.tooltip_reference.title if found else None
         self.reader.tooltip_association=self.tooltip_context
@@ -2003,7 +2005,8 @@ class LensWindow(QMainWindow):
                         and association.matches(image,read_point,exclude=original_masks)
                         and image.copy(rect)==latest.copy(target))
                 else:
-                    panel=description_bounds(image,description.get('area'),exclusions)
+                    panel=description_bounds(image,description.get('area'),exclusions,
+                        prepared=result.get('_prepared_description_bounds'),request=result.get('_submitted_request'))
                     proven=bool(panel is not None and game.contains(panel) and panel.contains(rect) and still_present(latest,panel,exclusions)
                                 and image.copy(rect)==latest.copy(rect))
                 if proven:observe(description,'item-description')

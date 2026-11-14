@@ -1,7 +1,14 @@
-"""One bounded, asynchronous native-control check for an immutable reader reply."""
+"""One bounded, asynchronous source-pixel check for an immutable reader reply."""
+from dataclasses import dataclass
 from PySide6.QtCore import QObject,Signal
 
 from .background_job import LatestJob
+
+
+@dataclass(frozen=True)
+class SourcePixels:
+    npc: object
+    bounds: object = None
 
 
 class ReaderSourceCheck(QObject):

@@ -1,4 +1,4 @@
-# Verification — 2026-11-13
+# Verification — 2026-11-14
 
 ## Remaining live-reading lag — 2026-11-14
 
@@ -16,6 +16,29 @@ The live profile's high scalar timings include instrumentation overhead;
 do not present them as normal UI stall duration. This is a demonstrated local
 cost reduction; live frame delivery and the remaining work are still under
 investigation. No animation is shortened or removed and no build is made.
+
+The next measured hotspot is native frame/body validation and large legacy
+description discovery. Batched channel/rail/colour calculations preserve the
+scalar predicate, masks, unknown pixels and boundary stopping rules. Ordinary
+legacy bounds now prepare on the same bounded background stage as NPC controls;
+reuse requires the same request, exact source pixels, title rectangle and full
+annotation masks. Prepared data never establishes identity or current authority.
+Source-verified discovery, latest-frame/source/NPC/offer checks, cancellation,
+partial/final ordering and original deadlines remain intact.
+
+The final paired unprofiled replay shows median GUI callback CPU
+**7.479 → 2.685 ms** for the normal case and **64.025 → 3.373 ms** for a 2×
+legacy fallback after preparation. The latter still uses **26.461 ms** of
+background preparation CPU. Each uses 32 samples and actual native results
+from generated public-font pixels, with offline UI services. It is not a
+physical frame-rate or Windows acceptance result.
+
+The title-mask checkpoint's complete suite passes **1,501 tests (256.507 s),
+three skipped**. The final focused capture, source-check and geometry suite
+passes **125 tests (17.489 s)**, including source-pixel/request/mask rejection,
+prepared misses, partial ordering, pause/close behavior, native scaled rails,
+independent inventory pricing and existing NPC/viewport checks. A combined
+complete rerun is pending at this checkpoint.
 
 ## Source-check scheduling and Prices navigation — 2026-11-14
 

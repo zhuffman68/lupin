@@ -144,6 +144,17 @@ authority or opens a second request. Late phases go through the same current
 source/NPC/viewport checks as ordinary results. Native `readerStages` reports
 numeric shop/component/tooltip timings separately from capture-to-result latency.
 
+`ReaderSourceCheck` pairs one background pixel job with that exact request and
+serialized reply. It prepares NPC controls and, when ordinary native descriptions
+lack explicit panel metadata, at most two source-only legacy bounds. It retains
+the original deadline and phase ordering. `PreparedBounds` can be consumed only
+with the same request object, exact source pixels, title rectangle and full
+annotation-mask tuple; a prepared miss avoids repeating that search. Changed
+inputs use ordinary discovery. The UI still checks latest pixels, source/title,
+NPC ownership, viewport and current offers, and the stronger source-verified
+geometry path does not use this preparation. Cancellation/close releases demand
+without waiting for the worker. No idle scan or persistent geometry cache is added.
+
 The visible bottom status bar and static frame evidence locate Classic World. FPS and movable minimap placement are not anchors. Shop/tooltip pixel fingerprints avoid repeated OCR and preserve proven identities through modest movement and occlusion. Equipment names include gender/stat/tier evidence; ambiguous IDs remain unresolved.
 
 Only a missing, uncovered shop price triggers the price-resampling retry. A cropped shop passes through the unchanged strict upstream reader at two resamplings. Recovery requires agreement on exact name, row position, quantity and the complete meso amount. Existing prices are never overwritten. An eight-patch pixel cache also remembers failures. Ordinary list reading skips the optional description search unless the pointer's clipped/hidden title needs refinement or a scroll picture needs occlusion protection. The pinned Minerva revision and OCR model are unchanged.

@@ -38,7 +38,7 @@ player asking prices or observed sales.
 | `reader/src/tooltip_reader.rs` | Bind and read an inventory title before optional shop work; publish an opt-in independent inventory phase. |
 | `price_lens/pixel_components.py` | Connect native colour runs in two dimensions with a work limit. Shared by NPC controls and the add-item form. |
 | `price_lens/npc_shop.py` | Acquire NPC-window evidence, revalidate its stable controls, and enforce row/description ownership. |
-| `price_lens/reader_source_check.py` | Run one immutable reply's full-image control discovery off the GUI thread; preserve phase order, cancellation and its original request deadline. |
+| `price_lens/reader_source_check.py` | Run one immutable reply's control discovery and legacy-description preparation off the GUI thread; preserve phase order, cancellation and its original request deadline. |
 | `price_lens/capture.py` | Bind recognition to immutable submitted frames, track current NPC state, filter replies, validate inventory source proofs, and schedule capture/reader work. |
 | `price_lens/price_observations.py` | Accept individual current player rows and retain only independently allowed same-page presentation. |
 | `price_lens/shop_rows.py` and `shop_browsing.py` | Own table guards, slots, asking-price retention and viewport epochs. |
@@ -64,6 +64,26 @@ inventory evidence and current row/offer proofs still run before publication.
 A worker failure drops the reply rather than masquerading as an empty NPC
 result. Close does not wait for the worker and late callbacks cannot read the
 closed process. This changes scheduling, not NPC ownership or pricing policy.
+
+The same bounded stage can prepare up to two ordinary legacy-description bounds
+when explicit native panel metadata is unavailable. Modern independently bound
+inventory descriptions keep their original immediate path. `PreparedBounds`
+contains source geometry only: the identical request object, exact source pixels
+(including cropped submissions), exact title rectangle and complete annotation
+mask tuple must agree before reuse. A prepared `None` is a verified geometry
+miss for those inputs, not a new identity or an unprepared result. Different
+inputs use ordinary discovery, and `source_verified=True` does not use this
+preparation. Current-screen frame/title/source, NPC and offer checks remain on
+delivery. Cancelled/failed work cannot publish a reply.
+
+Title masks and dark-body/channel predicates use the original strict thresholds
+in signed vector calculations. Batched rail samples preserve each pixel's
+True/False/unknown result and the original stopping rules. Legacy colour search
+batches only queried RGBA rows/columns, retains the ordinary path for other
+formats, and limits divider batches to 90,000 queried points. These temporary
+arrays release after each call; they are not full-display exclusion masks or
+long-lived identity caches.
+
 With `progressive_tooltip`, a positively source-bound `inventory-primary` title
 may instead publish a `tooltipPartial` reply before the shop reader runs. Its
 `shopDeferred` marker means that the shop has not been read yet; it cannot close,

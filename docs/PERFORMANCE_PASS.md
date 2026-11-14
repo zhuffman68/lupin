@@ -58,6 +58,35 @@ measurements establish the bounded operation's reduction, not uniformly smooth
 live navigation. Remaining callback/event-loop work is still being measured.
 Evidence: `evidence/reading-lag-2026-11-14/` (private).
 
+Frame validation is another demonstrated cost. Three-channel body/rim tests
+now avoid repeated axis reductions; rail queries preserve the scalar
+True/False/unknown values while batching their original vertical search. The
+legacy colour fallback batches only queried RGBA rows/columns and bounded
+divider grids (90,000 points per batch), retaining its ordinary other-format
+path. Threshold, mask, edge and native-scale checks agree with the original.
+No animation effect or duration changes.
+
+Large legacy bounds preparation now joins the existing request-bound background
+stage. At most two ordinary description seeds are prepared per reply; explicit
+native panels and modern inventory associations keep their usual paths.
+Adoption requires the identical request, exact source pixels, seed rectangle
+and full annotation masks; a prepared missing bound is distinct from no
+preparation. All latest-frame/source/NPC/viewport/offer checks remain in place.
+The source-verified geometry path still runs independently. Failures reject the
+reply, and pause/reset/close retain the original cancellation/deadline behavior.
+
+The final unprofiled paired geometry replay uses 32 alternating samples per
+case and public generated pixels read by the actual native binary. Normal
+callback median GUI CPU falls **7.479 → 2.685 ms**. The larger 2× fallback falls
+**64.025 → 3.373 ms** after prepared-source delivery; its **26.461 ms** preparation
+CPU remains background work. Without preparation, that fallback still takes
+**29.543 ms** on the GUI, so the scheduling change is essential. The benchmark
+replays native retry text/geometry as an initial unresolved result and uses
+offline UI services, not game input or physical compositor measurements.
+The complete suite after the title-mask step passes **1,501 tests in 256.507 s,
+three skipped**. The final focused capture/geometry suite passes **125 tests in
+17.489 s**; the complete rerun of the combined changes follows below.
+
 #### Remaining stalls and view navigation
 
 The user still observed substantial stutter after `852d35b`. Its long numeric

@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer,QRect
 from PySide6.QtGui import QColor,QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -51,6 +51,31 @@ class ReaderSourceCheckTests(unittest.TestCase):
             self.assertEqual(self.readings,[]);self.assertNotEqual(threads,[gui])
             release.set();self.wait_for(lambda:len(self.readings)==1)
         self.assertIsNone(self.reader.active_request)
+
+    def test_legacy_bounds_share_the_background_stage_without_blocking_gui_or_losing_the_request(self):
+        started=threading.Event();release=threading.Event();heartbeats=[];threads=[]
+        self.addCleanup(release.set)
+        area=dict(x=110,y=190,width=140,height=14);bounds=QRect(100,180,200,250)
+        def slow_bounds(image,seed,exclude):
+            threads.append(threading.get_ident());started.set();release.wait(2)
+            self.assertEqual(image,self.request.source_image());self.assertEqual(seed,area)
+            return bounds
+        with patch('price_lens.capture.find_npc_shop',return_value=None),patch('price_lens.tooltip_geometry.description_bounds',side_effect=slow_bounds):
+            self.submit(tooltip=dict(found=dict(name='Generated title',area=area)))
+            self.assertTrue(started.wait(1));self.assertIs(self.reader.active_request,self.request)
+            self.assertEqual(self.reader.active_request.deadline_at,self.request.deadline_at)
+            QTimer.singleShot(0,lambda:heartbeats.append(True));self.wait_for(lambda:bool(heartbeats))
+            self.assertEqual(self.readings,[]);self.assertNotEqual(threads,[threading.get_ident()])
+            release.set();self.wait_for(lambda:len(self.readings)==1)
+        result=self.readings[0];prepared=result['_prepared_description_bounds']
+        self.assertIs(result['_submitted_request'],self.request)
+        self.assertEqual(prepared.lookup(self.request,self.image,area,()),(True,bounds))
+
+    def test_legacy_geometry_failure_cannot_publish_an_unchecked_reply(self):
+        with patch('price_lens.capture.find_npc_shop',return_value=None),patch('price_lens.tooltip_geometry.description_bounds',side_effect=RuntimeError('fixture geometry failure')):
+            self.submit(tooltip=dict(found=dict(name='Generated title',area=dict(x=110,y=190,width=140,height=14))))
+            self.wait_for(lambda:not self.reader.source_check.busy and self.reader.active_request is None)
+        self.assertEqual(self.readings,[])
 
     def test_final_phase_waits_behind_its_partial_without_a_new_request(self):
         release=threading.Event();started=threading.Event();self.addCleanup(release.set)

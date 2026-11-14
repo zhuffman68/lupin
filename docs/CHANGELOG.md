@@ -7,9 +7,9 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
-- Reduced repeated shop-name and uncertain-title checks, and moved full-image NPC-shop discovery
-  out of the interface thread. Item, shop and inventory validation remains in
-  place while reading continues.
+- Reduced repeated shop-name, title and description-frame checks. NPC-shop
+  discovery and large description searches run in the background, retaining
+  item, shop and inventory validation while reading continues.
 
 - On-screen items now use the available height. Click an item to open its
   details; returning to the list keeps its scroll position. Pages keep their contents

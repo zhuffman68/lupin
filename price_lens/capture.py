@@ -19,7 +19,7 @@ from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
 from .reader_metrics import ReaderMetrics
 from .reader_process import ReaderProcess
-from .reader_source_check import ReaderSourceCheck
+from .reader_source_check import ReaderSourceCheck,SourcePixels
 from .inventory_probe import InventoryAbsence
 from .npc_shop import find_npc_shop,suppress_npc_rows,suppress_npc_prices
 from .shop_source import cursor_rectangle
@@ -691,7 +691,7 @@ class PixelReader(QObject):
         if changed:self.area_changed.emit()
 
     def queue_source_check(self,result,request,line):
-        """Keep full-image NPC discovery off the GUI; reuse no frame authority.
+        """Prepare NPC controls and legacy geometry off the GUI.
 
         Buffer at most this reply and its native final phase. The original
         request/deadline stays active until this exact reply is consumed.
@@ -711,11 +711,21 @@ class PixelReader(QObject):
         cursor=cursor_rectangle(point,npc.anchor[2] if npc is not None else
                                 max(.5,min(3,near.width()/199)) if near is not None else 1)
         masks=(*tuple(QRect(*rect) for rect in request.annotations),*((cursor,) if cursor is not None else ()))
-        if npc is not None and npc.state(source,masks)!='absent':return False
+        discover_needed=npc is None or npc.state(source,masks)=='absent'
+        hover=result.get('hover');other=hover.get('tooltip') if isinstance(hover,dict) else None
+        legacy=association_state(result.get('tooltipAssociation'))=='normal' and (
+            isinstance(other,dict) and other.get('found')
+            or isinstance(generic,dict) and generic.get('found') and not isinstance(result.get('tooltipPanel'),dict))
+        if not discover_needed and not legacy:return False
         discover=find_npc_shop
         def check(token):
+            from .tooltip_geometry import prepare_bounds
             token.check()
-            return discover(source,near=near,exclude=masks)
+            candidate=discover(source,near=near,exclude=masks) if discover_needed else npc
+            token.check()
+            bounds=prepare_bounds(request,source,result) if legacy else None
+            token.check()
+            return SourcePixels(candidate,bounds)
         self.source_check.submit(request,line,check)
         return True
 
@@ -741,6 +751,10 @@ class PixelReader(QObject):
                     return
                 if checked is not None and checked.error is not None:
                     result={**result,'error':'Native source controls could not be checked'}
+                elif checked is not None:
+                    if not isinstance(checked.value,SourcePixels):
+                        result={**result,'error':'Native source controls could not be checked'}
+                    else:result['_prepared_description_bounds']=checked.value.bounds
                 if result.get('cancelled') is True:
                     if metrics is not None:metrics.record('prices.superseded')
                     if request.cancel_path:Path(request.cancel_path).unlink(missing_ok=True)
@@ -829,7 +843,7 @@ class PixelReader(QObject):
                         # its flag need not trigger another full-frame search.
                         possible=near is not None or (isinstance(generic,dict) and generic.get('found')
                             and association_state(result.get('tooltipAssociation'))!='inventory-primary')
-                        source_npc=checked.value if possible and checked is not None else None
+                        source_npc=checked.value.npc if possible and checked is not None else None
                     current_npc=self.update_npc_shop(current,exclude=self.annotation_regions(),candidate=source_npc)
                     raw_shop_hover=bool(result.get('hover'))
                     result=suppress_npc_rows(suppress_npc_rows(result,source_npc),current_npc)
