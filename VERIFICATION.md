@@ -15,6 +15,9 @@ fixed height, 100-row visible-only painting/no row widgets, deferred first show,
 cached reopen, Reduce motion, pointer geometry, one request per lookup, no
 restart on unchanged refresh, item reuse and Prices navigation. No new capture,
 network policy or installed-package change is introduced.
+The five focused painted-list checks also pass at **2× in 0.130 s**. Preview
+revision `41f41eb` is open; fresh shared frames, Classic World identification and
+annotation-helper readiness are confirmed after sharing reconnects.
 
 ## Repeated card rendering and crowded hover checks — 2026-11-14
 
