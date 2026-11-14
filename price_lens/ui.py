@@ -23,6 +23,8 @@ from .tray import TrayController
 from .experience_ui import ExperiencePanel
 from .platform_paths import data_directory
 from .search import PriceSearch
+from .item_cards import item_caption,item_record,make_item_card,matches_item_card
+from .reference_details import EntryDetails
 from .motion import AnimatedTabs, ContentArea, CardArea, MotionLabel,StableScrollArea
 from .fonts import interface_family
 from .branding import Brand
@@ -420,6 +422,7 @@ class LensWindow(QMainWindow):
         self.watchlist.changed.connect(self.on_watchlist_changed)
         self.search_panel.ttl = self.ttl
         self.search_panel.item_selected.connect(self.on_search_item)
+        self.search_panel.context_for=self.item_gui_context
         self.search_panel.source_requested.connect(self.open_source)
         self.search_panel.set_thumbnails(self.thumbnails)
         self.thumbnails.ready.connect(self.on_shop_thumbnail)
@@ -467,7 +470,10 @@ class LensWindow(QMainWindow):
         self.search_panel.set_reference(self.reference,self.database_panel.media,self.service)
         self.search_panel.reference_requested.connect(self.open_reference_entry)
         self.search_panel.reference_changed.connect(self.update_reference_context)
-        self.database_panel.external_demand=self.search_panel.reference_demand
+        self.reference.extra.updated.connect(self.on_card_reference_updated)
+        self.reference.sources.updated.connect(self.on_card_reference_updated)
+        self.image_cache.ready.connect(self.on_card_reference_image)
+        self.database_panel.external_demand=self.price_reference_demand
         self.reference.updated.connect(self.on_reference_data)
         self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs, 1)
@@ -510,6 +516,7 @@ class LensWindow(QMainWindow):
             QCheckBox::indicator:checked:disabled { background:#746447;border-color:#9b8358; }
             QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }
             QFrame#card, QFrame#setup { background: #202734; border: 1px solid #303b4b; border-radius: 9px; }
+            QFrame#card[clickableItem="true"]:hover { background:#253143; border-color:#54657b; }
             QFrame#card QLabel, QFrame#setup QLabel, QWidget#displayMap { background: transparent; border: none; }
             QScrollBar:vertical { background: #171c25; width: 6px; }
             QScrollBar::handle:vertical { background: #455064; border-radius: 3px; min-height: 20px; }
@@ -970,9 +977,63 @@ class LensWindow(QMainWindow):
     def update_reference_context(self):
         if not hasattr(self,'database_panel') or self.closing:return
         if self.tabs.currentIndex()==self.search_tab_index:
-            entry=self.search_panel.reference_entry()
+            card=getattr(self.search_panel,'price_view',None) if self.search_panel.selected else self.visible_description_card()
+            entry=card.source_entry() if isinstance(card,EntryDetails) and card.isVisible() else None
             self.reference.extra.select(entry);self.reference.sources.select(entry)
         self.database_panel.observe_media()
+
+    def visible_description_card(self):
+        return next((card for card in self.card_views.values() if isinstance(card,EntryDetails) and card.isVisible()),None)
+
+    def price_reference_demand(self):
+        if self.search_panel.selected:return self.search_panel.reference_demand()
+        card=self.visible_description_card()
+        return card.visible_urls() if card and self.tabs.currentIndex()==self.search_tab_index and not self.isMinimized() else []
+
+    def on_card_reference_updated(self,key):
+        for card in self.card_views.values():
+            if isinstance(card,EntryDetails) and card.entry.key==tuple(key):card.refresh_drops()
+
+    def on_card_reference_image(self,url):
+        for card in self.card_views.values():
+            if isinstance(card,EntryDetails):card.image_ready(url)
+
+    def schedule_card_fit(self):
+        if getattr(self,'card_fit_pending',False):return
+        self.card_fit_pending=True;QTimer.singleShot(0,self.fit_screen_cards)
+
+    def fit_screen_cards(self):
+        self.card_fit_pending=False
+        if not self.closing:self.card_area.complete()
+
+    def item_gui_context(self,item):
+        if item and self.prices_active():
+            rows=[row for row in self.rows if self.item_for(row)==item and row.get('price')]
+            if len(rows)==1:return dict(name=item.name,price=dict(rows[0]['price']),_offer_context='current')
+        entry=self.recent_items.entries.get(item.game_id) if item else None
+        if entry and entry['item']==item and entry.get('price'):
+            return dict(name=item.name,price=dict(entry['price']),_offer_context='last_seen')
+        return None
+
+    def open_shop_card(self,item,row):
+        if item is None:return
+        context={key:row[key] for key in ('name','price','shop_page','shop_slot','_offer_context') if key in row}
+        matches=[current for current in self.rows if self.item_for(current)==item and current.get('price')==row.get('price')
+                 and current.get('shop_page')==row.get('shop_page') and current.get('shop_slot')==row.get('shop_slot')]
+        if not self.prices_active() or len(matches)!=1:context['_offer_context']='last_seen'
+        self.search_panel.select_observed(item,context)
+
+    def refresh_selected_offer(self):
+        panel=self.search_panel
+        if panel.selected is None:return
+        if panel.selection_source!='shop' or not panel.selected_row:
+            panel.render();return
+        previous=panel.selected_row
+        matches=[row for row in self.rows if self.item_for(row)==panel.selected and row.get('price')
+                 and row.get('shop_page')==previous.get('shop_page') and row.get('shop_slot')==previous.get('shop_slot')]
+        row={**previous,'_offer_context':'last_seen'}
+        if self.prices_active() and len(matches)==1:row={**previous,'price':dict(matches[0]['price']),'_offer_context':'current'}
+        if row!=panel.selected_row:panel.selected_row=row;panel.render()
 
     def on_reference_data(self):
         if self.closing or not hasattr(self,'database_panel'):return
@@ -2156,7 +2217,7 @@ class LensWindow(QMainWindow):
         card_rows=[]
         for row,hovered in normal_card_rows:
             presentation=self.shop_rows.presentation_for(row) if not hovered and not row.get('price') else None
-            card_rows.append(({**row,'price':presentation} if presentation else row,hovered))
+            card_rows.append(({**row,'price':presentation,'_offer_context':'last_seen'} if presentation else row,hovered))
         cached_rows=card_rows
         displayed=[row for row,_ in card_rows]
         active={item.game_id for row,_ in cached_rows if (item:=self.item_for(row))}
@@ -2168,6 +2229,7 @@ class LensWindow(QMainWindow):
         if not paint_prices:
             if update_overlay:self.draw_labels(now,screen_old)
             return
+        self.refresh_selected_offer()
         if self.catalog:
             self.recent_items.refresh(self.service,self.ttl,now)
         structure=tuple((hovered,item.game_id if (item:=self.item_for(row)) else row.get('name'))
@@ -2232,7 +2294,8 @@ class LensWindow(QMainWindow):
                 identity=(hovered,item.game_id if item else row.get('name'))
                 occurrence=occurrences.get(identity,0);occurrences[identity]=occurrence+1
                 desired.append((*identity,occurrence))
-            replacements={key:card for key,card in self.card_views.items() if key not in desired and hasattr(card,'update_data')}
+            replacements={key:card for key,card in self.card_views.items() if key not in desired and hasattr(card,'update_data')
+                          and not isinstance(card,EntryDetails) and not getattr(card,'selected_mode',False)}
             occurrences={}
             for index, (row, hovered) in enumerate(cached_rows):
                 item = self.item_for(row)
@@ -2248,15 +2311,27 @@ class LensWindow(QMainWindow):
                                   lookup_reason=self.lookup_reason_for(item),
                                   open_source=self.open_source)
                 used.add(key)
+                detailed=bool(hovered and item)
+                if detailed:data['context_name']=item_caption(item)
+                record=item_record(self.search_panel,item) if detailed else None
+                if key in self.card_views and detailed and not matches_item_card(self.card_views[key],item,record):
+                    old=self.card_views.pop(key);self.cards_layout.removeWidget(old);retire_widget(self,old)
                 if key in self.card_views:
                     card = self.card_views[key]
-                    card.update_data(**data)
+                    card.update_data(**data,selected=detailed)
                 else:
-                    old_key=next((old_key for old_key in replacements if old_key[0] is hovered),None)
+                    old_key=next((old_key for old_key in replacements if old_key[0] is hovered),None) if not detailed else None
                     if old_key is not None:
                         card=replacements.pop(old_key);self.card_views.pop(old_key)
                         card.update_data(**data);self.card_views[key]=card
-                    else:card = self.card_views[key] = price_card(watchlist=self.watchlist,**data)
+                    elif detailed:
+                        card=self.card_views[key]=make_item_card(self.search_panel,item,record,automatic=True,**data)
+                        card.tabs.height_changed.connect(self.schedule_card_fit)
+                    else:
+                        card=self.card_views[key]=price_card(watchlist=self.watchlist,**data)
+                        card.set_selectable(not hovered and item is not None)
+                        card.activated.connect(self.open_shop_card)
+                if not detailed and hasattr(card,'set_selectable'):card.set_selectable(not hovered and item is not None)
                 if key in shown:ordered.append(card)
                 else:card.hide()
                 card.setProperty('gameItemId',item.game_id if item else None)
@@ -2280,6 +2355,7 @@ class LensWindow(QMainWindow):
             self.card_area.setProperty('suppressMotion',False)
             self.card_area.complete()
             self.scroll.verticalScrollBar().setValue(position)
+            self.update_reference_context()
         self.update_price_layout()
         if update_overlay:self.draw_labels(now, screen_old)
 

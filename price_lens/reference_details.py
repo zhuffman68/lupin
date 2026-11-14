@@ -14,7 +14,7 @@ from .reference_relations import quest_rewards,item_quest_sources,relationship
 from .reference_maps import MapPreview
 from .watchlist_ui import WatchButton
 from .domain import key as name_key,Item
-from .price_widgets import PriceCard
+from .price_widgets import ItemDetailTabs,PriceCard
 from .market_lookup import market_lookup
 from .listing_widgets import ITEM_TAB_STYLE,WhereSeenPanel
 
@@ -62,8 +62,9 @@ def stats(layout,values,*,columns=2,compact=False):
     layout.addWidget(frame);return fields
 
 
-def page():
+def page(*,scrolling=True):
     widget=QWidget();layout=QVBoxLayout(widget);layout.setContentsMargins(1,9,5,0);layout.setSpacing(10)
+    if not scrolling:return widget,widget,layout
     scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QFrame.Shape.NoFrame)
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);scroll.setWidget(widget)
     return scroll,widget,layout
@@ -78,6 +79,17 @@ def facts(layout,values):
     grid.setColumnStretch(0,1);layout.addLayout(grid)
 
 
+def item_facts(layout,values):
+    """Pair two concise facts per row at the minimum supported card width."""
+    grid=QGridLayout();grid.setContentsMargins(0,0,0,0);grid.setHorizontalSpacing(18);grid.setVerticalSpacing(6)
+    for index,(caption,value) in enumerate(values):
+        cell=QWidget();row=QHBoxLayout(cell);row.setContentsMargins(0,0,0,0);row.setSpacing(6)
+        row.addWidget(text(caption,11,'#b1bfd1'),1)
+        number=text(formatted(value),12,'#e6eaf1',True);number.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(number);grid.addWidget(cell,index//2,index%2)
+    grid.setColumnStretch(0,1);grid.setColumnStretch(1,1);layout.addLayout(grid)
+
+
 class EntryDetails(QFrame):
     media_changed=Signal()
 
@@ -85,7 +97,7 @@ class EntryDetails(QFrame):
         super().__init__();self.panel=panel;self.store=panel.store;self.media=panel.media;self.entry=entry;self.row=row
         self.lists=[];self.rank_slider=None;self.animation_url='';self.market_label=None;self.drop_list=None;self.source_list=None;self.drop_key=None
         layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0);layout.setSpacing(7)
-        self.summary_card=None;self.sprite=None;self.map_preview=None
+        self.summary_card=None;self.sprite=None;self.map_preview=None;self.sources_activated=True
         if entry.kind=='items':
             self.summary_card=PriceCard(item=self.item_identity(),row={'name':entry.name},quote=None,now=time.time(),ttl=panel.ttl,hovered=True,selected=True,
                 watchlist=getattr(panel,'watchlist',None),context_name=row.get('sub_category') or 'Item')
@@ -126,7 +138,7 @@ class EntryDetails(QFrame):
                 record=relationship(self.store,'maps',identity)
                 if record and record['target']:self.map_destinations[identity]=record
             layout.addWidget(self.map_preview)
-        self.tabs=AnimatedTabs()
+        self.tabs=ItemDetailTabs() if entry.kind=='items' else AnimatedTabs()
         self.tabs.animation.setDuration(220)
         if self.summary_card:self.summary_card.set_panel(self.tabs);layout.addStretch()
         else:layout.addWidget(self.tabs,1)
@@ -134,7 +146,7 @@ class EntryDetails(QFrame):
         self.tabs.setStyleSheet('QTabWidget::pane{border:0;background:transparent;} QTabWidget::tab-bar{alignment:center;} QTabBar::tab{padding:6px 9px;margin:0 3px 2px 0;} QScrollArea,QScrollArea>QWidget>QWidget{background:transparent;}')
         if self.summary_card:
             self.tabs.setStyleSheet(ITEM_TAB_STYLE)
-        overview,self.overview,body=page();self.tabs.addTab(overview,'Overview')
+        overview,self.overview,body=page(scrolling=entry.kind!='items');self.tabs.addTab(overview,'Overview')
         if entry.kind=='items':body.setContentsMargins(5,7,5,0);body.setSpacing(9)
         if entry.kind=='items':self.item(body)
         elif entry.kind=='monsters':self.monster(body)
@@ -150,8 +162,10 @@ class EntryDetails(QFrame):
             self.tabs.currentChanged.connect(lambda *_:self.where_seen.sync())
         body.addStretch()
         self.tabs.tabBar().setVisible(self.tabs.count()>1)
-        self.tabs.currentChanged.connect(lambda *_:self.media_changed.emit())
+        self.tabs.currentChanged.connect(self.tab_changed)
+        if entry.kind=='items':self.tabs.tabBarClicked.connect(self.tab_changed)
         self.refresh_drops();self.update_market();self.refresh_followups()
+        if isinstance(self.tabs,ItemDetailTabs):self.tabs.fit_page()
 
     def add_list(self,layout,*,drop_tiles=False):
         listing=ReferenceList(self.media,drop_tiles=drop_tiles);listing.chosen.connect(self.navigate);listing.viewport_changed.connect(self.media_changed.emit)
@@ -159,6 +173,18 @@ class EntryDetails(QFrame):
 
     def navigate(self,key):
         if isinstance(key,(tuple,list)) and len(key)==2:self.panel.open(tuple(key))
+
+    def source_selected(self):
+        return self.entry.kind!='items' or self.tabs.currentWidget() is self.sources
+
+    def source_entry(self):
+        if self.entry.kind!='items':return self.entry
+        return self.entry if self.source_selected() and self.sources_activated else None
+
+    def tab_changed(self,*_):
+        if self.source_selected():
+            self.sources_activated=True;self.refresh_drops()
+        self.media_changed.emit()
 
     def item(self,layout):
         row=self.row;cash=bool(row.get('cash'))
@@ -168,29 +194,31 @@ class EntryDetails(QFrame):
             if row.get('gender'):values.insert(0,('Gender',row['gender'].capitalize()))
             speed=(row.get('stats') or {}).get('attackSpeed')
             if speed is not None:values.append(('Attack speed',{2:'Faster',3:'Faster',4:'Fast',5:'Fast',6:'Normal',7:'Slow',8:'Slow',9:'Slower'}.get(speed,str(speed))))
-            if values:heading(layout,'Base stats');facts(layout,values)
+            if values:heading(layout,'Base stats');item_facts(layout,values)
             required=[(caption.removesuffix(' required'),row['stats'][key]) for key,caption in ITEM_STATS.items() if key.startswith('req') and key in (row.get('stats') or {})]
             if row.get('req_classes'):required.append(('Class',', '.join(row['req_classes'])))
-            if required:heading(layout,'Requirements');facts(layout,required)
+            if required:
+                heading(layout,'Requirements')
+                layout.addWidget(text(' · '.join(f'{caption} {formatted(value)}' for caption,value in required),11,'#c0cbd9'))
             effects=row.get('spec') or {};values=[]
             for key,caption,unit in (('hp','HP restored',''),('mp','MP restored',''),('hpR','HP restored','%'),('mpR','MP restored','%'),
                 ('pad','Weapon attack',''),('mad','Magic attack',''),('pdd','Weapon defense',''),('acc','Accuracy',''),('eva','Avoidability',''),('speed','Speed',''),('jump','Jump','')):
                 if effects.get(key):values.append((key,caption,formatted(effects[key])+unit))
             if values:
                 if effects.get('time'):values.append(('buffTime','Duration',formatted(effects['time']/60000)+' min'))
-                heading(layout,'Effect');facts(layout,[(caption,value) for key,caption,value in values])
+                heading(layout,'Effect');item_facts(layout,[(caption,value) for key,caption,value in values])
             scroll=row.get('scroll') or {}
             if scroll:
                 values=[('success','Success rate',formatted(scroll['success_rate'])+'%')] if 'success_rate' in scroll else []
                 values.extend((k,ITEM_STATS[k],v) for k,v in (scroll.get('stats') or {}).items() if k in ITEM_STATS)
                 if scroll.get('slot'):values.append(('slot','Applies to',scroll['slot']))
-                heading(layout,'Scroll effect');facts(layout,[(caption,value) for key,caption,value in values])
+                heading(layout,'Scroll effect');item_facts(layout,[(caption,value) for key,caption,value in values])
             if row.get('price') is not None and not (row.get('stats') or {}).get('notSale'):layout.addWidget(text(f"NPC sell-back · {formatted(row['price'])} mesos",11,'#9facc0'))
         evidence=self.store.evidence('items',self.entry.id)
         if cash:
             self.sources=self.overview;source_body=layout;self.tabs.setTabText(0,'Sources');heading(source_body,'Sources')
         else:
-            source_scroll,self.sources,source_body=page();self.tabs.addTab(source_scroll,'Sources')
+            source_scroll,self.sources,source_body=page(scrolling=False);self.tabs.addTab(source_scroll,'Sources')
         labels=[]
         for record in evidence[:3]:
             if record.get('source')=='market':continue
@@ -354,6 +382,7 @@ class EntryDetails(QFrame):
         if url:self.panel.source_requested.emit(url)
 
     def refresh_drops(self):
+        if self.entry.kind=='items' and not self.source_selected():return
         listing=self.source_list if self.entry.kind=='items' else self.drop_list
         if listing is None:return
         rows=[] if self.row.get('cash') else self.store.drops_for(self.entry.kind,self.entry.id)
@@ -405,6 +434,9 @@ class EntryDetails(QFrame):
             data['selected']=True;data['context_name']=self.row.get('sub_category') or ('Cash item' if self.row.get('cash') else self.entry.category)
             self.summary_card.update_data(**data)
 
+    @property
+    def data(self):return self.summary_card.data if self.summary_card else {}
+
     def update_market(self):
         if self.summary_card is None:return
         item=self.item_identity();market=self.panel.market
@@ -420,6 +452,7 @@ class EntryDetails(QFrame):
         urls=[self.entry.icon,self.animation_url]
         if self.map_preview:urls.append(self.row.get('minimap_url',''))
         for listing in self.lists:
+            if self.entry.kind=='items' and not self.source_selected():continue
             if listing.isVisible():urls+=listing.nearby_urls()
         return urls
 
@@ -438,7 +471,7 @@ class EntryDetails(QFrame):
     def pause(self):self.set_active(False)
 
     def state(self):
-        return {'tab':self.tabs.currentIndex(),'scrolls':[self.tabs.widget(i).verticalScrollBar().value() for i in range(self.tabs.count())],
+        return {'tab':self.tabs.currentIndex(),'scrolls':[self.tabs.widget(i).verticalScrollBar().value() if hasattr(self.tabs.widget(i),'verticalScrollBar') else 0 for i in range(self.tabs.count())],
                 'lists':[listing.verticalScrollBar().value() for listing in self.lists], 'rank':self.rank_slider.value() if self.rank_slider else None,
                 'map_view':self.map_preview.view_state() if self.map_preview else None}
 
@@ -446,7 +479,9 @@ class EntryDetails(QFrame):
         self.tabs.setCurrentIndex(min(state.get('tab',0),self.tabs.count()-1))
         if self.map_preview:self.map_preview.restore_view(state.get('map_view'))
         if self.rank_slider and state.get('rank'):self.rank_slider.setValue(state['rank'])
-        for index,value in enumerate(state.get('scrolls',[])[:self.tabs.count()]):self.tabs.widget(index).verticalScrollBar().setValue(value)
+        for index,value in enumerate(state.get('scrolls',[])[:self.tabs.count()]):
+            page=self.tabs.widget(index)
+            if hasattr(page,'verticalScrollBar'):page.verticalScrollBar().setValue(value)
         def restore_lists():
             for listing,value in zip(self.lists,state.get('lists',[])):
                 if isValid(listing):listing.verticalScrollBar().setValue(value)

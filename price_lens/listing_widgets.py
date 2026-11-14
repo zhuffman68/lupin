@@ -1,13 +1,14 @@
 """Compact cached shop sightings for the shared selected-item card."""
 import time
 from urllib.parse import quote
+from shiboken6 import isValid
 
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from .domain import age_text
 from .market_listings import provider_id
-from .motion import AnimatedTabs, MotionLabel, RollingLabel
+from .motion import MotionLabel, RollingLabel
 from .ui_components import mesos
 
 
@@ -100,6 +101,7 @@ class WhereSeenPanel(QScrollArea):
         return self.allowed and self.selected() and self.isVisible() and not self.window().isMinimized()
 
     def sync(self):
+        if not isValid(self) or not isValid(self.timer):return
         observing = bool(self.service and self._selected())
         if observing != self.observing:
             self.observing = observing
@@ -178,24 +180,20 @@ ITEM_TAB_STYLE = ('QTabWidget{background:transparent;} QTabWidget::pane{border:0
 def add_fallback_panel(card, item, market, source_requested, *, active=lambda:True):
     """An exact catalog selection can have sightings before its database exists."""
     card.listing_item = item
-    card.tabs = AnimatedTabs()
-    card.tabs.animation.setDuration(220)
+    from .price_widgets import ItemDetailTabs
+    card.tabs = ItemDetailTabs()
     card.tabs.setStyleSheet(ITEM_TAB_STYLE)
     for title, note in (('Overview','Item details are not in the local database.'),
                         ('Sources','Obtain sources are not in the local database.')):
-        page = QScrollArea()
-        page.setWidgetResizable(True)
-        page.setFrameShape(QFrame.Shape.NoFrame)
-        page.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        content = QWidget()
-        body = QVBoxLayout(content)
+        page = QWidget()
+        body = QVBoxLayout(page)
         body.setContentsMargins(5,7,5,0)
         body.addWidget(label(note,muted=True))
         body.addStretch()
-        page.setWidget(content)
         card.tabs.addTab(page,title)
-    card.where_seen = WhereSeenPanel(item,market.listings,source_requested=source_requested,
+    card.where_seen = WhereSeenPanel(item,getattr(market,'listings',None),source_requested=source_requested,
                                     selected=lambda:card.tabs.currentWidget() is card.where_seen and active())
     card.tabs.addTab(card.where_seen,'Where seen')
     card.tabs.currentChanged.connect(lambda *_:card.where_seen.sync())
     card.set_panel(card.tabs)
+    card.tabs.fit_page()

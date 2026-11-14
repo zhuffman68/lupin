@@ -7,6 +7,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
+- Searched items and inventory/equipment descriptions share detailed item cards.
+  Click a shop row to open the same view with its asking price. Full-width tabs,
+  paired stats and inline requirements reduce scrolling in Overview.
+
 - Item cards in Prices and Database have a **Where seen** tab for recent shops,
   with seller, channel/FM room or map, asking price, quantity and sighting age.
   Listings load on demand and stay cached for 15 minutes, including empty

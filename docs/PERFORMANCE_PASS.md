@@ -238,6 +238,25 @@ isolated source check and does not establish live game/OCR performance.
 
 ## Acceptance
 
+### Shared detailed card follow-up
+
+The user approved consolidation of searched and automatically read item cards,
+with a compact price header above full-width detail tabs. The common factory
+retains exact identity checks, optional current/last-seen asking context, lazy
+source/listing demand and the existing GUI-only grace/history lifecycle. Normal
+Overview cards use their natural compact height; unusually long equipment uses
+the outer page scrollbar. Stable summary dimensions prevent quote/count updates
+from moving the tabs. Shop rows retain compact browsing and open the shared
+details on click. The normal star action does not select a card.
+
+The complete run passes 1,437 tests with three skips. Six final guards and
+controlled 460/520-pixel renders cover later offer/caption refinements, common
+card heights, quote stability and long-overview overflow. Native OCR/capture and
+the vendor pin are unchanged. [ITEM_CARDS.md](ITEM_CARDS.md) and
+[VERIFICATION.md](../VERIFICATION.md) contain the current contract and evidence.
+
+## Acceptance checks
+
 Run focused meaningful regressions as each subsystem changes, then the full
 Python, release-tool and Rust suites. GUI/native-helper checks use isolated
 Xvfb, D-Bus and HOME/XDG directories with software rendering. Limit native

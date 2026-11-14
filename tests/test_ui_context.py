@@ -163,6 +163,64 @@ class FakeThumbnails(QObject):
 
 
 class ContextUiTests(unittest.TestCase):
+    def test_inventory_and_search_share_the_same_full_item_card(self):
+        from price_lens.reference_details import EntryDetails
+        w=self.window;self.app.setProperty('reduceMotion',True);w.show()
+        w.on_reading(self.reading(shop_hover=False));self.app.processEvents()
+        automatic=next(card for key,card in w.card_views.items() if key[0] is True)
+        self.assertIsInstance(automatic,EntryDetails)
+        self.assertEqual([automatic.tabs.tabText(i) for i in range(automatic.tabs.count())],['Overview','Sources','Where seen'])
+        w.search_panel.query.setText('Example Hat');w.search_panel.choose_first();self.app.processEvents()
+        searched=w.search_panel.price_view
+        self.assertIsInstance(searched,EntryDetails);self.assertEqual(automatic.row,searched.row)
+        self.assertEqual(automatic.summary_card.fields.keys(),searched.summary_card.fields.keys())
+
+    def test_shop_card_click_opens_details_and_preserves_the_asking_price(self):
+        from price_lens.price_widgets import PriceCard
+        w=self.window;self.app.setProperty('reduceMotion',True);w.show()
+        w.on_reading(self.reading(shop_hover=True));self.app.processEvents()
+        card=next(card for key,card in w.card_views.items() if key[0] is False)
+        self.assertIsInstance(card,PriceCard);self.assertFalse(card.selected_mode)
+        card.watch_button.click();self.assertIsNone(w.search_panel.selected)
+        QTest.mouseClick(card.fields['name'],Qt.MouseButton.LeftButton);self.app.processEvents()
+        self.assertEqual(w.search_panel.selected.game_id,1)
+        detail=w.search_panel.price_view;self.assertIn('100',detail.fields['store'].text())
+        self.assertFalse(detail.summary_card.store.isHidden())
+        w.rows=[];w.render();self.app.processEvents()
+        self.assertEqual(detail.summary_card.store_caption.text(),'Last seen price')
+        self.assertIn('100',detail.fields['store'].text())
+
+    def test_automatic_overview_does_not_request_external_item_sources(self):
+        w=self.window;self.app.setProperty('reduceMotion',True);w.show()
+        with patch.object(w.reference.extra,'select') as extra,patch.object(w.reference.sources,'select') as sources:
+            w.on_reading(self.reading(shop_hover=False));self.app.processEvents()
+            self.assertTrue(all(call.args==(None,) for call in extra.call_args_list))
+            self.assertTrue(all(call.args==(None,) for call in sources.call_args_list))
+            card=next(card for key,card in w.card_views.items() if key[0] is True)
+            card.tabs.setCurrentIndex(1);self.app.processEvents()
+            self.assertTrue(any(call.args and call.args[0] is not None and call.args[0].id==1 for call in sources.call_args_list))
+
+    def test_a_shop_card_retained_by_grace_opens_as_a_last_seen_offer(self):
+        w=self.window;self.app.setProperty('reduceMotion',True);w.show()
+        w.on_reading(self.reading(shop_hover=True));self.app.processEvents()
+        card=next(card for key,card in w.card_views.items() if key[0] is False)
+        w.rows=[];w.render();self.app.processEvents()
+        QTest.mouseClick(card.fields['name'],Qt.MouseButton.LeftButton)
+        self.assertEqual(w.search_panel.selected_row['_offer_context'],'last_seen')
+        self.assertEqual(w.search_panel.price_view.summary_card.store_caption.text(),'Last seen price')
+
+    def test_automatic_item_subtabs_keep_the_selected_page_through_price_updates(self):
+        w=self.window;w.show();self.app.processEvents();self.app.setProperty('reduceMotion',False)
+        w.on_reading(self.reading(shop_hover=False));self.app.processEvents()
+        card=next(card for key,card in w.card_views.items() if key[0] is True)
+        QTest.qWait(230)  # The initial card reveal must finish before a user can click it.
+        card.tabs.setCurrentIndex(1);QTest.qWait(300)
+        now=time.time()
+        for price in (1200,1500,1000):w.service.deliver_quote(1,Quote(1,price,now,now,20,'Test','','24h'));self.app.processEvents()
+        self.assertEqual(card.tabs.currentIndex(),1);self.assertFalse(card.tabs.sliding)
+        self.assertTrue(card.tabs.currentWidget().isVisible());self.assertTrue(card.tabs.stack.layout().isEnabled())
+        self.assertEqual(card.tabs.currentWidget().geometry(),card.tabs.stack.contentsRect())
+
     def test_a_full_page_of_cached_prices_updates_the_control_panel_once(self):
         w=self.window;w.mode='live';now=time.time()
         w.on_catalog(Catalog({'items':[dict(id=i,name=f'Example Item {i}') for i in range(1,7)]}))
@@ -400,7 +458,7 @@ class ContextUiTests(unittest.TestCase):
             w.card_area.animation.setCurrentTime(ms);w.recent_items.geometry_animation.setCurrentTime(ms);self.app.processEvents()
             self.assertLessEqual(w.card_area.height()+w.recent_items.height(),max(start,w.recent_items.full_height))
 
-    def test_new_hover_reuses_the_active_card_before_history_grace_expires(self):
+    def test_new_hover_replaces_details_without_retiring_the_active_slot_to_history(self):
         w=self.window;w.on_catalog(Catalog({'items':[dict(id=1,name='Example Hat'),dict(id=2,name='Example Cape')]}))
         w.show();self.app.processEvents()
         with patch('price_lens.recent_items.time.monotonic',return_value=99):
@@ -409,7 +467,7 @@ class ContextUiTests(unittest.TestCase):
         with patch('price_lens.recent_items.time.monotonic',return_value=100):w.render()
         w.tooltip_result={'name':'Example Cape','area':dict(x=100,y=100,width=180,height=20)}
         with patch('price_lens.recent_items.time.monotonic',return_value=100.8):w.render()
-        self.assertEqual(len(w.card_views),1);self.assertIs(next(iter(w.card_views.values())),card)
+        self.assertEqual(len(w.card_views),1);card=next(iter(w.card_views.values()))
         self.assertEqual(card.property('gameItemId'),2);self.assertIn(1,w.recent_items.rows_by_id)
         self.assertIsNone(w.price_content.outgoing)
         outgoing=w.card_area.outgoing;w.card_area.animation.setCurrentTime(70)

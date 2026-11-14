@@ -1,9 +1,9 @@
 """Persistent price cards: update fields in place instead of rebuilding on every quote."""
-from PySide6.QtCore import Qt,QSize
-from PySide6.QtWidgets import QFrame,QHBoxLayout,QPushButton,QVBoxLayout,QWidget
+from PySide6.QtCore import Qt,QTimer,Signal
+from PySide6.QtWidgets import QFrame,QHBoxLayout,QPushButton,QVBoxLayout,QWidget,QSizePolicy
 
 from .domain import WORLD,age_text,compare
-from .motion import RollingLabel,visibility
+from .motion import AnimatedTabs,RollingLabel,visibility
 from .ui_components import COLORS,mesos,text_label
 from .thumbnails import ItemImage
 from .watchlist_ui import WatchButton
@@ -14,27 +14,30 @@ LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant
                  'unit-mismatch':'Price units unverified','identity-mismatch':'Market reference unverified'}
 
 
-class SelectedCardBody(QWidget):
-    """A stable price column; the detail panel begins beneath the item title."""
-    def __init__(self,card,panel):
-        super().__init__(card)
-        self.card,self.panel=card,panel
-        for child in (card.header_widget,card.price_column,panel):child.setParent(self);child.show()
-        self.setMinimumHeight(264)
+class ItemDetailTabs(AnimatedTabs):
+    """Natural-height Overview; bounded scrolling source and shop lists."""
+    height_changed=Signal()
+    def __init__(self,parent=None):
+        super().__init__(parent);self.animation.setDuration(220)
+        self.measure=QTimer(self);self.measure.setSingleShot(True);self.measure.setInterval(0)
+        self.measure.timeout.connect(self.fit_page)
+        self.currentChanged.connect(lambda *_:self.measure.start())
 
-    def sizeHint(self):return QSize(420,264)
+    def fit_page(self):
+        page=self.currentWidget()
+        if page is None:return
+        content=180
+        if self.tabText(self.currentIndex())=='Overview' and page.layout():
+            layout=page.layout();width=max(140,self.width()-2)
+            content=max(42,layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else layout.sizeHint().height())
+        height=content+self.tabBar().sizeHint().height()+4
+        if self.height()!=height:self.setFixedHeight(height);self.height_changed.emit()
 
     def resizeEvent(self,event):
-        super().resizeEvent(event)
-        card=self.card;width=self.width()
-        name_width=max(120,width-92)
-        title_height=max(19,card.fields['name'].heightForWidth(name_width))
-        header=max(42,title_height+18)
-        card.header_widget.setGeometry(0,0,width,header)
-        available=max(200,self.height()-header-10)
-        card.price_column.setGeometry(0,header+10,146,available)
-        panel_top=title_height+7
-        self.panel.setGeometry(158,panel_top,max(140,width-158),self.height()-panel_top)
+        super().resizeEvent(event);self.measure.start()
+
+    def showEvent(self,event):
+        super().showEvent(event);self.measure.start()
 
 
 def display_age(quote,now,ttl):
@@ -46,8 +49,11 @@ def display_age(quote,now,ttl):
 
 
 class PriceCard(QFrame):
+    activated=Signal(object,object)
+
     def __init__(self,watchlist=None,watch_button=None,**data):
         super().__init__()
+        self.selectable=False
         self.setObjectName("card")
         layout=QVBoxLayout(self)
         layout.setContentsMargins(12,10,12,10)
@@ -76,39 +82,79 @@ class PriceCard(QFrame):
         self.price_column=QWidget();self.price_column.setStyleSheet('background:transparent')
         values=QVBoxLayout(self.price_column);values.setContentsMargins(0,0,0,0);values.setSpacing(6)
         self.columns.addWidget(self.price_column,4)
-        if self.selected_mode:self.price_column.setMaximumWidth(174)
         if not self.selected_mode:field("status",values)
         numbers=QHBoxLayout()
         self.store=QWidget()
         self.store.setStyleSheet("background: transparent")
         store=QVBoxLayout(self.store);store.setContentsMargins(0,0,0,0)
-        store.addWidget(text_label("Store price","font-size: 10px; color: #98a3b1"))
+        self.store_caption=text_label("Store price","font-size: 10px; color: #98a3b1")
+        store.addWidget(self.store_caption)
         field("store",store,"font-size: 17px; font-weight: 650")
         numbers.addWidget(self.store)
         market=QVBoxLayout()
         market.addWidget(text_label("Market reference","font-size: 10px; color: #98a3b1"))
         field("market",market,"font-size: 17px; font-weight: 650")
         numbers.addLayout(market)
-        values.addLayout(numbers)
-        field('recent',values,'font-size:10px;color:#b3c0d2')
-        field('sales',values,'font-size:10px;color:#a5b5ca')
         if self.selected_mode:
-            field('status',values);self.fields['status'].setFixedHeight(44)
-            policy=self.fields['status'].sizePolicy();policy.setRetainSizeWhenHidden(True);self.fields['status'].setSizePolicy(policy)
-            values.addStretch()
+            numbers.addStretch()
+            status=field('status',numbers,'font-size:11px;color:#98a3b1')
+            status.setMaximumWidth(126);status.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+            status.setFixedHeight(40)
+            policy=status.sizePolicy();policy.setRetainSizeWhenHidden(True);status.setSizePolicy(policy)
+            self.fields['store'].setMinimumWidth(116);self.fields['market'].setMinimumWidth(116)
+        values.addLayout(numbers)
+        if self.selected_mode:
+            metadata=QHBoxLayout();metadata.setSpacing(8)
+            field('recent',metadata,'font-size:10px;color:#b3c0d2',False)
+            field('sales',metadata,'font-size:10px;color:#a5b5ca',False)
+            for name in ('recent','sales'):
+                self.fields[name].setMinimumWidth(0);self.fields[name].setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+            self.fields['sales'].setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+            metadata.setStretch(0,3);metadata.setStretch(1,2)
+            values.addLayout(metadata)
+        else:
+            field('recent',values,'font-size:10px;color:#b3c0d2')
+            field('sales',values,'font-size:10px;color:#a5b5ca')
         for name in ("units","age","progress","explanation"):field(name,values,"font-size: 10px; color: #98a3b1")
         self.link=QPushButton('View price source ↗');self.link.setObjectName('quiet')
         self.link.clicked.connect(self.visit_source);values.addWidget(self.link,0,Qt.AlignmentFlag.AlignLeft)
         self.update_data(**data)
 
     def set_panel(self,panel):
-        self.layout().removeWidget(self.header_widget);self.layout().removeWidget(self.columns_widget)
+        self.layout().removeWidget(self.columns_widget)
         self.columns.removeWidget(self.price_column)
-        self.fields['context'].setWordWrap(False)
-        self.price_column.setMinimumWidth(146);self.price_column.setMaximumWidth(146)
-        panel.setMinimumWidth(0);panel.setMinimumHeight(200)
-        self.selected_body=SelectedCardBody(self,panel);self.layout().addWidget(self.selected_body)
+        self.price_column.setParent(self);self.price_column.show()
+        self.layout().insertWidget(1,self.price_column)
+        panel.setMinimumWidth(0);self.layout().addWidget(panel)
         retire_widget(self,self.columns_widget)
+        self.sync_summary_size()
+
+    def sync_summary_size(self):
+        if not self.selected_mode:return
+        width=max(120,self.width()-24-40-32-16)
+        title=max(self.fields['name'].fontMetrics().height(),self.fields['name'].heightForWidth(width))
+        context=self.fields['context'].fontMetrics().height()+4 if self.fields['context'].text() else 0
+        self.header_widget.setFixedHeight(max(40,title+context))
+        # Numbers, captions and metadata keep stable rows as price/count digits
+        # change. Optional set units depend on the item, never the quote age.
+        self.price_column.setFixedHeight(66+(20 if self.fields['units'].text() else 0))
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'selected_mode'):self.sync_summary_size()
+
+    def set_selectable(self,enabled):
+        if self.selectable==bool(enabled):return
+        self.selectable=bool(enabled)
+        self.setProperty('clickableItem',self.selectable)
+        self.style().unpolish(self);self.style().polish(self)
+        self.setCursor(Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor)
+        self.setToolTip('Open item details' if enabled else '')
+
+    def mouseReleaseEvent(self,event):
+        if self.selectable and event.button()==Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.activated.emit(self.content_item,self.content_row);event.accept();return
+        super().mouseReleaseEvent(event)
 
     def put(self,name,text,style=None):
         label=self.fields[name]
@@ -125,10 +171,11 @@ class PriceCard(QFrame):
                     lookup_state="",lookup_reason="",open_source=None,
                     hovered=False,example=False,context_name=None,selected=False):
         self.data={"open_source":open_source,"quote":quote,"lookup_reason":lookup_reason}
+        self.content_item,self.content_row=item,row
         price=row.get('price') or {}
         signature=(item,row.get('name') if item is None else None,price.get('quantity'),price.get('mesos'),
                    quote,ttl,paused,old_capture,lookup_error,lookup_state,lookup_reason,row.get('_identity_reason'),
-                   hovered,example,context_name,selected,display_age(quote,now,ttl))
+                   hovered,example,context_name,selected,row.get('_offer_context'),display_age(quote,now,ttl))
         if signature==getattr(self,'display_signature',None):return
         self.display_signature=signature
         identity=item.game_id if item else None
@@ -165,7 +212,8 @@ class PriceCard(QFrame):
                      if quote.cache_valid(now,ttl) else "Older reference · refresh needed")
             tone="muted"
         elif quote.sample_count<5 or quote.uncertain:message,tone="Few price reports · reference only","muted"
-        elif hovered:message,tone=("" if selected else "Market reference"),"blue"
+        elif row.get('_offer_context')=='last_seen' and price:message,tone='Last seen listing','muted'
+        elif hovered and not price:message,tone=("" if selected else "Market reference"),"blue"
         elif verdict.delta is not None:
             direction="below" if verdict.delta<0 else "above"
             message=f"{abs(verdict.delta):.0f}% {direction} reference" if verdict.delta else "Near reference"
@@ -174,9 +222,10 @@ class PriceCard(QFrame):
         else:message,tone="Store price unclear","muted"
         self.put("name",item.name if item else row.get("name") or "Item name unclear")
         self.fields['name'].setProperty('currencyIcon',False)
-        self.put("context","EXAMPLE PRICES" if example else (context_name or "Item description") if hovered else "")
+        self.put("context","EXAMPLE PRICES" if example else (context_name or "Item description") if hovered or selected else "")
         self.put("status",message,f"color: {COLORS[tone]}; font-size: 11px")
-        self.store.setVisible(not hovered)
+        self.store_caption.setText('Last seen price' if row.get('_offer_context')=='last_seen' else 'Store price')
+        self.store.setVisible(not hovered or selected and bool(price))
         self.put("store",mesos(verdict.unit_price)+(" mesos" if verdict.unit_price is not None else ""))
         value=quote.price if has_price else None
         self.put("market",mesos(value)+(" mesos" if value is not None else ""),
@@ -212,3 +261,4 @@ class PriceCard(QFrame):
         self.link.setVisible(bool(not selected and hovered and compatible and quote.url and open_source))
         if changing:
             for label in self.fields.values():label.setProperty('quietUpdates',False)
+        self.sync_summary_size()

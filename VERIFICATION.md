@@ -1,5 +1,41 @@
 # Verification — 2026-11-13
 
+## Shared detailed item cards — source preview
+
+[ITEM_CARDS.md](docs/ITEM_CARDS.md) records the common factory, offer context,
+layout and demand lifecycle. Search/selections and automatically recognized
+inventory/equipment/linked-item descriptions use the same detailed component.
+Compact shop rows open it on click; the star remains an independent action.
+
+- The complete regression run passes **1,437 tests, three skipped, 249.991 s**.
+  Six final context/layout guards also pass after the conservative retained-offer
+  admission and fallback-caption refinements. They cover search/automatic card
+  parity, shop clicks, last-seen prices during GUI grace, retained tab motion,
+  long-equipment overflow and stable geometry on quote updates.
+- Isolated 460/520-pixel renders using copied local reference data show common
+  equipment cards at **310 pixels**, the scroll card at **264 pixels**, and a
+  consumable at **280 pixels**. These are card heights in the controlled render,
+  not fixed limits for every entry. Overview is a plain, full-width widget;
+  Sources/listings keep bounded list viewports. Long equipment scrolls the outer
+  page without increasing its window height. Both Prices and Database reserve a
+  constant scrollbar gutter.
+- Explicit source-tab demand is tested: an automatically read Overview does
+  not start external item-source requests. The existing listing-cache tests
+  cover selected-tab demand, expiry, failures and hidden/minimized views. GUI
+  layout changes do not alter native OCR/source/offer validation or the price
+  snapshot contract. The Rust reader and vendor pin are unchanged in this pass.
+- Initial checks found old assumptions about compact-card object reuse and
+  eager source-list population, plus a genuine two-pixel quote-update shift.
+  Tests now check the common detailed component and on-demand population;
+  stable header/summary rows remove the shift. A slide test waits for the first
+  card reveal to finish before simulating a user tab change.
+
+Evidence is local/ignored under `evidence/item-cards-2026-11-14/`, including
+`full-python-final.log`, `final-context-guards.log`, `layout-final.log`,
+`overview-*.png`, `offer-*.png` and the preview bootstrap. Fixtures and Linux UI
+renders do not establish live Windows behavior or a fresh game-reading result.
+No package is built, installed or published for this source preview.
+
 ## Selected-item Where seen tab — source preview
 
 Prices and Database item cards now share a compact shop-sighting subtab beside

@@ -88,11 +88,32 @@ class DatabaseUiTests(unittest.TestCase):
         self.assertEqual(p.selected.id,13);self.assertIn('Locations',[p.detail.tabs.tabText(i) for i in range(p.detail.tabs.count())])
         labels=' '.join(row['name']+' '+row.get('subtitle','') for listing in p.detail.lists for row in listing.records)
         self.assertIn('Mushroom Garden',labels);self.assertIn('40.00% observed',labels);self.assertIn('100 kills',labels)
-        p.open(('items',4001));self.assertEqual(p.selected.kind,'items')
+        p.open(('items',4001));self.assertEqual(p.selected.kind,'items');p.detail.tabs.setCurrentIndex(1)
         self.assertIn('Green Mushroom',' '.join(row['name'] for row in p.detail.drop_list.records))
         p.go_back();self.assertEqual(p.selected.key,('monsters',13))
         p.go_back();self.assertIsNone(p.selected);self.assertEqual(p.kind,'monsters');self.assertEqual(p.query.text(),'green')
         self.assertEqual(p.results.count(),1)
+
+    def test_item_overview_uses_full_width_without_an_inner_scrollbar(self):
+        from PySide6.QtWidgets import QScrollArea
+        p=self.panel;self.app.setProperty('reduceMotion',True);p.resize(460,680)
+        p.open(('items',1001));self.app.processEvents();view=p.detail
+        self.assertNotIsInstance(view.tabs.currentWidget(),QScrollArea)
+        self.assertGreater(view.tabs.width(),350)
+        self.assertGreater(view.tabs.y(),view.summary_card.price_column.y())
+        self.assertLess(view.summary_card.height(),350)
+        before=view.summary_card.height();p.update_market();self.app.processEvents()
+        self.assertEqual(view.summary_card.height(),before)
+
+    def test_long_item_overview_scrolls_the_page_without_growing_the_window(self):
+        from price_lens.reference_details import ITEM_STATS
+        docs=documents();docs['items.json'][0]['stats']={name:100 for name in ITEM_STATS}
+        self.service.store.replace(*generation(docs));allow_fixture(self.service.store)
+        p=self.panel;self.app.setProperty('reduceMotion',True);p.resize(460,500);p.open(('items',1001))
+        for _ in range(10):self.app.processEvents()
+        self.assertEqual(p.height(),500)
+        self.assertGreater(p._entry_page.verticalScrollBar().maximum(),0)
+        self.assertFalse(hasattr(p.detail.overview,'verticalScrollBar'))
 
     def test_two_column_monster_drops_return_to_the_same_monster_tab_and_scroll(self):
         docs=documents();docs['items.json'] += [dict(id=6000+n,name=f'Drop {n}',category='Etc') for n in range(20)]

@@ -4,11 +4,11 @@ import time
 from PySide6.QtCore import Qt, QTimer, Signal,QSize
 from PySide6.QtGui import QIcon,QPixmap,QPainter
 from PySide6.QtWidgets import (QFrame,QHBoxLayout,QListWidget,
-    QListWidgetItem,QPushButton,QScrollArea,QVBoxLayout,QWidget)
+    QListWidgetItem,QPushButton,QVBoxLayout,QWidget)
 
 from .domain import key, item_words, unclipped_name
-from .ui_components import price_card, text_label
-from .motion import CardArea, reveal
+from .ui_components import text_label
+from .motion import CardArea, StableScrollArea, reveal
 from .tls import catalog_error_text
 from .watchlist_ui import WatchedItems,WatchButton
 from .search_field import SearchField
@@ -17,7 +17,7 @@ from .market_lookup import market_lookup_reason
 from .widget_lifetime import retire_widget
 from .market_status_ui import MarketStatus
 from .catalog_search import CatalogSearch
-from .listing_widgets import add_fallback_panel
+from .item_cards import item_caption,item_record,make_item_card,matches_item_card
 
 
 class PriceSearch(QWidget):
@@ -43,6 +43,8 @@ class PriceSearch(QWidget):
         self.thumbnail_timer.timeout.connect(self.request_thumbnails)
         self.catalog_error = ""
         self.selected = None
+        self.selected_row=None
+        self.context_for=lambda item:None
         self.selection_source = None
         self.watch_focus = False
         self.pending_identity = None
@@ -99,7 +101,7 @@ class PriceSearch(QWidget):
         self.watched_items.item_selected.connect(self.select_watched)
         self.watched_items.visible_changed.connect(self.thumbnail_timer.start)
         layout.addWidget(self.watched_items)
-        self.detail_scroll = QScrollArea()
+        self.detail_scroll = StableScrollArea()
         self.detail_scroll.setWidgetResizable(True)
         self.detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.detail = QWidget()
@@ -239,6 +241,7 @@ class PriceSearch(QWidget):
         if item is None:return
         self.query.blockSignals(True);self.query.clear();self.query.blockSignals(False);self.timer.stop()
         self.selection_source='watch'
+        self.selected_row=None
         self.watch_focus=True
         self.selected,self.quote=item,None;self.pending_identity=None;self.pending_candidates=()
         self.error=self.lookup_state=''
@@ -249,7 +252,17 @@ class PriceSearch(QWidget):
         self.watched_items.set_expanded(False);self.watch_focus=False
         self.query.blockSignals(True);self.query.setText(item.name);self.query.blockSignals(False);self.timer.stop()
         self.selected,self.quote=item,None;self.pending_identity=None;self.pending_candidates=();self.selection_source='recent'
+        self.selected_row=None
         self.error=self.lookup_state='';self.set_results_state(False,hint='',matches=False)
+        self.item_selected.emit(item);self.render();self.active_changed.emit()
+
+    def select_observed(self,item,row):
+        if item is None:return
+        self.watched_items.set_expanded(False);self.watch_focus=False
+        self.query.blockSignals(True);self.query.setText(item.name);self.query.blockSignals(False);self.timer.stop()
+        self.selected,self.quote=item,None;self.selected_row=dict(row);self.selection_source='shop'
+        self.pending_identity=None;self.pending_candidates=();self.error=self.lookup_state=''
+        self.set_results_state(False,hint='',matches=False)
         self.item_selected.emit(item);self.render();self.active_changed.emit()
 
     def on_watch_expanded(self,shown):
@@ -296,6 +309,7 @@ class PriceSearch(QWidget):
 
     def clear_selection(self):
         self.selection_source=None
+        self.selected_row=None
         if self.selected is not None or self.pending_identity is not None:
             self.selected = self.quote = None
             self.pending_identity = None
@@ -376,6 +390,7 @@ class PriceSearch(QWidget):
         if item == self.selected:
             return
         self.selected, self.quote = item, None
+        self.selected_row=None
         self.pending_identity = None
         self.pending_candidates = ()
         self.error = self.lookup_state = ""
@@ -409,39 +424,29 @@ class PriceSearch(QWidget):
             self.layout().setStretch(self.bottom_spacer,0 if self.selected or self.pending_identity else 1)
         from .price_widgets import display_age
         lookup_reason=market_lookup_reason(self.market,self.selected)
-        state = (self.selected,self.pending_identity,self.quote,self.error,self.lookup_state,lookup_reason,self.ttl,display_age(self.quote,time.time(),self.ttl))
+        selected_row=self.selected_row or (self.context_for(self.selected) if self.selected else None) or {'name':self.selected.name if self.selected else ''}
+        price=selected_row.get('price') or {}
+        context=(price.get('quantity'),price.get('mesos'),selected_row.get('_offer_context'))
+        state = (self.selected,self.pending_identity,self.quote,self.error,self.lookup_state,lookup_reason,self.ttl,display_age(self.quote,time.time(),self.ttl),context)
         if state == self.card_key:return
         self.card_key = state
         card = getattr(self,"price_view",None)
         if self.selected:
             self.pending_view.hide()
-            data = dict(item=self.selected,row={"name":self.selected.name},quote=self.quote,
+            data = dict(item=self.selected,row=selected_row,quote=self.quote,
                         now=time.time(),ttl=self.ttl,hovered=True,lookup_error=bool(self.error),
                         lookup_state=self.lookup_state,lookup_reason=lookup_reason,
-                        open_source=self.source_requested.emit,context_name="Classic World · market price")
+                        open_source=self.source_requested.emit,context_name=item_caption(self.selected))
             changed = getattr(self,"card_item",None) != self.selected.game_id
-            record=self.store.entry('items',self.selected.game_id) if self.store else None
-            if record:
-                if not isinstance(card,EntryDetails) or card.entry.id!=self.selected.game_id or card.row!=record[1]:
-                    old=card;previous=old.state() if isinstance(old,EntryDetails) and old.entry.id==self.selected.game_id else None
-                    if old:self.detail_layout.removeWidget(old);retire_widget(self,old)
-                    else:retire_widget(self,self.watch_button)
-                    card=self.price_view=EntryDetails(self,*record);self.watch_button=card.watch_button
-                    card.media_changed.connect(self.reference_changed.emit);self.detail_layout.insertWidget(0,card)
-                    if previous:card.restore(previous)
-                card.update_data(**data)
-            else:
-                sightings=bool(getattr(self.market,'listings',None))
-                if isinstance(card,EntryDetails) or sightings and card and getattr(card,'listing_item',None)!=self.selected:
-                    self.detail_layout.removeWidget(card);retire_widget(self,card);card=None
-                    self.watch_button=WatchButton()
-                    if self.watchlist:self.watch_button.bind(self.watchlist)
-                if sightings:data['selected']=True
-                if card:card.update_data(**data)
-                else:
-                    card = self.price_view = price_card(watch_button=self.watch_button,**data)
-                    if sightings:add_fallback_panel(card,self.selected,self.market,self.source_requested.emit,active=lambda:self.listing_active)
-                    self.detail_layout.insertWidget(0,card)
+            record=item_record(self,self.selected)
+            if not matches_item_card(card,self.selected,record):
+                previous=card.state() if isinstance(card,EntryDetails) and card.entry.id==self.selected.game_id else None
+                if card:self.detail_layout.removeWidget(card);retire_widget(self,card)
+                else:retire_widget(self,self.watch_button)
+                card=self.price_view=make_item_card(self,self.selected,record,**data);self.watch_button=card.watch_button
+                self.detail_layout.insertWidget(0,card)
+                if previous:card.restore(previous)
+            else:card.update_data(**data,selected=True)
             self.card_item = self.selected.game_id
             card.show()
             if self.thumbnails:

@@ -1,9 +1,10 @@
 """Released Classic World browsing, with stable entry ownership and local search."""
 from datetime import datetime
+from shiboken6 import isValid
 from PySide6.QtCore import Qt,QTimer,Signal
 from PySide6.QtGui import QActionGroup,QKeySequence,QShortcut
 from PySide6.QtWidgets import QHBoxLayout,QMenu,QPushButton,QStackedWidget,QTabBar,QToolButton,QVBoxLayout,QWidget
-from .motion import MotionLabel
+from .motion import MotionLabel,StableScrollArea
 from .reference_media import ReferenceMedia
 from .reference_widgets import ReferenceList,BrowserContent,thumbnail
 from .reference_details import EntryDetails
@@ -236,7 +237,8 @@ class DatabasePanel(QWidget):
     def state(self):
         return dict(selected=self.selected.key if self.selected else None,kind=self.kind,query=self.query.text(),scope=self.scope,
             limit=self.limit,sort=self.sort_mode,scroll=self.results.verticalScrollBar().value(),tile_scroll=self.tiles.verticalScrollBar().value(),
-            details=self._entry.state() if self.selected and self._entry else {})
+            details=self._entry.state() if self.selected and self._entry else {},
+            detail_scroll=self._entry_page.verticalScrollBar().value() if self.selected and isinstance(getattr(self,'_entry_page',None),StableScrollArea) else 0)
 
     def open(self,key,remember=True,direction=1):
         if self.selected and self.selected.key==key:return
@@ -249,10 +251,14 @@ class DatabasePanel(QWidget):
             self.kind=key[0];self.scope=();self.query.blockSignals(True);self.query.clear();self.query.blockSignals(False)
         self.sync_kind();self.selected,row=record
         self.dispose_entry();self._entry=EntryDetails(self,self.selected,row);self._entry.media_changed.connect(self.observe_media)
-        self.pages.addWidget(self._entry);self.pages.setCurrentWidget(self._entry)
+        self._entry_page=self._entry
+        if self.selected.kind=='items':
+            scroll=StableScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(scroll.Shape.NoFrame)
+            scroll.setWidget(self._entry);self._entry_page=scroll
+        self.pages.addWidget(self._entry_page);self.pages.setCurrentWidget(self._entry_page)
         self._entry.set_active(self.active);self.summary.setText('');self.sort_row.hide();self.update_navigation();self.content.complete(direction)
-        self.service.extra.select(self.selected if self.active else None);QTimer.singleShot(0,self.observe_media)
-        self.service.sources.select(self.selected if self.active else None)
+        self.service.extra.select(self._entry.source_entry() if self.active else None);QTimer.singleShot(0,self.observe_media)
+        self.service.sources.select(self._entry.source_entry() if self.active else None)
 
     def open_external(self,key):
         self.external_return=(self.state(),list(self.history));self.history=[]
@@ -261,7 +267,8 @@ class DatabasePanel(QWidget):
 
     def dispose_entry(self):
         if self._entry:
-            old=self._entry;self._entry=None;old.pause();self.pages.removeWidget(old);retire_widget(self,old)
+            old=self._entry;page=getattr(self,'_entry_page',old);self._entry=self._entry_page=None
+            old.pause();self.pages.removeWidget(page);retire_widget(self,page)
 
     def go_back(self):
         if not self.history and self.external_return:
@@ -280,6 +287,8 @@ class DatabasePanel(QWidget):
         if state['selected']:
             self.content.finish();self.open(tuple(state['selected']),False,direction)
             if self._entry:self._entry.restore(state.get('details',{}))
+            page=getattr(self,'_entry_page',None);position=state.get('detail_scroll',0)
+            if isinstance(page,StableScrollArea):QTimer.singleShot(0,lambda:page.verticalScrollBar().setValue(position) if isValid(page) else None)
             if not self.selected:self.search(False)
         else:
             self.search(False);self.pages.layout().activate()
@@ -303,6 +312,9 @@ class DatabasePanel(QWidget):
         if self.closed:return
         urls=[]
         visible=self.active and self.isVisible() and not self.window().isMinimized()
+        if self.active:
+            entry=self._entry.source_entry() if self._entry and self.selected and visible else None
+            self.service.extra.select(entry);self.service.sources.select(entry)
         if self._entry:
             self._entry.set_active(bool(visible and self.selected))
         if visible:
@@ -326,7 +338,7 @@ class DatabasePanel(QWidget):
         if self._entry:self._entry.pause()
 
     def set_active(self,active):
-        self.active=active;self.service.extra.select(self.selected if active else None)
+        self.active=active;self.service.extra.select(self._entry.source_entry() if active and self._entry and self.selected else None)
         if active:self.update_market()
         if not active:self.pause_sprite()
         QTimer.singleShot(0,self.observe_media);self.update_status()
