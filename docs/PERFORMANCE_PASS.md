@@ -33,6 +33,57 @@ Each implementation entry below must describe its validation and limitations.
 
 ### Live-reading follow-up — 2026-11-14
 
+#### Repeated card construction and crowded hover checks
+
+The title/source-preparation fixes below were insufficient by themselves. A
+subsequent unprofiled live sample still caught about 63–105 ms of frame
+validation CPU and 24–63 ms of card rendering CPU. Those are intermittent
+observations, not an average frame time.
+
+The crowded-scene replay reproduces many cyan scenery components being checked
+one at a time beside possible description frames. These marker checks now use
+the same signed channel/rim predicate in a bounded batch: at most 256 candidates,
+25 columns and seven samples (44,800 queried positions). The RGBA search borrows
+its source view rather than copying and widening the complete search rectangle.
+Shifted samples are shared only within one predicate call. All masks, unknown
+samples, candidate ordering and final frame checks remain unchanged; no geometry
+or identity authority is retained across frames.
+
+Twelve alternating, unprofiled samples per case give median CPU of
+**35.892 → 15.653 ms** on the ordinary positive fixture and
+**106.287 → 24.398 ms** with crowded cyan scenery. Masked variants fall
+**8.945 → 2.517 ms** and **85.577 → 13.123 ms**. Original/revised rectangles or
+misses match in every sample. These generated cases exercise the hotspot; they
+do not establish a physical frame rate.
+
+Detailed automatic item cards now rebind their existing summary, tabs and lazy
+fact cells instead of rebuilding their complete Qt widget tree on each new
+item. One dormant detailed card and at most four dormant compact shop rows are
+kept after GUI retirement. They are hidden, outside the active views and cannot
+supply source/offer authority. Retirement clears asking-row data and releases
+listing/source demand. Rebinding validates the canonical item, replaces all
+item-specific facts/rows/quotes, releases old listing interests and cancels a
+button press targeting the previous item. Cash/non-cash tab schema changes
+replace only those inner pages. Normal same-item quote rolls, tab slides and
+the 180 ms automatic-card morph retain their effects and durations.
+
+The paired replay alternates the committed/new rendering paths in the same Qt
+application with offline services and six actual cached item records. The latest
+run measures **59.461 → 26.616 ms median CPU** across card replacements, with
+pixel-identical final cards for all six item types. An earlier paired run gives
+approximately **44 → 19 ms**; unrelated system load changes absolute timings. First
+construction is still relatively expensive and was slower in the latest run
+(62.640 → 83.316 ms); reuse targets repeated work, not a guaranteed zero-cost
+cold opening. Hidden layout entries are skipped during card measurement.
+
+The final focused geometry, card lifecycle, reference UI and Prices navigation
+group passes **85 tests in 15.343 s**. It verifies exact-ID rejection, released
+old listing leases, bounded widget counts, no extra top-level windows, four-row
+shop reuse, preserved departing pixels and the unchanged card-morph duration.
+The complete regression rerun and updated live-preview observation follow.
+All private QA uses an isolated display/session and reduced scheduling priority;
+the user's unrelated workloads and existing sharing helper are preserved.
+
 #### Remaining uncertain-title work
 
 The user subsequently confirmed definite lag with reading enabled. Earlier

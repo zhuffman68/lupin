@@ -9,7 +9,9 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 - Reduced repeated shop-name, title and description-frame checks. NPC-shop
   discovery and large description searches run in the background, retaining
-  item, shop and inventory validation while reading continues.
+  item, shop and inventory validation while reading continues. Crowded shop
+  hovers and changing item cards do less repeated work; hidden cards release
+  external requests while a small reusable pool avoids rebuilding their controls.
 
 - On-screen items now use the available height. Click an item to open its
   details; returning to the list keeps its scroll position. Pages keep their contents

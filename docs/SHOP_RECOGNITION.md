@@ -84,6 +84,13 @@ formats, and limits divider batches to 90,000 queried points. These temporary
 arrays release after each call; they are not full-display exclusion masks or
 long-lived identity caches.
 
+Shop-hover cyan-marker eligibility batches at most 256 candidates, 25 columns
+and seven sample positions per candidate (44,800 positions). It preserves the
+scalar threshold, signed differences, masks/unknowns, edge clipping, sample
+phase, candidate order and final framed-bound validation. RGBA search uses a
+borrowed source view; other formats keep their conversion path. Shifted channel
+arrays are reused only inside one predicate call, never across images/frames.
+
 With `progressive_tooltip`, a positively source-bound `inventory-primary` title
 may instead publish a `tooltipPartial` reply before the shop reader runs. Its
 `shopDeferred` marker means that the shop has not been read yet; it cannot close,

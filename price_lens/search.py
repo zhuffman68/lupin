@@ -454,9 +454,11 @@ class PriceSearch(QWidget):
             record=item_record(self,self.selected)
             if not matches_item_card(card,self.selected,record):
                 previous=card.state() if isinstance(card,EntryDetails) and card.entry.id==self.selected.game_id else None
-                if card:self.detail_layout.removeWidget(card);retire_widget(self,card)
-                else:retire_widget(self,self.watch_button)
-                card=self.price_view=make_item_card(self,self.selected,record,**data);self.watch_button=card.watch_button
+                reused=bool(record and isinstance(card,EntryDetails) and card.rebind_item(*record,**data))
+                if not reused:
+                    if card:self.detail_layout.removeWidget(card);retire_widget(self,card)
+                    else:retire_widget(self,self.watch_button)
+                    card=self.price_view=make_item_card(self,self.selected,record,**data);self.watch_button=card.watch_button
                 # Populate before showing: the surrounding card transition
                 # already reveals the image. Capturing an inner fade at zero
                 # would leave a blank icon until that transition ends.

@@ -11,10 +11,10 @@ from .domain import age_text
 class WatchButton(QPushButton):
     """One exact-item watch control shared by search, shop and inventory cards."""
     def __init__(self,parent=None):
-        super().__init__('☆',parent);self.watches=None;self.item=None
+        super().__init__('☆',parent);self.watches=None;self.item=None;self.pressed_item=None
         self.setCheckable(True);self.setFixedSize(32,32)
         self.setStyleSheet('QPushButton {background:transparent;border:1px solid transparent;font-size:20px;color:#b5c1d2;border-radius:6px;padding:0;} QPushButton:hover {background:#303c4e;border-color:#53647b;} QPushButton:checked {background:#403525;border-color:#c8a363;color:#f5d798;}')
-        self.clicked.connect(self.toggle_item);self.hide()
+        self.pressed.connect(self.remember_item);self.clicked.connect(self.toggle_item);self.hide()
 
     def bind(self,watches):
         if self.watches is watches:return
@@ -24,9 +24,14 @@ class WatchButton(QPushButton):
         self.refresh()
 
     def set_item(self,item):
+        if (item.game_id if item else None)!=(self.item.game_id if self.item else None):self.setDown(False)
         self.item=item;self.refresh()
 
+    def remember_item(self):self.pressed_item=self.item.game_id if self.item else None
+
     def toggle_item(self):
+        pressed,self.pressed_item=self.pressed_item,None
+        if pressed is not None and (self.item is None or self.item.game_id!=pressed):self.refresh();return
         if self.watches and self.item:self.watches.toggle(self.item)
 
     def refresh(self):

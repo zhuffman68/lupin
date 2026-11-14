@@ -63,6 +63,11 @@ def _purple_pixels(rgb):
     return (r<=155)&(g<=160)&(b>=high+18)&(b*100>=high*116)
 
 
+def _cyan_pixels(rgb):
+    return ((rgb[...,2]>=200)&(rgb[...,1]>=140)&(rgb[...,0]<=140)
+            &(np.subtract(rgb[...,1],rgb[...,0],dtype=np.int16)>=70))
+
+
 def _description_body(image,rect,exclude=()):
     """A bright shop/chat pane is not a dark native item description.
 
@@ -123,34 +128,39 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
             if any((b[i]-a[i]>=18 and b[i]-c[i]>=18) or
                    (a[i]-b[i]>=18 and c[i]-b[i]>=18) for i in range(3)):return True
         return False
-    def grid(xs,ys,horizontal):
-        xs=np.asarray(list(xs),dtype=np.int32);ys=np.asarray(list(ys),dtype=np.int32)
-        if not len(xs) or not len(ys):return xs,ys,None,None
-        rgb=np.frombuffer(pixels,dtype=np.uint8).reshape(height,stride)[:,:width*4].reshape(height,width,4)[:,:,:3]
-        xx,yy=np.meshgrid(xs,ys)
+    rgb=np.frombuffer(pixels,dtype=np.uint8).reshape(height,stride)[:,:width*4].reshape(height,width,4)[:,:,:3]
+    def samples(xx,yy,horizontal):
+        shifts={};dark={}
+        def at(offset):
+            if offset not in shifts:
+                axis=np.minimum((yy if horizontal else xx)+offset,(height if horizontal else width)-1)
+                shifts[offset]=(rgb[axis,xx] if horizontal else rgb[yy,axis]).astype(np.int16)
+            return shifts[offset]
+        def is_dark(offset):
+            if offset not in dark:
+                value=at(offset);dark[offset]=(value[...,0]<180)&(value[...,1]<180)&(value[...,2]<180)
+            return dark[offset]
         found=np.zeros(xx.shape,dtype=bool)
         for middle,outer,phase in patterns:
             valid=(yy+phase+outer<height) if horizontal else (xx+phase+outer<width)
-            ax=xx if horizontal else np.minimum(xx+phase,width-1)
-            ay=np.minimum(yy+phase,height-1) if horizontal else yy
-            bx=xx if horizontal else np.minimum(xx+phase+middle,width-1)
-            by=np.minimum(yy+phase+middle,height-1) if horizontal else yy
-            cx=xx if horizontal else np.minimum(xx+phase+outer,width-1)
-            cy=np.minimum(yy+phase+outer,height-1) if horizontal else yy
-            a=rgb[ay,ax].astype(np.int16)
-            b=rgb[by,bx].astype(np.int16);c=rgb[cy,cx].astype(np.int16)
-            delta=np.abs(a-c)
-            paired=((a[:,:,0]<180)&(a[:,:,1]<180)&(a[:,:,2]<180)
-                    &(c[:,:,0]<180)&(c[:,:,1]<180)&(c[:,:,2]<180)
-                    &(delta[:,:,0]<=endpoint_tolerance)&(delta[:,:,1]<=endpoint_tolerance)&(delta[:,:,2]<=endpoint_tolerance))
-            channels=((b-a>=18)&(b-c>=18))|((a-b>=18)&(c-b>=18))
-            contrast=channels[:,:,0]|channels[:,:,1]|channels[:,:,2]
+            a,b,c=at(phase),at(phase+middle),at(phase+outer)
+            delta=a-c;np.abs(delta,out=delta)
+            paired=(is_dark(phase)&is_dark(phase+outer)
+                    &(delta[...,0]<=endpoint_tolerance)&(delta[...,1]<=endpoint_tolerance)&(delta[...,2]<=endpoint_tolerance))
+            da=b-a;dc=b-c
+            channels=((da>=18)&(dc>=18))|((da<=-18)&(dc<=-18))
+            contrast=channels[...,0]|channels[...,1]|channels[...,2]
             found|=valid&paired&contrast
         valid=np.ones(xx.shape,dtype=bool)
         for rect in covered:
             right=xx if horizontal else np.minimum(xx+6,width-1)
             bottom=np.minimum(yy+6,height-1) if horizontal else yy
             valid&=~((xx<=rect.right())&(right>=rect.left())&(yy<=rect.bottom())&(bottom>=rect.top()))
+        return found,valid
+    def grid(xs,ys,horizontal):
+        xs=np.asarray(list(xs),dtype=np.int32);ys=np.asarray(list(ys),dtype=np.int32)
+        if not len(xs) or not len(ys):return xs,ys,None,None
+        xx,yy=np.meshgrid(xs,ys);found,valid=samples(xx,yy,horizontal)
         return xs,ys,found,valid
     def axis_scores(xs,ys,horizontal=False,_keep=rgba):
         """The same stroke predicate, batched over a bounded search grid."""
@@ -184,9 +194,23 @@ def _rim_pixels(image,exclude=(),*,native_scale=None):
         if found is None:return ()
         values=found.astype(object);values[~valid]=None
         return tuple(values[:,index].tolist() for index in range(len(xs)))
+    def beside_markers(dots,_keep=rgba):
+        if not dots:return ()
+        # At most 256 candidates, 25 columns and seven samples: <=44,800
+        # queried pixels, independent of the display's total area.
+        left=np.asarray([dot.left() for dot in dots],dtype=np.int32)[:,None,None]
+        top=np.asarray([dot.top() for dot in dots],dtype=np.int32)[:,None,None]
+        xx=np.maximum(0,left-28)+np.arange(25,dtype=np.int32)[None,None,:]
+        yy=np.maximum(0,top-1)+np.arange(7,dtype=np.int32)[None,:,None]*8
+        xx,yy=np.broadcast_arrays(xx,yy)
+        keep=(xx<np.maximum(0,left-3))&(yy<np.minimum(height,top+48))
+        found,valid=samples(np.minimum(xx,width-1),np.minimum(yy,height-1),False)
+        known=keep&valid;counts=known.sum(axis=1);hits=(found&known).sum(axis=1)
+        return np.any((counts>=4)&(hits>=counts*.4),axis=1).tolist()
     rim.axis_scores=axis_scores
     rim.cap_scores=cap_scores
     rim.column_samples=column_samples
+    rim.beside_markers=beside_markers
     return rim
 
 
@@ -486,10 +510,14 @@ def shop_description_bounds(image,pointer,*,scale=1.0,exclude=()):
     x,y=pointer
     search=QRect(round(x-700*scale),round(y-700*scale),round(1400*scale),round(1000*scale)).intersected(image.rect())
     if search.isEmpty() or search.width()*search.height()>1_500_000:return None
-    patch=image.copy(search).convertToFormat(QImage.Format.Format_RGBA8888)
-    pixels=np.frombuffer(patch.constBits(),dtype=np.uint8).reshape(patch.height(),patch.bytesPerLine())
-    rgb=pixels[:,:patch.width()*4].reshape(patch.height(),patch.width(),4)[:,:,:3].astype(np.int16)
-    mask=(rgb[:,:,2]>=200)&(rgb[:,:,1]>=140)&(rgb[:,:,0]<=140)&(rgb[:,:,1]-rgb[:,:,0]>=70)
+    if image.format()==QImage.Format.Format_RGBA8888:
+        pixels=np.frombuffer(image.constBits(),dtype=np.uint8).reshape(image.height(),image.bytesPerLine())
+        rgb=pixels[:,:image.width()*4].reshape(image.height(),image.width(),4)[search.top():search.bottom()+1,search.left():search.right()+1,:3]
+    else:
+        patch=image.copy(search).convertToFormat(QImage.Format.Format_RGBA8888)
+        pixels=np.frombuffer(patch.constBits(),dtype=np.uint8).reshape(patch.height(),patch.bytesPerLine())
+        rgb=pixels[:,:patch.width()*4].reshape(patch.height(),patch.width(),4)[:,:,:3]
+    mask=_cyan_pixels(rgb)
     for hidden in exclude:
         part=search.intersected(hidden)
         if not part.isEmpty():mask[part.top()-search.top():part.bottom()-search.top()+1,part.left()-search.left():part.right()-search.left()+1]=False
@@ -533,13 +561,7 @@ def shop_description_bounds(image,pointer,*,scale=1.0,exclude=()):
             dots.append(QRect(search.x()+left,search.y()+top,right-left+1,bottom-top+1))
     dots.sort(key=lambda dot:abs(dot.center().x()-x)+abs(dot.center().y()-y))
     rim=_rim_pixels(image,exclude)
-    def beside_frame(dot):
-        ys=range(max(0,dot.top()-1),min(image.height(),dot.top()+48),8)
-        for xx in range(max(0,dot.left()-28),max(0,dot.left()-3)):
-            samples=[value for yy in ys if (value:=rim(xx,yy)) is not None]
-            if len(samples)>=4 and sum(samples)>=len(samples)*.4:return True
-        return False
-    candidates=[dot for dot in dots if beside_frame(dot)]
+    candidates=[dot for dot,accepted in zip(dots,rim.beside_markers(dots)) if accepted]
     for dot in candidates[:8]:
         # This anchor is the observed marker, not an estimated title width.
         # Extending it behind our own card can hide the only real native edge.

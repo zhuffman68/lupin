@@ -311,6 +311,7 @@ class CardArea(QWidget):
         def invalidate(current):
             for index in range(current.count()):
                 item=current.itemAt(index);child=item.widget()
+                if item.isEmpty():continue
                 # Tab widgets own their private page-stack layout. Its public
                 # height is measured by the item card; descending into Qt's
                 # internal containers can invalidate live animation wrappers.

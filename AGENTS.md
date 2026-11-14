@@ -37,6 +37,12 @@ Sources/listings are explicit visible-tab demand, with no preloading while
 hovering through items. Historical asking prices must say Last seen price and
 cannot become current offers. See docs/ITEM_CARDS.md.
 
+Item-card reuse is GUI-only: at most one dormant detailed shell and four compact
+shop rows. Clear asking-row data and release old source/listing demand when
+retiring/rebinding. Exact canonical identity and newly supplied data still own
+every field; cancel a press targeting the previous item. Hidden pools never
+authorize current observations/offers/overlays. Retain the normal card morph.
+
 Retain animation effects and durations when improving performance; do not
 substitute instant swaps or shortened fades. Only Reduce motion and hidden
 surfaces bypass motion. Tab slides show the pages in their travel range and keep

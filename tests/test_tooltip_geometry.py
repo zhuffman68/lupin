@@ -11,6 +11,35 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class TooltipGeometryTests(unittest.TestCase):
+    def test_batched_header_candidates_match_individual_masked_rim_samples(self):
+        from price_lens.tooltip_geometry import _rim_pixels
+        from PySide6.QtGui import QPainter
+        image=QImage(150,120,QImage.Format.Format_RGBA8888);image.fill(QColor('#55507a'))
+        painter=QPainter(image)
+        for x in (22,60):
+            painter.fillRect(x,0,1,120,QColor('#302a45'));painter.fillRect(x+1,0,1,120,QColor('#70718a'));painter.fillRect(x+2,0,1,120,QColor('#302a45'))
+        painter.end()
+        dots=[QRect(x,y,5,5) for x in (0,2,5,35,75,145) for y in (0,1,40,116)]
+        for scale in (None,1,1.25,1.5,2):
+            for masks in ((),(QRect(18,20,10,30),),(image.rect(),)):
+                rim=_rim_pixels(image,masks,native_scale=scale);expected=[]
+                for dot in dots:
+                    accepted=False
+                    for x in range(max(0,dot.left()-28),max(0,dot.left()-3)):
+                        samples=[value for y in range(max(0,dot.top()-1),min(image.height(),dot.top()+48),8)
+                                 if (value:=rim(x,y)) is not None]
+                        if len(samples)>=4 and sum(samples)>=len(samples)*.4:accepted=True;break
+                    expected.append(accepted)
+                self.assertEqual(rim.beside_markers(dots),expected)
+
+    def test_cyan_marker_colours_keep_signed_differences_at_thresholds(self):
+        from itertools import product
+        from price_lens.tooltip_geometry import _cyan_pixels
+        levels=(0,69,70,71,139,140,141,199,200,201,254,255)
+        pixels=np.array(list(product(levels,repeat=3)),dtype=np.uint8)
+        expected=[b>=200 and g>=140 and r<=140 and g-r>=70 for r,g,b in pixels.astype(int).tolist()]
+        self.assertEqual(_cyan_pixels(pixels).tolist(),expected)
+
     def test_batched_legacy_colours_match_the_original_predicate_at_thresholds(self):
         from itertools import product
         from price_lens.tooltip_geometry import _purple_pixels

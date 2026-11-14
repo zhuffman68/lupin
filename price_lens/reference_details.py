@@ -2,9 +2,9 @@
 import json
 import re
 import time
-from PySide6.QtCore import Qt,Signal,QTimer
+from PySide6.QtCore import Qt,Signal,QTimer,QSignalBlocker
 from shiboken6 import isValid
-from PySide6.QtWidgets import QFrame,QGridLayout,QHBoxLayout,QPushButton,QSlider,QVBoxLayout,QWidget,QComboBox
+from PySide6.QtWidgets import QAbstractButton,QFrame,QGridLayout,QHBoxLayout,QPushButton,QSlider,QVBoxLayout,QWidget,QComboBox
 from .motion import MotionLabel,RollingLabel,AnimatedTabs
 from .reference_data import image_url,wiki_url
 from .reference_media import ReferenceSprite
@@ -13,17 +13,14 @@ from .reference_widgets import ReferenceList
 from .reference_relations import quest_rewards,item_quest_sources,relationship
 from .reference_maps import MapPreview
 from .watchlist_ui import WatchButton
-from .domain import key as name_key,Item
+from .domain import Item,item_name_matches
 from .price_widgets import ItemDetailTabs,PriceCard
 from .market_lookup import market_lookup
 from .listing_widgets import ITEM_TAB_STYLE,WhereSeenPanel
 from .smooth_scroll import SmoothScrollArea
+from .widget_lifetime import retire_widget
+from .item_overview import formatted,item_overview,ItemOverview
 
-ITEM_STATS={'reqLevel':'Level required','reqSTR':'STR required','reqDEX':'DEX required','reqINT':'INT required','reqLUK':'LUK required','reqPOP':'Fame required',
-    'incPAD':'Weapon attack','incMAD':'Magic attack','incPDD':'Weapon defense','incMDD':'Magic defense','incACC':'Accuracy',
-    'incEVA':'Avoidability','incSTR':'STR','incDEX':'DEX','incINT':'INT','incLUK':'LUK','incMHP':'HP','incMMP':'MP',
-    'incSpeed':'Speed','incJump':'Jump','incCRT':'Critical rate','incCRD':'Critical damage','tuc':'Upgrade slots','slotMax':'Stack limit',
-    'incWAT':'Weapon attack','incMAT':'Magic attack','incWDEF':'Weapon defense','incMDEF':'Magic defense'}
 MONSTER_STATS={'PADamage':'Weapon attack','MADamage':'Magic attack','PDDamage':'Weapon defense','MDDamage':'Magic defense',
     'acc':'Accuracy','eva':'Avoidability','speed':'Speed','pushed':'Knockback damage'}
 SKILL_STATS={'mpCon':('MP cost',''),'hpCon':('HP cost',''),'damage':('Damage','%'),'mad':('Magic attack',''),
@@ -35,11 +32,6 @@ def text(value='',size=12,color='#dce1e8',bold=False):
     label=MotionLabel(value);label.setWordWrap(True)
     label.setStyleSheet(f'font-size:{size}px;color:{color};font-weight:{600 if bold else 400};background:transparent')
     return label
-
-
-def formatted(value):
-    if type(value) in (int,float):return f'{value:,.2f}'.rstrip('0').rstrip('.') if isinstance(value,float) else f'{value:,}'
-    return str(value)
 
 
 def heading(layout,title):
@@ -78,17 +70,6 @@ def facts(layout,values):
         label=text(formatted(value),12,'#e6eaf1',True);label.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(label,index,1)
     grid.setColumnStretch(0,1);layout.addLayout(grid)
-
-
-def item_facts(layout,values):
-    """Pair two concise facts per row at the minimum supported card width."""
-    grid=QGridLayout();grid.setContentsMargins(0,0,0,0);grid.setHorizontalSpacing(18);grid.setVerticalSpacing(6)
-    for index,(caption,value) in enumerate(values):
-        cell=QWidget();row=QHBoxLayout(cell);row.setContentsMargins(0,0,0,0);row.setSpacing(6)
-        row.addWidget(text(caption,11,'#b1bfd1'),1)
-        number=text(formatted(value),12,'#e6eaf1',True);number.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
-        row.addWidget(number);grid.addWidget(cell,index//2,index%2)
-    grid.setColumnStretch(0,1);grid.setColumnStretch(1,1);layout.addLayout(grid)
 
 
 class EntryDetails(QFrame):
@@ -162,7 +143,7 @@ class EntryDetails(QFrame):
             self.where_seen=WhereSeenPanel(self.item_identity(),getattr(getattr(panel,'market',None),'listings',None),source_requested=panel.source_requested.emit,
                 selected=lambda:self.tabs.currentWidget() is self.where_seen and getattr(panel,'listing_active',getattr(panel,'active',True)))
             self.tabs.addTab(self.where_seen,'Where seen')
-            self.tabs.currentChanged.connect(lambda *_:self.where_seen.sync())
+            self.tabs.currentChanged.connect(self.sync_where_seen)
         body.addStretch()
         self.tabs.tabBar().setVisible(self.tabs.count()>1)
         self.tabs.currentChanged.connect(self.tab_changed)
@@ -171,6 +152,54 @@ class EntryDetails(QFrame):
         if summary is None:self.update_market()
         self.refresh_followups()
         if isinstance(self.tabs,ItemDetailTabs):self.tabs.fit_page()
+
+    def sync_where_seen(self,*_):
+        if self.where_seen:self.where_seen.sync()
+
+    def rebind_item(self,entry,entry_row,*,automatic=False,**data):
+        """Reuse the summary shell, replacing all item-specific page ownership."""
+        if self.entry.kind!='items' or entry.kind!='items' or self.summary_card is None:return False
+        identity=data.get('item')
+        if not isinstance(identity,Item) or identity.game_id!=entry.id or not item_name_matches(identity,entry.name):return False
+        previous=self.state() if self.entry.id==entry.id else None
+        same_pages=bool(self.row.get('cash'))==bool(entry_row.get('cash'))
+        if previous is None:
+            for button in self.findChildren(QAbstractButton):button.setDown(False)
+        quiet=self.property('suppressMotion');self.setProperty('suppressMotion',True);self.rebinding=True
+        try:
+            if self.where_seen:self.where_seen.set_active(False)
+            self.tabs.finish_slide();self.tabs.finish_height();self.tabs.measure.stop()
+            self.entry=entry;self.row=entry_row;self.drop_key=None;self.sources_activated=False
+            if same_pages:
+                self.overview_content.set_model(item_overview(entry.name,entry_row))
+                self.update_source_evidence();self.source_list.populate([])
+                self.where_seen.set_item(self.item_identity())
+                self.tabs.setCurrentIndex(0)
+            else:
+                pages=[self.tabs.widget(index) for index in range(self.tabs.count())]
+                self.lists=[];self.source_list=self.drop_list=None;self.where_seen=None
+                with QSignalBlocker(self.tabs),QSignalBlocker(self.tabs.tabBar()):
+                    while self.tabs.count():self.tabs.removeTab(0)
+                    for widget in pages:retire_widget(self,widget)
+                    overview,self.overview,body=page(scrolling=False)
+                    body.setContentsMargins(5,7,5,0);body.setSpacing(9)
+                    self.tabs.addTab(overview,'Overview');self.item(body);body.addStretch()
+                    self.where_seen=WhereSeenPanel(self.item_identity(),getattr(getattr(self.panel,'market',None),'listings',None),
+                        source_requested=self.panel.source_requested.emit,
+                        selected=lambda:self.tabs.currentWidget() is self.where_seen and getattr(self.panel,'listing_active',getattr(self.panel,'active',True)))
+                    self.tabs.addTab(self.where_seen,'Where seen')
+                    self.tabs.tabBar().setVisible(self.tabs.count()>1)
+                    self.tabs.setCurrentIndex(0);self.tabs.stack.setCurrentIndex(0)
+                self.tabs.previous_page=self.tabs.currentWidget();self.tabs.previous_index=0;self.tabs.scroll=0.
+            self.tabs.target_height=None
+            self.update_data(**data);self.thumbnail.set_image(self.media.image(entry.icon))
+            self.refresh_drops();self.sources_activated=not automatic
+            self.tabs.fit_page()
+            if previous:self.restore(previous)
+            self.where_seen.set_active(True)
+        finally:self.rebinding=False;self.setProperty('suppressMotion',quiet)
+        self.media_changed.emit()
+        return True
 
     def add_list(self,layout,*,drop_tiles=False):
         listing=ReferenceList(self.media,drop_tiles=drop_tiles);listing.chosen.connect(self.navigate);listing.viewport_changed.connect(self.media_changed.emit)
@@ -183,6 +212,7 @@ class EntryDetails(QFrame):
         return self.entry.kind!='items' or self.tabs.currentWidget() is self.sources
 
     def source_entry(self):
+        if getattr(self,'rebinding',False):return None
         if self.entry.kind!='items':return self.entry
         return self.entry if self.source_selected() and self.sources_activated else None
 
@@ -193,46 +223,23 @@ class EntryDetails(QFrame):
 
     def item(self,layout):
         row=self.row;cash=bool(row.get('cash'))
-        if not row.get('scroll') and row.get('description') and name_key(row['description'])!=name_key(self.entry.name):layout.addWidget(text(row['description'],11,'#bac5d5'))
-        if not cash:
-            values=[(caption,str(row['stats'][key])+'%' if key in ('incCRT','incCRD') else row['stats'][key]) for key,caption in ITEM_STATS.items() if key in (row.get('stats') or {}) and not key.startswith('req')]
-            if row.get('gender'):values.insert(0,('Gender',row['gender'].capitalize()))
-            speed=(row.get('stats') or {}).get('attackSpeed')
-            if speed is not None:values.append(('Attack speed',{2:'Faster',3:'Faster',4:'Fast',5:'Fast',6:'Normal',7:'Slow',8:'Slow',9:'Slower'}.get(speed,str(speed))))
-            if values:heading(layout,'Base stats');item_facts(layout,values)
-            required=[(caption.removesuffix(' required'),row['stats'][key]) for key,caption in ITEM_STATS.items() if key.startswith('req') and key in (row.get('stats') or {})]
-            if row.get('req_classes'):required.append(('Class',', '.join(row['req_classes'])))
-            if required:
-                heading(layout,'Requirements')
-                layout.addWidget(text(' · '.join(f'{caption} {formatted(value)}' for caption,value in required),11,'#c0cbd9'))
-            effects=row.get('spec') or {};values=[]
-            for key,caption,unit in (('hp','HP restored',''),('mp','MP restored',''),('hpR','HP restored','%'),('mpR','MP restored','%'),
-                ('pad','Weapon attack',''),('mad','Magic attack',''),('pdd','Weapon defense',''),('acc','Accuracy',''),('eva','Avoidability',''),('speed','Speed',''),('jump','Jump','')):
-                if effects.get(key):values.append((key,caption,formatted(effects[key])+unit))
-            if values:
-                if effects.get('time'):values.append(('buffTime','Duration',formatted(effects['time']/60000)+' min'))
-                heading(layout,'Effect');item_facts(layout,[(caption,value) for key,caption,value in values])
-            scroll=row.get('scroll') or {}
-            if scroll:
-                values=[('success','Success rate',formatted(scroll['success_rate'])+'%')] if 'success_rate' in scroll else []
-                values.extend((k,ITEM_STATS[k],v) for k,v in (scroll.get('stats') or {}).items() if k in ITEM_STATS)
-                if scroll.get('slot'):values.append(('slot','Applies to',scroll['slot']))
-                heading(layout,'Scroll effect');item_facts(layout,[(caption,value) for key,caption,value in values])
-            if row.get('price') is not None and not (row.get('stats') or {}).get('notSale'):layout.addWidget(text(f"NPC sell-back · {formatted(row['price'])} mesos",11,'#9facc0'))
-        evidence=self.store.evidence('items',self.entry.id)
+        self.overview_content=ItemOverview(item_overview(self.entry.name,row),layout.parentWidget());layout.addWidget(self.overview_content)
         if cash:
             self.sources=self.overview;source_body=layout;self.tabs.setTabText(0,'Sources');heading(source_body,'Sources')
         else:
             source_scroll,self.sources,source_body=page(scrolling=False);self.tabs.addTab(source_scroll,'Sources')
-        labels=[]
-        for record in evidence[:3]:
-            if record.get('source')=='market':continue
-            labels.extend(part.strip() for part in record.get('label','').split('/') if part.strip() not in ('Quest','Monster drop'))
-        if labels:source_body.addWidget(text(' · '.join(dict.fromkeys(labels)),10,'#aab8ca'))
+        self.source_evidence=text('',10,'#aab8ca');source_body.addWidget(self.source_evidence);self.update_source_evidence()
         self.source_list=self.add_list(source_body)
         if not cash:self.drop_list=self.source_list
         self.drop_note=text('',11,'#a1afc2');source_body.addWidget(self.drop_note)
         self.report_button=self.report_link(source_body)
+
+    def update_source_evidence(self):
+        labels=[]
+        for record in self.store.evidence('items',self.entry.id)[:3]:
+            if record.get('source')=='market':continue
+            labels.extend(part.strip() for part in record.get('label','').split('/') if part.strip() not in ('Quest','Monster drop'))
+        value=' · '.join(dict.fromkeys(labels));self.source_evidence.setText(value);self.source_evidence.setVisible(bool(value))
 
     def npc(self,layout):
         rows=self.store.shop_inventory(self.entry.id);locations=[];items=[]

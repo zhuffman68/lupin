@@ -147,6 +147,8 @@ class LensWindow(QMainWindow):
         self.starting_at = 0.0
         self.session_available = False
         self.card_sightings=ActiveCards(self)
+        self.spare_detail_card=None
+        self.spare_shop_cards=[]
         self.card_sightings.changed.connect(self.render)
         self.tooltip_reference=TooltipReference()
         self.tooltip_context=None
@@ -1006,6 +1008,7 @@ class LensWindow(QMainWindow):
 
     def detail_card_resized(self,card):
         height=card.tabs.height();previous=getattr(card,'detail_height',height);card.detail_height=height
+        if getattr(card,'rebinding',False):return
         if card.tabs.resizing and self.card_area.animation.state()==self.card_area.animation.State.Stopped:
             if height!=previous:self.card_area.follow_height(height-previous)
         else:self.schedule_card_fit()
@@ -2309,6 +2312,8 @@ class LensWindow(QMainWindow):
                 desired.append((*identity,occurrence))
             replacements={key:card for key,card in self.card_views.items() if key not in desired and hasattr(card,'update_data')
                           and not isinstance(card,EntryDetails) and not getattr(card,'selected_mode',False)}
+            detail_replacements={key:card for key,card in self.card_views.items()
+                                 if key not in desired and isinstance(card,EntryDetails) and card.entry.kind=='items'}
             occurrences={}
             for index, (row, hovered) in enumerate(cached_rows):
                 item = self.item_for(row)
@@ -2328,7 +2333,9 @@ class LensWindow(QMainWindow):
                 if detailed:data['context_name']=item_caption(item)
                 record=item_record(self.search_panel,item) if detailed else None
                 if key in self.card_views and detailed and not matches_item_card(self.card_views[key],item,record):
-                    old=self.card_views.pop(key);self.cards_layout.removeWidget(old);retire_widget(self,old)
+                    old=self.card_views[key]
+                    if not (record and isinstance(old,EntryDetails) and old.rebind_item(*record,automatic=True,**data)):
+                        self.card_views.pop(key);self.cards_layout.removeWidget(old);retire_widget(self,old)
                 if key in self.card_views:
                     card = self.card_views[key]
                     card.update_data(**data,selected=detailed)
@@ -2338,13 +2345,29 @@ class LensWindow(QMainWindow):
                         card=replacements.pop(old_key);self.card_views.pop(old_key)
                         card.update_data(**data);self.card_views[key]=card
                     elif detailed:
-                        card=self.card_views[key]=make_item_card(self.search_panel,item,record,automatic=True,**data)
-                        card.detail_height=card.tabs.height()
-                        card.tabs.height_changed.connect(lambda card=card:self.detail_card_resized(card))
+                        old_detail=next(iter(detail_replacements),None) if record else None
+                        if old_detail is not None:
+                            card=detail_replacements.pop(old_detail);self.card_views.pop(old_detail)
+                            card.rebind_item(*record,automatic=True,**data);self.card_views[key]=card
+                        elif record and self.spare_detail_card is not None:
+                            card=self.spare_detail_card;self.spare_detail_card=None
+                            if matches_item_card(card,item,record):
+                                card.tabs.setCurrentIndex(0);card.sources_activated=False;card.update_data(**data)
+                            else:card.rebind_item(*record,automatic=True,**data)
+                            card.set_active(True)
+                            self.card_views[key]=card
+                        else:
+                            card=self.card_views[key]=make_item_card(self.search_panel,item,record,automatic=True,**data)
+                            card.detail_height=card.tabs.height()
+                            card.tabs.height_changed.connect(lambda card=card:self.detail_card_resized(card))
                     else:
-                        card=self.card_views[key]=price_card(watchlist=self.watchlist,**data)
+                        if self.spare_shop_cards:
+                            card=self.spare_shop_cards.pop();card.update_data(**data)
+                        else:
+                            card=price_card(watchlist=self.watchlist,**data)
+                            card.activated.connect(self.open_shop_card)
+                        self.card_views[key]=card
                         card.set_selectable(not hovered and item is not None)
-                        card.activated.connect(self.open_shop_card)
                 if not detailed and hasattr(card,'set_selectable'):card.set_selectable(not hovered and item is not None)
                 if key in shown:ordered.append(card)
                 else:card.hide()
@@ -2355,7 +2378,14 @@ class LensWindow(QMainWindow):
                 if key not in used:
                     card = self.card_views.pop(key)
                     self.cards_layout.removeWidget(card)
-                    retire_widget(self,card)
+                    if isinstance(card,EntryDetails) and card.entry.kind=='items':
+                        card.set_active(False);card.hide()
+                        card.summary_card.content_row={}
+                        if self.spare_detail_card is not None:retire_widget(self,self.spare_detail_card)
+                        self.spare_detail_card=card
+                    elif hasattr(card,'selected_mode') and not card.selected_mode and len(self.spare_shop_cards)<4:
+                        card.hide();card.content_row={};self.spare_shop_cards.append(card)
+                    else:retire_widget(self,card)
             for index,card in enumerate(ordered):
                 if self.cards_layout.indexOf(card)!=index:self.cards_layout.insertWidget(index,card)
                 # Reparenting into a layout hides a newly created widget until

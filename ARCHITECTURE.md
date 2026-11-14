@@ -32,6 +32,15 @@ flowchart LR
 
 The main Qt process owns settings, layouts, market state and session accounting. Capture and annotations use separate helpers. The Rust reader accepts only local RGBA/PNG input through its own JSON stdin/stdout. Translation workers communicate over bounded local pipes and load their verified models on demand. All portal callbacks enter the Qt GUI thread through signals.
 
+Detailed item views rebind exact-ID data into a retained summary/tab shell.
+`item_overview.py` separates pure fact projection from reusable, lazily allocated
+fact cells. Prices keeps at most one retired detailed shell and four compact
+shop rows, hidden outside the active view with asking rows cleared and external
+demand released. These objects are a GUI allocation pool, never a source of
+current identity, observations, offers or overlay authority. Rebinding replaces
+item-specific rows/state and releases the previous item's listing interest;
+animation snapshots retain the departing card's pixels and normal durations.
+
 `background_job.py` owns cancellation-guarded jobs: at most one running and one
 latest pending job. `SnapshotGeneration` and `JobResult` carry owned results back
 to Qt. Snapshot validation/persistence has an independent bounded worker, so a

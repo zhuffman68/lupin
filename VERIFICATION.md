@@ -1,5 +1,30 @@
 # Verification — 2026-11-14
 
+## Repeated card rendering and crowded hover checks — 2026-11-14
+
+The next unprofiled live sample still caught intermittent 24–63 ms card-render
+CPU and 63–105 ms frame-validation CPU after the earlier fixes below. The
+additional repair reuses bounded card shells/fact cells and batches identical
+cyan-marker rim checks, without weakening pixel, mask, source or identity rules.
+Retired cards release demand/asking data and cannot supply active observations.
+An old button press cannot apply to a newly bound item.
+
+The paired offline UI replay measures **59.461 → 26.616 ms median CPU**, with
+identical final pixels for six sampled equipment, potion and scroll cards.
+First construction remains expensive (62.640 → 83.316 ms in that run); these are
+load-dependent measurements of repeated rendering, not a locked frame-rate
+claim. The crowded hover replay measures **106.287 → 24.398 ms median CPU**,
+with exact original/revised bounds or misses in all cases. Ordinary and masked
+variants, sampling bounds and evidence are in [PERFORMANCE_PASS](docs/PERFORMANCE_PASS.md).
+
+The focused group passes **85 tests in 15.343 s**, covering geometry predicate
+parity, item changes, late listing signals, released leases, bounded widget
+counts, no extra top-level windows, compact shop reuse, Prices navigation and
+the preserved **180 ms** automatic-card morph. All tests/replays use private
+Xvfb/D-Bus/HOME/XDG state, offline UI services and reduced scheduling priority.
+The final full regression and live preview check are pending at this checkpoint.
+No installer, installed-package change or release is made.
+
 ## Remaining live-reading lag — 2026-11-14
 
 The user's latest observation confirms definite stutter with reading enabled;

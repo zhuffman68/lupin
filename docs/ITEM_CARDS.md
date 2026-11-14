@@ -20,9 +20,25 @@ Automatic descriptions stay in the existing `ActiveCards`/`CardArea` lifecycle:
 the two-second grace and bounded session history remain in place. A new item
 replaces that active slot; only actual expiry moves it into history. Explicit
 search/watch/history/shop selections retain precedence over automatic readings.
-The shared factory constructs entry-specific widgets on an item/core-data
-change; quotes, report ages and counts update retained fields. The selected tab
-and list scroll positions survive same-item price updates.
+The shared factory constructs the first item view; compatible changes rebind
+its retained summary/tabs and reusable fact cells. Quotes, report ages and
+counts update retained fields. The selected tab and list scroll positions
+survive same-item price updates.
+
+`item_overview.py` projects item facts independently of UI/database ownership.
+Its groups/cells grow only to the largest displayed model and clear/hide unused
+values. Rebinding requires a matching canonical item ID/name, releases the old
+Where seen lease, clears old source/listing rows and replaces every item-specific
+field. A different item returns to its default tab; same-ID data changes retain
+view state. Cash/non-cash schema changes rebuild the inner pages only. Button
+presses belonging to a previous item are cancelled.
+
+After the automatic-card grace ends, Prices may keep one hidden detailed shell
+and four hidden compact shop rows for reuse. They stay outside active views,
+clear asking-row data and release external demand. These GUI objects cannot
+establish identity, current observations, offers or overlays. Item replacement
+still uses the existing 180 ms card morph and frozen departing pixels; reuse
+does not replace the visual transition with an instant swap.
 
 ## Browsing and returning to a card
 

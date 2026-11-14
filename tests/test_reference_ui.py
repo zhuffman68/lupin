@@ -115,7 +115,7 @@ class DatabaseUiTests(unittest.TestCase):
         self.assertEqual(view.summary_card.height(),before)
 
     def test_long_item_overview_scrolls_the_page_without_growing_the_window(self):
-        from price_lens.reference_details import ITEM_STATS
+        from price_lens.item_overview import ITEM_STATS
         docs=documents();docs['items.json'][0]['stats']={name:100 for name in ITEM_STATS}
         self.service.store.replace(*generation(docs));allow_fixture(self.service.store)
         p=self.panel;self.app.setProperty('reduceMotion',True);p.resize(460,500);p.open(('items',1001))

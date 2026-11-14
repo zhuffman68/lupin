@@ -91,6 +91,14 @@ class WhereSeenPanel(SmoothScrollArea):
         self.allowed = bool(active)
         self.sync()
 
+    def set_item(self,item):
+        if item==self.item:return
+        self.timer.stop()
+        if self.observing and self.service:self.service.set_interest(self,None)
+        self.observing=False;self.item=item;self.rows=[];self.signature=None
+        if self.built:self.listing_view.set_rows([])
+        self.sync()
+
     def changed(self, identity):
         if identity == self.item.game_id:
             self.refresh()
