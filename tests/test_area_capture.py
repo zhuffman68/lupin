@@ -50,6 +50,8 @@ class AreaCaptureTests(unittest.TestCase):
             self.assertTrue(reader.process.waitForStarted(3000))
             message=json.dumps(dict(atMs=0,shop=dict(area=table,rows=[]),tooltip=None))+'\n'
             with patch.object(reader.process,'readAllStandardOutput',return_value=message.encode()):reader.on_output()
+            from reader_delivery import finish_source_check
+            finish_source_check(reader)
             self.assertFalse(pointer_in_shop(reader.pointer,reader.shop_context))
             with patch.object(reader.process,'write') as write:
                 reader.scan()

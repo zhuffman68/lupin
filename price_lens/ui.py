@@ -441,6 +441,8 @@ class LensWindow(QMainWindow):
         prices_layout.addWidget(self.price_content,1)
         self.search_panel.detail_changing.connect(self.price_content.begin)
         self.search_panel.active_changed.connect(self.update_price_layout)
+        self.search_panel.reference_changed.connect(self.price_content.queue_refresh)
+        self.thumbnails.ready.connect(self.price_content.queue_refresh)
         self.search_panel.watched_items.visible_changed.connect(self.update_price_layout)
         self.search_tab_index=0
         self.exp_scroll = SmoothScrollArea()

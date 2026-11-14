@@ -33,6 +33,52 @@ Each implementation entry below must describe its validation and limitations.
 
 ### Live-reading follow-up — 2026-11-14
 
+#### Remaining stalls and view navigation
+
+The user still observed substantial stutter after `852d35b`. Its long numeric
+trace separately identifies result processing before the GUI callback as a
+larger remaining cost: full-image NPC-control discovery ran on the UI thread.
+`reader_source_check.py` now runs the unchanged pure pixel acquisition in one
+bounded background job. The exact serialized reply and immutable request remain
+paired; the active deadline and partial/final ordering are unchanged. Pause,
+capture changes, recovery and close cancel late work. Failures reject the reply,
+and publication still performs the existing submitted/latest source, NPC,
+viewport, independent-inventory and offer checks. There is no new price request,
+capture session, model, native binary or idle scan.
+
+A fresh native-reader replay adds a deliberately fragmented synthetic background
+around the public shop to exercise control discovery during main-tab slides.
+The old GUI result handler takes **50.4/52.5 ms mean CPU** in its two reading
+phases. The asynchronous path splits each reply into two GUI deliveries, whose
+combined means are approximately **10.7/11.2 ms per reply**; the longest individual
+GUI CPU slice drops **56.7 → 12.7 ms**. This moves discovery off the UI; it does
+not eliminate its CPU work. Frame gaps remain in both reading and paused phases
+of these low-priority private xcb runs, so they are not proof of smooth physical
+presentation. Do not substitute handler averages for user acceptance again.
+
+Rendered Prices navigation exposed a separate visual issue: the former
+transition blended the full shop list with an expanded card, drawing unrelated
+text over each other. Whole-view navigation now uses a **130 ms horizontal
+slide** with disjoint source/destination crops. Same-view card morphing, other
+page slides, number rolls and durations remain intact. Incoming value/image
+updates refresh the destination once per Qt turn without restarting motion;
+widget-owned weak invalidation references and the refresh timer release at
+finish/interruption/hide. Tests compare rendered half-slide crops, update text
+during motion, retain the outgoing pixels/clock and verify observer cleanup.
+
+The focused capture checks passed **80 tests in 21.785 s** and the Prices
+navigation checks passed **16 tests in 15.387 s**. A broader run completed
+**1,497 tests, three skipped, in 447.925 s**, with one test-harness failure:
+its close check waited for a deliberately suppressed GUI completion callback
+instead of the background Future finishing. The assertion is corrected to
+observe that Future; all **six source-check cases pass (0.166 s)**. Product
+checks elsewhere in the full run passed. The final navigation refinement moves
+actual controls with their slide pixels, restoring the layout on completion;
+its **17 tests pass at 1× (12.371 s) and 2× (15.873 s)**. Evidence remains private under
+`evidence/live-reading-2026-11-14/`; no installer/release is built.
+
+#### Earlier name-classification fix
+
 The user reported intermittent severe tab lag despite the isolated motion
 measurements, especially while screen reading. Those fixtures disable the
 capture pipeline; their paint timings do not establish live responsiveness.

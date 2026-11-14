@@ -19,6 +19,7 @@ from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
 from .reader_metrics import ReaderMetrics
 from .reader_process import ReaderProcess
+from .reader_source_check import ReaderSourceCheck
 from .inventory_probe import InventoryAbsence
 from .npc_shop import find_npc_shop,suppress_npc_rows,suppress_npc_prices
 from .shop_source import cursor_rectangle
@@ -37,6 +38,7 @@ class PixelReader(QObject):
     def __init__(self, root, parent=None):
         super().__init__(parent)
         self.root = Path(root)
+        self.closed = False
         self.temp = tempfile.TemporaryDirectory(prefix="classic-price-lens-", dir=os.environ.get("XDG_RUNTIME_DIR"))
         self.image = QImage()
         self.last_frame = 0.0
@@ -118,6 +120,8 @@ class PixelReader(QObject):
         self.process.readyReadStandardOutput.connect(self.on_output)
         self.process.readyReadStandardError.connect(self.on_stderr)
         self.process.finished.connect(self.on_finished)
+        self.source_check=ReaderSourceCheck(self)
+        self.source_check.finished.connect(self.on_output,Qt.ConnectionType.QueuedConnection)
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self.scan)
@@ -194,6 +198,7 @@ class PixelReader(QObject):
         self.reader_process.pause()
         self.generation += 1
         self.paused = True
+        self.source_check.cancel()
         self.timer.stop()
         self.screenshot_timer.stop()
         self.shop_browsing.reset()
@@ -350,6 +355,7 @@ class PixelReader(QObject):
             self.tracking_frame_at = self.last_frame
 
     def reset_area(self):
+        self.source_check.cancel()
         self.game_area = None
         self.game_guards = []
         self.game_footer = None
@@ -684,8 +690,42 @@ class PixelReader(QObject):
         else:self.mark_tracking_frame()
         if changed:self.area_changed.emit()
 
+    def queue_source_check(self,result,request,line):
+        """Keep full-image NPC discovery off the GUI; reuse no frame authority.
+
+        Buffer at most this reply and its native final phase. The original
+        request/deadline stays active until this exact reply is consumed.
+        Submitted and latest-frame filtering still run on ordinary delivery.
+        """
+        if (request.mode!='prices' or self.paused or request.generation!=self.generation
+                or result.get('cancelled') is True or result.get('error')):return False
+        area=(result.get('shop') or {}).get('area') or {}
+        near=(QRect(*(area[key] for key in ('x','y','width','height')))
+              if all(type(area.get(key)) is int for key in ('x','y','width','height')) else None)
+        generic=result.get('tooltip')
+        possible=near is not None or (isinstance(generic,dict) and generic.get('found')
+                    and association_state(result.get('tooltipAssociation'))!='inventory-primary')
+        if not possible:return False
+        source=request.source_image();npc=self.npc_shop;point=request.pointer
+        if point is not None and request.crop:point=(point[0]-request.crop[0],point[1]-request.crop[1])
+        cursor=cursor_rectangle(point,npc.anchor[2] if npc is not None else
+                                max(.5,min(3,near.width()/199)) if near is not None else 1)
+        masks=(*tuple(QRect(*rect) for rect in request.annotations),*((cursor,) if cursor is not None else ()))
+        if npc is not None and npc.state(source,masks)!='absent':return False
+        discover=find_npc_shop
+        def check(token):
+            token.check()
+            return discover(source,near=near,exclude=masks)
+        self.source_check.submit(request,line,check)
+        return True
+
     def on_output(self):
+        if self.closed:return
         self.buffer += bytes(self.process.readAllStandardOutput())
+        if len(self.buffer)>4*1024*1024:
+            self.reader_process.restart('Screen reader output exceeded its limit; restoring it…')
+            return
+        if self.source_check.busy:return
         while b"\n" in self.buffer:
             line, self.buffer = self.buffer.split(b"\n", 1)
             request=self.active_request
@@ -694,6 +734,13 @@ class PixelReader(QObject):
             metrics=getattr(self,'metrics',None)
             try:
                 result = json.loads(line)
+                checked=self.source_check.take(request,line)
+                if checked is None and self.queue_source_check(result,request,line):
+                    self.active_request=request
+                    self.buffer=line+b'\n'+self.buffer
+                    return
+                if checked is not None and checked.error is not None:
+                    result={**result,'error':'Native source controls could not be checked'}
                 if result.get('cancelled') is True:
                     if metrics is not None:metrics.record('prices.superseded')
                     if request.cancel_path:Path(request.cancel_path).unlink(missing_ok=True)
@@ -782,7 +829,7 @@ class PixelReader(QObject):
                         # its flag need not trigger another full-frame search.
                         possible=near is not None or (isinstance(generic,dict) and generic.get('found')
                             and association_state(result.get('tooltipAssociation'))!='inventory-primary')
-                        source_npc=find_npc_shop(source,near=near,exclude=masks) if possible else None
+                        source_npc=checked.value if possible and checked is not None else None
                     current_npc=self.update_npc_shop(current,exclude=self.annotation_regions(),candidate=source_npc)
                     raw_shop_hover=bool(result.get('hover'))
                     result=suppress_npc_rows(suppress_npc_rows(result,source_npc),current_npc)
@@ -916,16 +963,21 @@ class PixelReader(QObject):
             self.status.emit("Reader: " + message[-300:].strip())
 
     def on_finished(self, code, status):
+        self.source_check.cancel()
         self.active_request = None
 
     def reader_lost(self,message):
+        self.source_check.cancel()
         self.generation+=1;self.active_request=self.submitted_request=None;self.buffer=b''
         self.rescan_requested=True;self.submitted_sequence=-1;self.shop_fingerprint=None
         self.metrics.record('reader.recovery')
         self.status.emit(message)
 
     def close(self, keep_stream=False):
+        if self.closed:return
+        self.closed=True
         self.paused=True
+        self.source_check.close()
         if hasattr(self,'diagnostics_timer'):self.diagnostics_timer.stop()
         self.timer.stop()
         self.screenshot_timer.stop()

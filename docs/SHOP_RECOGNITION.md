@@ -38,6 +38,7 @@ player asking prices or observed sales.
 | `reader/src/tooltip_reader.rs` | Bind and read an inventory title before optional shop work; publish an opt-in independent inventory phase. |
 | `price_lens/pixel_components.py` | Connect native colour runs in two dimensions with a work limit. Shared by NPC controls and the add-item form. |
 | `price_lens/npc_shop.py` | Acquire NPC-window evidence, revalidate its stable controls, and enforce row/description ownership. |
+| `price_lens/reader_source_check.py` | Run one immutable reply's full-image control discovery off the GUI thread; preserve phase order, cancellation and its original request deadline. |
 | `price_lens/capture.py` | Bind recognition to immutable submitted frames, track current NPC state, filter replies, validate inventory source proofs, and schedule capture/reader work. |
 | `price_lens/price_observations.py` | Accept individual current player rows and retain only independently allowed same-page presentation. |
 | `price_lens/shop_rows.py` and `shop_browsing.py` | Own table guards, slots, asking-price retention and viewport epochs. |
@@ -46,6 +47,23 @@ player asking prices or observed sales.
 Shop-only requests can publish complete ordinary rows before missing-line
 recovery finishes. The partial and final replies share one immutable submitted
 frame, generation, epoch and deadline, and both pass the filters below.
+
+Full-image NPC acquisition runs on a single bounded background worker. It uses
+the original `find_npc_shop` pixel algorithm, with owned immutable source pixels
+and that request's pointer/annotation masks. It never reads live GUI state.
+While discovery is pending, capture can keep delivering frames and Qt can paint,
+but the reader retains the same active request and does not submit another.
+The exact saved reply is consumed before its buffered final phase; the local
+reply buffer is capped at 4 MiB. Inventory-only phases without a shop candidate
+still use their existing immediate source-bound path.
+
+Pause, changed capture context, reader recovery and close cancel pending
+discovery. Returning work must match the same request object and serialized
+reply. Ordinary generation/epoch checks, latest NPC controls, independent
+inventory evidence and current row/offer proofs still run before publication.
+A worker failure drops the reply rather than masquerading as an empty NPC
+result. Close does not wait for the worker and late callbacks cannot read the
+closed process. This changes scheduling, not NPC ownership or pricing policy.
 With `progressive_tooltip`, a positively source-bound `inventory-primary` title
 may instead publish a `tooltipPartial` reply before the shop reader runs. Its
 `shopDeferred` marker means that the shop has not been read yet; it cannot close,

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication
 from price_lens.capture import PixelReader
 from price_lens.platform_paths import reader_binary
 from price_lens.reader_request import SubmittedRequest
+from reader_delivery import finish_source_check
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -62,6 +63,7 @@ class InventoryCaptureTests(unittest.TestCase):
         message=(json.dumps(self.result if result is None else result)+'\n').encode()
         with patch('price_lens.capture.QTimer.singleShot'),patch.object(reader.process,'readAllStandardOutput',return_value=message):
             reader.on_output()
+        finish_source_check(reader)
 
     def assert_current_shop_untouched(self):
         reader=self.reader

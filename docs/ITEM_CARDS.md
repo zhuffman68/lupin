@@ -41,6 +41,19 @@ navigation behavior. Hidden details release visible source/listing demand; an
 on-screen description can supply that demand instead when its card is visible.
 The navigation state is GUI-only and cannot validate an offer or an overlay.
 
+List/detail navigation uses a **130 ms horizontal slide** between disjoint
+full-view snapshots. It does not morph one expanded card across unrelated list
+rows or blend their text. The incoming controls move with their displayed
+pixels, so input stays aligned; the layout restores after the slide.
+Switching items within the detail view retains the
+existing card morph and resizing effects. Incoming price, rolling-number and
+thumbnail changes refresh the current destination through one coalesced Qt
+callback, without changing the outgoing pixels or restarting the transition.
+The existing widget-owned motion invalidation mechanism observes only the
+destination subtree during that transition; its weak references and timer are
+released at finish, interruption or hide. No idle polling or desktop/input
+observer is introduced.
+
 ## Layout
 
 `PriceCard` supplies both compact shop rows and the detailed summary. Header,

@@ -53,6 +53,10 @@ Prices uses one full-height content view at a time. Back to on-screen items
 retains the selected card/subtab and each view's scroll position; returning must
 not reconstruct the card. A new item starts at the top. Hidden retained details
 must release source/listing demand and cannot supply current offer authority.
+List/detail navigation uses a 130 ms horizontal slide between whole views;
+same-view item replacements retain card morphing. Keep incoming rolling values
+and thumbnails current without restarting the slide. Release destination motion
+references/timers after finish, interruption or hide.
 
 EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 
@@ -228,6 +232,10 @@ this policy. Independent overlapping inventory needs its validated ordinary
 header, source cell and title. Keep capture's source/current-frame filtering and
 the UI's immediate overlapping-cache retirement in sync. The detailed current
 contract is docs/SHOP_RECOGNITION.md; update it with changes to this pipeline.
+Full-image NPC discovery runs off the GUI on one bounded immutable-source job.
+Retain its original active request/deadline and partial/final ordering. A failure
+cannot mean no NPC; cancellation and late replies retain the ordinary capture,
+viewport, latest-control and independent inventory checks before publication.
 
 Pickup-only admission remains independent of EXP numerical candidates. Bind
 each job to its captured character proof: a missing proof holds that job, while

@@ -1,5 +1,36 @@
 # Verification — 2026-11-13
 
+## Source-check scheduling and Prices navigation — 2026-11-14
+
+The previous preview still stuttered in the user's live test. Full-image NPC
+acquisition now uses one bounded background job while preserving the exact
+request/frame, phase ordering and deadline; original latest-pixel ownership and
+inventory checks still precede publication. An exception rejects its reply.
+Close is idempotent and does not wait for discovery or accept late callbacks.
+
+Whole-list/detail navigation now slides for **130 ms**, avoiding blended text
+from unrelated views. Destination price/number/image updates coalesce without
+restarting motion. Rendered pixel and lifecycle tests cover the split view,
+live incoming text and released observers/timers; same-view card morphing is
+retained. The focused capture suite passes **80 tests (21.785 s)** and the
+Prices view suite passes **16 tests (15.387 s)**.
+
+The broad **1,497-test run (447.925 s, three skipped)** had one close-test
+harness assertion failure, corrected to wait on its Future rather than a GUI
+callback deliberately suppressed by close. The other cases passed. The corrected
+**six source-check tests pass in 0.166 s**.
+This is not a clean full-suite pass. A final controls/slide alignment refinement
+passes **17 Prices view tests at 1× in 12.371 s and 2× in 15.873 s**.
+
+A native/IPC stress replay with fragmented synthetic scenery reduces combined
+GUI result-handler CPU from **50.4–52.5 to 10.7–11.2 ms per reply**, splitting
+that work into two callbacks with a **12.7 ms CPU** maximum in this sample. Reading
+and paused runs still exhibit frame gaps. These low-priority private Linux
+measurements do not establish physical smoothness or Windows acceptance.
+
+See [PERFORMANCE_PASS](docs/PERFORMANCE_PASS.md) for evidence/limitations and
+[SHOP_RECOGNITION](docs/SHOP_RECOGNITION.md) for the admission contract.
+
 ## Live-reading UI stalls — 2026-11-14
 
 The actual running preview's numeric trace found shop-result processing blocking

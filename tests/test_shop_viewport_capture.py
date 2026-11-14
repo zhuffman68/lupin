@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 from price_lens.capture import PixelReader
 from price_lens.reader_request import SubmittedRequest
 from price_lens.platform_paths import reader_binary
+from reader_delivery import finish_source_check
 
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -33,6 +34,7 @@ class ShopViewportCaptureTests(unittest.TestCase):
     def deliver(self,**fields):
         self.reader.buffer=json.dumps({'atMs':int(time.monotonic()*1000),'shop':None,'tooltip':None,**fields}).encode()+b'\n'
         self.reader.on_output()
+        finish_source_check(self.reader)
 
     def test_late_shop_result_is_discarded_after_viewport_changes(self):
         previous=self.reader.image_sequence

@@ -240,10 +240,26 @@ class ContentArea(QWidget):
         if pixels is None or not enabled(self):return
         if self.layout():self.layout().activate()
         after=self.grab();new_card=card_pixels(self,after,current=True)
-        self.outgoing=_ContentFrame(pixels,after,self,old_card,new_card)
+        self.outgoing=self.make_frame(pixels,after,old_card,new_card)
         self.outgoing.setGeometry(self.rect())
         self.outgoing.show();self.outgoing.raise_()
         self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
+
+    def make_frame(self,before,after,old_card,new_card):
+        return _ContentFrame(before,after,self,old_card,new_card)
+
+    def refresh_destination(self):
+        """Update incoming pixels without replaying a structural transition."""
+        frame=self.outgoing
+        if frame is None:return
+        # No event loop is entered while our snapshot is hidden. The next
+        # physical paint still sees it, now with the current destination data.
+        frame.hide()
+        try:
+            if self.layout():self.layout().activate()
+            pixels=self.grab();card=card_pixels(self,pixels,current=True)
+        finally:frame.show();frame.raise_()
+        frame.replace_after(pixels,card);invalidate_surface(frame);frame.update()
 
     def advance(self,progress):
         if not enabled(self):self.finish();return

@@ -7,13 +7,15 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
-- Reduced repeated shop-name checks that could stall the interface while screen
-  reading. Changed pixels and covered names retain their validation rules;
-  animations keep their effects and duration.
+- Reduced repeated shop-name checks and moved full-image NPC-shop discovery
+  out of the interface thread. Item, shop and inventory validation remains in
+  place while reading continues.
 
 - On-screen items now use the available height. Click an item to open its
   details; returning to the list keeps its scroll position. Pages keep their contents
   steady while sliding away, including during card refreshes and fades.
+  Item details and the on-screen list slide apart without doubled text; prices
+  and thumbnails can update during the transition without restarting it.
 
 - Smoother wheel scrolling and less work during page slides, watched-list
   expansion and rolling numbers. Item cards resize smoothly between details

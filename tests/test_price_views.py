@@ -5,7 +5,9 @@ import unittest
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtGui import QImage
 from price_lens.domain import Catalog,Quote
+from price_lens.motion import MotionLabel
 import test_ui_context as fixture
 
 
@@ -140,6 +142,46 @@ class PriceViewsTests(unittest.TestCase):
         self.reopen()
         self.assertEqual(w.price_content.pane,'detail');self.assertIsNotNone(w.price_content.outgoing)
         w.price_content.finish();self.assertTrue(w.scroll.isHidden())
+
+    def test_list_and_details_slide_apart_instead_of_blending_their_text(self):
+        w=self.window;self.select();self.app.setProperty('reduceMotion',False)
+        self.click_switch();area=w.price_content;area.animation.pause();frame=area.outgoing
+        self.assertEqual(frame.direction,-1);self.assertEqual(area.animation.duration(),130)
+        # The half-way view consists of two disjoint crops, with no overlapping
+        # text alpha layers or morph of one card across unrelated listing rows.
+        frame.progress=.5;actual=frame.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        before=frame.before.toImage().convertToFormat(QImage.Format.Format_RGBA8888);after=frame.after.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        split=actual.width()//2
+        self.assertEqual(actual.copy(0,0,split,actual.height()),after.copy(after.width()-split,0,split,actual.height()))
+        self.assertEqual(actual.copy(split,0,actual.width()-split,actual.height()),before.copy(0,0,actual.width()-split,actual.height()))
+
+    def test_live_text_updates_refresh_the_incoming_view_without_restarting_it(self):
+        w=self.window;self.select();self.app.setProperty('reduceMotion',False)
+        self.click_switch();area=w.price_content;area.animation.pause();area.animation.setCurrentTime(60)
+        frame=area.outgoing;before=frame.before.toImage();old=frame.after.toImage()
+        title=w.scroll.findChildren(MotionLabel)[0];title.setText('Updated visible item data')
+        title.animation.stop();title.alpha=1.;self.app.processEvents()
+        self.assertIs(area.outgoing,frame);self.assertEqual(area.animation.currentTime(),60)
+        self.assertEqual(frame.before.toImage(),before);self.assertNotEqual(frame.after.toImage(),old)
+        frame.progress=1.;predicted=frame.grab().toImage();area.finish();self.app.processEvents()
+        self.assertEqual(predicted.convertToFormat(QImage.Format.Format_RGBA8888),area.grab().toImage().convertToFormat(QImage.Format.Format_RGBA8888))
+
+    def test_view_transition_releases_its_observers_and_refresh_timer(self):
+        w=self.window;self.select();self.app.setProperty('reduceMotion',False);self.click_switch()
+        area=w.price_content;self.assertTrue(area.destination_nodes)
+        nodes=tuple(area.destination_nodes);area.queue_refresh();area.finish()
+        self.assertFalse(area.destination_nodes);self.assertFalse(area.refresh_timer.isActive())
+        self.assertTrue(all(not any(ref() is area for ref in getattr(node,'_motion_surfaces',())) for node in nodes))
+
+    def test_live_controls_follow_their_visible_slide_and_restore_the_layout(self):
+        w=self.window;self.select();self.app.setProperty('reduceMotion',False);self.click_switch()
+        area=w.price_content;area.animation.pause();area.animation.setCurrentTime(65)
+        base=area.route_positions[w.scroll];offset=round(-area.width()*(1-float(area.animation.currentValue())))
+        self.assertEqual(w.scroll.x(),base.x()+offset);self.assertFalse(area.layout().isEnabled())
+        position=w.scroll.pos();area.queue_refresh();self.app.processEvents()
+        self.assertEqual(w.scroll.pos(),position)
+        area.finish();self.assertEqual(w.scroll.geometry(),base)
+        self.assertTrue(area.layout().isEnabled());self.assertFalse(area.route_positions)
 
 
 if __name__=='__main__':unittest.main()
