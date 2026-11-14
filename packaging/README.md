@@ -94,6 +94,11 @@ The Windows program folder is `%LOCALAPPDATA%\Programs\Lupin`. Upgrades move the
 
 On Linux, `scripts/test_windows_installer.py --wine-prefix /path/to/isolated-prefix` validates install/upgrade/removal and the installed suite. Never point it at a game or default Wine prefix. Native Windows capture/physical hotkey testing remains separate from Wine verification.
 
+The QA runner retries cold Wine IPC probes within a 45-second startup budget.
+The installed suite has its own 1,200-second deadline, configurable with
+`--suite-timeout` from 60 to 3,600 seconds. These are QA limits; application
+startup, recovery and individual test deadlines remain unchanged.
+
 For historical Windows migration acceptance, add `--upgrade-from /path/to/older-Setup.exe
 --require-migrations`. Without a baseline the harness explicitly reports that
 historical migration was skipped; ordinary same-version upgrade/removal checks
