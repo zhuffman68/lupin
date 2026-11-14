@@ -128,7 +128,8 @@ class MotionLabel(QLabel):
 
     def heightForWidth(self,width):
         margins=self.contentsMargins()
-        key=(self.text(),width,self.wordWrap(),self.margin(),self.indent(),int(self.alignment()),
+        key=(self.text(),width,self.wordWrap(),self.textFormat(),self.property('currencyIcon') is not False,
+             self.margin(),self.indent(),int(self.alignment()),
              self.fontMetrics().fontDpi(),margins.left(),margins.top(),margins.right(),margins.bottom())
         cache=self._height_cache
         if key in cache:return cache[key]

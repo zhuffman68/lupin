@@ -2,6 +2,11 @@
 
 ## Preserved animations and lower frame work — 2026-11-14
 
+The complete regression run passes **1,452 tests, three skipped, 226.484 s**.
+The 26 final guards also pass after the final cache identity refinement for
+text format/currency rendering. GUI/helper checks use private Xvfb, D-Bus and
+HOME/XDG directories; the host preview is distinct from these isolated fixtures.
+
 The Prices selection transition is restored to its full **130 ms** composited
 fade/lift. Live page slides remain **260 ms**, watched-list expansion **220 ms**,
 and number rolls **160 ms**. Effects are bypassed only for the existing hidden

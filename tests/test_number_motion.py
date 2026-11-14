@@ -21,6 +21,8 @@ class NumberMotionTests(unittest.TestCase):
             self.assertGreaterEqual(label.heightForWidth(70),height)
             font.setPixelSize(24);label.setFont(font);large=label.heightForWidth(130);self.assertGreater(large,height)
             label.setText('12 mesos');self.assertLess(label.heightForWidth(130),large)
+            with_coin=label.heightForWidth(70);label.setProperty('currencyIcon',False)
+            self.assertGreater(label.heightForWidth(70),with_coin)
         label.deleteLater()
 
     def test_clear_removes_cached_numeric_content_and_font_changes_remeasure_cells(self):
