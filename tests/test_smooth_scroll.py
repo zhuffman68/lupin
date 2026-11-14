@@ -3,7 +3,7 @@ import unittest
 
 from PySide6.QtCore import QCoreApplication,QEvent,QPoint,QPointF,Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QTest,QSignalSpy
 from PySide6.QtWidgets import QApplication,QAbstractItemView,QScrollArea,QWidget
 
 from price_lens.smooth_scroll import SmoothListWidget,SmoothScrollArea
@@ -34,32 +34,41 @@ class SmoothScrollTests(unittest.TestCase):
         QApplication.sendEvent(viewport,event)
         return event
 
+    def finish_motion(self,view):
+        animation=view.smooth_wheel.animation
+        self.assertEqual(animation.duration(),125)
+        if animation.state()==animation.State.Running:
+            finished=QSignalSpy(animation.finished)
+            self.assertTrue(finished.wait(1500))
+        self.assertEqual(animation.state(),animation.State.Stopped)
+
     def test_wheel_moves_in_frames_then_stops_at_the_native_distance(self):
         smooth=self.view();native=self.view(QScrollArea)
         self.wheel(native);self.wheel(smooth)
         self.assertEqual(smooth.verticalScrollBar().value(),0)
-        QTest.qWait(45)
+        animation=smooth.smooth_wheel.animation
+        animation.pause();animation.setCurrentTime(45)
         self.assertGreater(smooth.verticalScrollBar().value(),0)
         self.assertLess(smooth.verticalScrollBar().value(),native.verticalScrollBar().value())
-        QTest.qWait(140)
+        animation.resume();self.finish_motion(smooth)
         self.assertEqual(smooth.verticalScrollBar().value(),native.verticalScrollBar().value())
         self.assertEqual(smooth.smooth_wheel.animation.state(),smooth.smooth_wheel.animation.State.Stopped)
 
     def test_repeated_wheel_notches_accumulate_without_a_long_queue(self):
         smooth=self.view();native=self.view(QScrollArea)
         for _ in range(4):self.wheel(smooth);self.wheel(native);QTest.qWait(15)
-        QTest.qWait(155)
+        self.finish_motion(smooth)
         self.assertEqual(smooth.verticalScrollBar().value(),native.verticalScrollBar().value())
-        self.wheel(smooth,120);QTest.qWait(155)
+        self.wheel(smooth,120);self.finish_motion(smooth)
         self.assertLess(smooth.verticalScrollBar().value(),native.verticalScrollBar().value())
 
     def test_natural_wheel_direction_matches_qt_and_bounds_are_clamped(self):
         smooth=self.view();native=self.view(QScrollArea)
         for view in (smooth,native):view.verticalScrollBar().setValue(300);self.wheel(view,120,inverted=True)
-        QTest.qWait(155)
+        self.finish_motion(smooth)
         self.assertEqual(smooth.verticalScrollBar().value(),native.verticalScrollBar().value())
         bar=smooth.verticalScrollBar();bar.setValue(bar.maximum()-3);self.wheel(smooth)
-        QTest.qWait(155);self.assertEqual(bar.value(),bar.maximum())
+        self.finish_motion(smooth);self.assertEqual(bar.value(),bar.maximum())
         event=self.wheel(smooth);self.assertFalse(event.isAccepted())
 
     def test_trackpad_pixels_and_gesture_phases_keep_native_movement(self):

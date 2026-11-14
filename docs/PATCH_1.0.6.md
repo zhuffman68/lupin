@@ -21,6 +21,8 @@ Use **Settings → Check now** in Lupin, then **Download & install**, or downloa
 
 Settings, caches and watched items are preserved. Python, OCR and both local translation models are included. Windows uses the shared WebView2 runtime; Linux uses WebKitGTK, PipeWire and its desktop sharing portal.
 
+After the update, click **Start reading** to reconnect your display. Tracking starts stopped.
+
 Shop locations are recent sightings: an item may have sold, and its equipment stats are unverified. Recognition and translation depend on visible, readable text. Test replays do not establish a universal frame rate or recognition time; Wine checks do not establish native Windows capture or WebView2 acceptance.
 
 Checksums, signed update metadata, build information and [detailed verification](https://github.com/zhuffman68/lupin/releases/download/v1.0.6/VERIFICATION-1.0.6.md) accompany the packages.

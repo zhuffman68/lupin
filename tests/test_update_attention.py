@@ -9,7 +9,7 @@ sys.path.insert(0,str(ROOT))
 
 from PySide6.QtCore import QAbstractAnimation,QCoreApplication,QEvent,Qt
 from PySide6.QtGui import QColor,QPainter
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QTest,QSignalSpy
 from PySide6.QtWidgets import QApplication,QVBoxLayout,QWidget
 from shiboken6 import isValid
 
@@ -88,7 +88,11 @@ class UpdateAttentionTests(unittest.TestCase):
 
     def test_hidden_minimized_and_reduced_buttons_stop_frame_delivery_and_resume_when_visible(self):
         frames=[];self.button.animation.valueChanged.connect(frames.append)
-        self.button.set_update_available(True);QTest.qWait(45)
+        delivered=QSignalSpy(self.button.animation.valueChanged)
+        self.button.set_update_available(True)
+        self.assertEqual(self.button.animation.duration(),1600)
+        self.assertEqual(self.button.animation.loopCount(),-1)
+        self.assertTrue(delivered.wait(1500));self.assertTrue(delivered.wait(1500))
         self.assertGreater(len(frames),1)
         for hide,show in ((self.window.hide,self.window.show),
                           (self.window.showMinimized,self.window.showNormal),

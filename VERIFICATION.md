@@ -1,5 +1,28 @@
 # Verification — 2026-11-14
 
+## Lupin 1.0.6 release
+
+Both release readers compile with Rust **1.98.1**, using the musl Linux target
+and pinned LLVM-MinGW Windows toolchain. All **78 native tests pass**. Both
+platform market helpers rebuild, including the exact-item shop-sighting path.
+All **28 pinned runtime inputs**, both model bundles and the three **1.0.5**
+upgrade bases verify against their recorded hashes.
+
+The release-tool suite passes **39 tests in 1.317 s**. A full source run exposed
+two tests assuming a frame within 45 ms on the loaded, low-priority QA desktop.
+The scrolling test now samples a known intermediate animation time and waits
+for real completion; the update-reminder test waits for actual frame signals.
+All **six scrolling tests (1.785 s)** and **seven reminder tests (1.999 s)** pass.
+Their **125 ms** scroll and **1,600 ms** repeating reminder durations are asserted;
+no application effect or timing changed for these corrections.
+
+The final full-suite, packaged-runtime, install/upgrade/removal and signed-update
+results are recorded in the release's [verification report](https://github.com/zhuffman68/lupin/releases/download/v1.0.6/VERIFICATION-1.0.6.md)
+and build information. These distinguish isolated Linux/Wine tests from native
+Windows capture/WebView2 and physical-display acceptance. App preferences and
+private captures are excluded from packages; no host installation is part of
+this release preparation.
+
 ## Shop-location result reveal — 2026-11-14
 
 First-loaded Where seen results use a 220 ms fade and eight-pixel upward
