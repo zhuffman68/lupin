@@ -41,12 +41,18 @@ Retain animation effects and durations when improving performance; do not
 substitute instant swaps or shortened fades. Only Reduce motion and hidden
 surfaces bypass motion. Tab slides show the pages in their travel range and keep
 unrelated pages hidden. Hidden Where seen tabs must not construct saved rows.
-Owned tab stacks defer native selection until slide completion; temporary page
-surfaces must preserve live text/model/image/control updates and release their
-buffers/observers when finished. Item-detail resizing keeps destination content
+Owned tab stacks defer native selection until slide completion. Temporary page
+surfaces hold departing/intermediate pixels steady while the destination remains
+live; release their buffers/observers when finished. Returning to a page promotes
+its current data instead of replaying an obsolete snapshot. Capture the departing
+page before disabling stack painting. Item-detail resizing keeps destination content
 stable and drives automatic-card height from the same clock. Never stretch
 cached text to animate the card border. Sighting rows use one virtual painted
 viewport with bounded data and shared visible-age animation clocks.
+Prices uses one full-height content view at a time. Back to on-screen items
+retains the selected card/subtab and each view's scroll position; returning must
+not reconstruct the card. A new item starts at the top. Hidden retained details
+must release source/listing demand and cannot supply current offer authority.
 
 EXP tracking starts only after the user presses Start tracking, always begins stopped on app launch, and disables its reader when stopped; percentage rates are the default, with raw/both settings. Keep header/display/tabs fixed between pages. Respect Reduce motion and stop the header movie while hidden. Market coverage never establishes item identity. Unique exact-ID search selections remain independent of snapshot availability; ambiguous names require current visual or explicit selection evidence.
 

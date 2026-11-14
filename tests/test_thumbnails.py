@@ -65,10 +65,13 @@ class ThumbnailTests(unittest.TestCase):
         self.cache.observe([Item(i,str(i)) for i in range(1,11)])
         self.wait(lambda:sum(self.calls.values())>=2)
         self.assertLessEqual(max(peaks),2)
+        requests=len(peaks)
         self.cache.observe([]);self.assertFalse(self.cache.queue)
         self.wait(lambda:not self.cache.active)
-        requests=sum(self.calls.values());QTest.qWait(30)
-        self.assertEqual(sum(self.calls.values()),requests)
+        QTest.qWait(30)
+        # An already-started GET can reach the server after abort(), depending
+        # on scheduling. Cancellation must prevent new client requests.
+        self.assertEqual(len(peaks),requests)
 
     def test_source_and_decoder_reject_non_item_ids_and_oversize_inputs(self):
         self.assertEqual(source_url(1302000),'https://osmsdataexplorer.com/data/current/images/items/01302000.png')

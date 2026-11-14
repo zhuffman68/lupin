@@ -24,6 +24,22 @@ The shared factory constructs entry-specific widgets on an item/core-data
 change; quotes, report ages and counts update retained fields. The selected tab
 and list scroll positions survive same-item price updates.
 
+## Browsing and returning to a card
+
+`price_views.py` owns the Prices content switch. The navigation button sits
+above one full-height view: either the selected item or on-screen cards/history.
+There is no capped second list beneath an open card. Returning to on-screen
+items retains the selected card, its subtab and both outer scroll positions;
+Return to item details restores that same object. A genuinely new selection
+starts at the top. Price updates still reach the retained card without changing
+the visible view or initiating an individual price request.
+
+The return action remains available if the shop closes while the list is open.
+Clearing/replacing the selection and watch-list collapse retain their existing
+navigation behavior. Hidden details release visible source/listing demand; an
+on-screen description can supply that demand instead when its card is visible.
+The navigation state is GUI-only and cannot validate an offer or an overlay.
+
 ## Layout
 
 `PriceCard` supplies both compact shop rows and the detailed summary. Header,
@@ -69,9 +85,15 @@ the native current page after the slide, so Qt cannot prematurely hide the
 departing page or end its child animations. Adjacent slides keep unrelated
 pages hidden; a longer slide shows every page in its travel range.
 `slide_surface.py` temporarily composites opaque page images to avoid painting
-the complete widget tree each frame. Own-widget text, rolling digits, models,
-images, control state and geometry changes invalidate affected regions. Nested
-motion propagates into its containing surface. The real widgets keep focus and
+the complete widget tree each frame. The departing page retains its exact
+captured appearance through the slide; background data, child fades and layout
+changes cannot dissolve its cards while it moves away. Intermediate pages are
+also static. Capture departure pixels before disabling stack painting, otherwise
+Qt can return a blank child image despite its visible state. Incoming own-widget
+text, rolling digits, models, images, control
+state and geometry changes invalidate affected regions. Reversing a slide
+promotes its new destination to the latest live state. Nested motion propagates
+into a live containing surface. The real widgets keep focus and
 input; there is no application-wide or desktop input filter. Completion/hide
 disconnects observers and releases pictures, with no resting animation timer.
 Database count/date summaries refresh on database updates rather than each

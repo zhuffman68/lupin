@@ -464,10 +464,11 @@ class TabMotion:
             self.scroll=float(old_index)
             self.hold_layout('slide')
             self.sliding=True
-        stack.setUpdatesEnabled(False)
         if self.surface is None:
             self.surface=SlideSurface(self,stack)
             self.surface.pages={old_index:previous};self.surface.capture(old_index)
+        self.surface.freeze(old_index)
+        stack.setUpdatesEnabled(False)
         self.prepare_page(index)
         self.base=self.motion_rect();self.slide_width=self.base.width()
         first=max(0,math.floor(min(self.scroll,index)))

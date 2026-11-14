@@ -1043,7 +1043,10 @@ not walk ancestors on every paint. Watched expansion settles the affected owner
 layouts without invalidating the main window/page stack. Owned tab bars defer
 the native stack selection until the slide completes, preventing an early hide
 from finishing child animations. Temporary opaque surfaces composite the moving
-pages, with own-widget/model/image/number invalidation for live partial updates.
+pages. Departing and intermediate pictures remain fixed for the slide; only the
+destination receives own-widget/model/image/number invalidation for live updates.
+This prevents card fades, cleanup or new data from changing a page as it leaves.
+Reversing direction recaptures the new destination's latest state.
 Only pages in the travel range participate. Pictures, observers and event filters
 are released on completion/hide; no desktop filter or idle frame timer exists.
 Item-detail height follows a 220 ms curve with fixed destination layout, and
@@ -1056,5 +1059,13 @@ Their bounded sighting records use one virtual painted viewport, with shared
 age-roll/fade clocks and visible-row painting rather than per-row widget trees.
 Performance changes must retain animation effects and durations; Reduce motion
 and hidden surfaces remain the explicit exceptions.
+
+`price_views.PriceViews` owns one full-height Prices content view and its return
+button, replacing the capped list below an open detail card. It retains the
+selected card/subtab and two scroll positions, without duplicating widgets or
+item data. Explicit new selections start at the top. Changing market data updates
+retained fields without switching views. Only visible details supply external
+source/listing demand; on-screen descriptions can take that role while the manual
+card is hidden. This navigation has no capture or offer-verification authority.
 
 The Prices scroll area reserves a narrow constant gutter and paints no empty scrollbar; scrollbar visibility cannot change card width or end a transition. A brief unknown name in the same proven shop slot inherits only the prior GUI presentation for two seconds. Its raw observation remains unknown. Masked shop-title identity can use only its exact captured list slot plus independent exposed shop guards and a native description body. Descriptions from shop rows never create a separate price reference. The Prices list and current-page labels keep their existing widgets and keys through hover changes.

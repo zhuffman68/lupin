@@ -23,7 +23,7 @@ def invalidate_surface(widget,rect=None):
 class SlideSurface(QWidget):
     def __init__(self,owner,host):
         super().__init__(host)
-        self.owner=owner;self.pictures={};self.pages={};self.nodes={};self.dirty={}
+        self.owner=owner;self.pictures={};self.pages={};self.nodes={};self.dirty={};self.frozen=set()
         self.connections=[];self.models=set();self.effects=set();self.rescan=False;self.capturing=False;self.closed=False
         self.ref=weakref.ref(self)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -38,9 +38,10 @@ class SlideSurface(QWidget):
 
     def set_pages(self,pages):
         self.pages=dict(pages)
+        self.frozen=set(self.pages)-{self.owner.currentIndex()}
         existing=set(self.pictures)
         self.pictures={index:picture for index,picture in self.pictures.items() if index in self.pages}
-        self.dirty={index:rect for index,rect in self.dirty.items() if index in self.pages}
+        self.dirty={index:rect for index,rect in self.dirty.items() if index in self.pages and index not in self.frozen}
         self.register_nodes()
         for index,page in self.pages.items():
             if index not in self.pictures:self.capture(index)
@@ -50,6 +51,7 @@ class SlideSurface(QWidget):
 
     def register_nodes(self):
         for index,page in self.pages.items():
+            if index in self.frozen:continue
             for widget in (page,*page.findChildren(QWidget)):
                 if getattr(widget,'_motion_style_only',False):continue
                 effect=widget.graphicsEffect()
@@ -86,6 +88,7 @@ class SlideSurface(QWidget):
     def invalidate(self,widget,rect=None):
         if self.closed or self.capturing or not isValid(widget):return
         index=self.nodes.get(widget);page=self.pages.get(index)
+        if index in self.frozen:return
         if page is None or not isValid(page):return
         if widget is not page and not page.isAncestorOf(widget):return
         if rect is None:rect=widget.rect()
@@ -94,6 +97,7 @@ class SlideSurface(QWidget):
         self.dirty[index]=self.dirty.get(index,QRegion()).united(region)
 
     def capture(self,index,rect=None):
+        if index in self.frozen and index in self.pictures:return
         page=self.pages.get(index)
         if page is None or not isValid(page):return
         self.capturing=True
@@ -110,6 +114,9 @@ class SlideSurface(QWidget):
                 painter.end()
         finally:self.capturing=False
         self.dirty.pop(index,None)
+
+    def freeze(self,index):
+        self.frozen.add(index);self.dirty.pop(index,None)
 
     def frame(self):
         if self.closed:return
@@ -129,12 +136,12 @@ class SlideSurface(QWidget):
     def eventFilter(self,widget,event):
         kind=event.type()
         if kind in (QEvent.Type.ChildAdded,QEvent.Type.ChildRemoved):
-            self.rescan=True
             index=self.nodes.get(widget)
-            if index in self.pages:self.dirty[index]=QRegion(self.pages[index].rect())
+            if index in self.pages and index not in self.frozen:
+                self.rescan=True;self.dirty[index]=QRegion(self.pages[index].rect())
         elif not self.capturing and kind in (QEvent.Type.LayoutRequest,QEvent.Type.Resize,QEvent.Type.StyleChange,QEvent.Type.Show,QEvent.Type.Hide):
             index=self.nodes.get(widget)
-            if index in self.pages:self.dirty[index]=QRegion(self.pages[index].rect())
+            if index in self.pages and index not in self.frozen:self.dirty[index]=QRegion(self.pages[index].rect())
         elif kind in (QEvent.Type.FocusIn,QEvent.Type.FocusOut,QEvent.Type.Enter,QEvent.Type.Leave,
                       QEvent.Type.HoverEnter,QEvent.Type.HoverLeave,QEvent.Type.MouseButtonPress,QEvent.Type.MouseButtonRelease):
             self.invalidate(widget)
@@ -151,4 +158,5 @@ class SlideSurface(QWidget):
             widget.removeEventFilter(self)
             widget._motion_surfaces=tuple(ref for ref in getattr(widget,'_motion_surfaces',()) if ref is not self.ref and ref() is not None)
         self.connections.clear();self.models.clear();self.effects.clear();self.nodes.clear();self.pages.clear();self.pictures.clear();self.dirty.clear()
+        self.frozen.clear()
         retire_widget(self.owner,self)

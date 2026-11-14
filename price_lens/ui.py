@@ -25,7 +25,8 @@ from .platform_paths import data_directory
 from .search import PriceSearch
 from .item_cards import item_caption,item_record,make_item_card,matches_item_card
 from .reference_details import EntryDetails
-from .motion import AnimatedTabs, ContentArea, CardArea, MotionLabel,StableScrollArea
+from .motion import AnimatedTabs, CardArea, MotionLabel,StableScrollArea
+from .price_views import PriceViews
 from .smooth_scroll import SmoothScrollArea
 from .fonts import interface_family
 from .branding import Brand
@@ -432,17 +433,11 @@ class LensWindow(QMainWindow):
         self.search_panel.catalog_retry.connect(self.retry_catalog)
         self.prices_layout=prices_layout
         prices_layout.addWidget(self.search_panel)
-        self.price_content=ContentArea()
+        self.price_content=PriceViews(self.search_panel.detail_scroll,self.scroll)
         self.price_content.frame_target=self.selected_detail_frame
-        self.price_content_layout=QVBoxLayout(self.price_content)
-        self.price_content_layout.setContentsMargins(0,0,0,0)
-        self.price_content_layout.setSpacing(8)
-        self.price_content_layout.addWidget(self.search_panel.detail_scroll,1)
-        self.search_panel.detail_scroll.hide()
-        self.onscreen_button=QPushButton("On-screen items")
-        self.onscreen_button.setCheckable(True);self.onscreen_button.toggled.connect(self.update_price_layout)
-        self.price_content_layout.addWidget(self.onscreen_button)
-        self.price_content_layout.addWidget(self.scroll,1)
+        self.onscreen_button=self.price_content.switch_button
+        self.price_content.view_changed.connect(self.update_price_layout)
+        self.search_panel.query_changing.connect(self.price_content.select_detail)
         prices_layout.addWidget(self.price_content,1)
         self.search_panel.detail_changing.connect(self.price_content.begin)
         self.search_panel.active_changed.connect(self.update_price_layout)
@@ -620,21 +615,12 @@ class LensWindow(QMainWindow):
         watching=self.search_panel.watched_items.expanded
         detail=bool(self.search_panel.selected or self.search_panel.pending_identity)
         active=bool(self.search_panel.query.text().strip() or detail or self.search_panel.watch_focus)
-        show=not active or self.onscreen_button.isChecked()
-        if not self.rows and not detail and not self.search_panel.query.text().strip():show=True
-        content_key=(detail,show)
-        if content_key!=getattr(self,'price_content_key',None):
-            if self.price_content.before is None:self.price_content.begin()
-            self.price_content_key=content_key
-        self.onscreen_button.setVisible(active and bool(self.rows))
-        self.onscreen_button.setText(f"On-screen items · {len(self.rows)}"+ (" ▾" if self.onscreen_button.isChecked() else " ▸"))
-        self.search_panel.detail_scroll.setVisible(detail)
-        self.scroll.setVisible(show)
-        self.scroll.setMaximumHeight(220 if detail else 16777215)
+        if not self.rows and not detail and not self.search_panel.query.text().strip():active=False
         self.summary.setVisible(bool(self.summary.text()))
-        self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.search_panel.detail_scroll),1 if detail else 0)
-        self.price_content_layout.setStretch(self.price_content_layout.indexOf(self.scroll),0 if detail else 1)
-        self.price_content.complete()
+        count=len(self.rows)+bool(self.tooltip_result)
+        available=bool(count or self.recent_items.rows_by_id)
+        changed=self.price_content.apply(detail=detail,active=active,count=count,available=available)
+        if changed and hasattr(self,'database_panel'):self.update_reference_context()
         self.update_shop_thumbnails()
         if watching:self.update_watched_quotes()
 
@@ -981,7 +967,7 @@ class LensWindow(QMainWindow):
     def update_reference_context(self):
         if not hasattr(self,'database_panel') or self.closing:return
         if self.tabs.currentIndex()==self.search_tab_index:
-            card=getattr(self.search_panel,'price_view',None) if self.search_panel.selected else self.visible_description_card()
+            card=getattr(self.search_panel,'price_view',None) if self.search_panel.selected and not self.search_panel.detail_scroll.isHidden() else self.visible_description_card()
             entry=card.source_entry() if isinstance(card,EntryDetails) and card.isVisible() else None
             self.reference.extra.select(entry);self.reference.sources.select(entry)
         self.database_panel.observe_media()
@@ -991,7 +977,7 @@ class LensWindow(QMainWindow):
 
     def selected_detail_frame(self):
         card=getattr(self.search_panel,'price_view',None)
-        if card is None or card.isHidden():return None
+        if card is None or card.isHidden() or self.search_panel.detail_scroll.isHidden():return None
         return card.summary_card if isinstance(card,EntryDetails) else card
 
     def description_frame(self):
@@ -999,7 +985,8 @@ class LensWindow(QMainWindow):
         return card.summary_card if card else None
 
     def price_reference_demand(self):
-        if self.search_panel.selected:return self.search_panel.reference_demand()
+        if self.tabs.currentIndex()!=self.search_tab_index or self.isMinimized():return []
+        if self.search_panel.selected and not self.search_panel.detail_scroll.isHidden():return self.search_panel.reference_demand()
         card=self.visible_description_card()
         return card.visible_urls() if card and self.tabs.currentIndex()==self.search_tab_index and not self.isMinimized() else []
 
@@ -1069,6 +1056,7 @@ class LensWindow(QMainWindow):
         window_size.remember(self)
 
     def on_search_item(self, item):
+        if hasattr(self,'price_content'):self.price_content.select_detail(item.game_id if item else None)
         if self.tabs.currentIndex() == self.search_tab_index:
             self.service.set_manual(item)
         if item and item.game_id in self.quotes:

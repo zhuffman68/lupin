@@ -1,5 +1,39 @@
 # Verification — 2026-11-13
 
+## Full-height Prices navigation and stable departure — 2026-11-14
+
+The complete regression run passes **1,483 tests, three skipped, 251.676 s**.
+The **57 final motion/navigation guards also pass at 2× scale**. GUI/helper QA
+uses private Xvfb, D-Bus and HOME/XDG, with software rendering and offline data.
+
+- On-screen items and selected details now occupy the same full-height area.
+  The return button preserves the selected card object, subtab and independent
+  scroll positions. Checks cover both 460/520-pixel widths, updates while the
+  card is hidden, shop closure, page changes, a new selection starting at the
+  top, query editing and rapid reversals. Hidden details release visible source,
+  listing and reference-image demand.
+- A rendered departure check exposed a real blank-image bug: the page was
+  captured after disabling its stack's painting. Capturing before that operation
+  preserves the actual open card. New tests compare the cached departure image
+  with the visible page's exact pixels, then change/hide children and verify
+  that the outgoing image stays fixed. The incoming page remains live; reversing
+  direction adopts its latest state. Buffers/observers still release at the end.
+- A private real-event-loop 60 fps recording with copied local reference/price
+  data covers full-list/detail swaps, leaving an open card, returning, and
+  leaving during its reveal. Rendered strips were inspected after the capture
+  fix. In that sequence these transitions have moving-frame gaps below 18 ms
+  and average paint CPU below 2 ms; no animation surfaces remain at idle.
+  Effects retain their 130/260 ms timing. This is an isolated Linux render
+  result, not a physical Windows/compositor guarantee.
+- One thumbnail-cancellation test had a scheduling race: a previously initiated
+  GET could reach its loopback server after abort. It now checks that no new
+  client requests start after cancellation, retaining the concurrency/queue
+  guards without relying on server-arrival timing.
+
+Implementation and demand contracts are in [ITEM_CARDS](docs/ITEM_CARDS.md).
+Private evidence is under `evidence/smooth-motion-2026-11-14/` (navigation
+recordings, guards and pixel checks). No installers or releases were built.
+
 ## Rendered card resizing and frame pacing — 2026-11-14
 
 The complete regression run passes **1,468 tests, three skipped, 202.542 s**.

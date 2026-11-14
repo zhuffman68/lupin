@@ -1,4 +1,4 @@
-"""Local item search with one explicit cached price lookup at a time."""
+"""Local item search and retained cards backed by the shared market snapshot."""
 import time
 
 from PySide6.QtCore import Qt, QTimer, Signal,QSize
@@ -23,6 +23,7 @@ from .smooth_scroll import SmoothListWidget
 
 class PriceSearch(QWidget):
     active_changed=Signal()
+    query_changing=Signal()
     detail_changing=Signal()
     item_selected = Signal(object)
     source_requested = Signal(str)
@@ -213,7 +214,7 @@ class PriceSearch(QWidget):
 
     def reference_demand(self):
         card=getattr(self,'price_view',None)
-        return card.visible_urls() if isinstance(card,EntryDetails) and self.selected and self.isVisible() and not self.window().isMinimized() else []
+        return card.visible_urls() if isinstance(card,EntryDetails) and self.selected and self.detail_scroll.isVisible() and not self.window().isMinimized() else []
 
     def reference_entry(self):
         card=getattr(self,'price_view',None)
@@ -292,6 +293,7 @@ class PriceSearch(QWidget):
         self.results_area.complete()
 
     def schedule_search(self):
+        self.query_changing.emit()
         if self.query.text().strip():self.watched_items.set_expanded(False)
         # Stop demand for the previous result immediately. Typing searches the
         # local catalog only; no suggestions trigger remote price requests.

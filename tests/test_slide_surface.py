@@ -107,5 +107,27 @@ class SlideSurfaceTests(unittest.TestCase):
                        Qt.KeyboardModifier.ControlModifier|Qt.KeyboardModifier.ShiftModifier)
         self.assertEqual(self.tabs.currentIndex(),0)
 
+    def test_departing_page_keeps_its_pixels_through_changes_and_child_hiding(self):
+        self.start();surface=self.tabs.surface;before=surface.pictures[0].toImage()
+        self.pages[0].caption.setText('Changed while departing');self.pages[0].caption.hide()
+        self.pages[0].layout().addWidget(MotionLabel('New layout'))
+        for clock in (100,150,210):
+            self.tabs.animation.setCurrentTime(clock);self.app.processEvents();surface.grab()
+            self.assertEqual(surface.pictures[0].toImage(),before)
+        self.pages[1].caption.setText('Incoming remains live');surface.grab()
+        self.assertEqual(surface.pictures[1].toImage(),self.pages[1].grab().toImage())
+
+    def test_departure_capture_contains_the_visible_page_before_paint_is_disabled(self):
+        before=self.pages[0].grab().toImage()
+        self.start()
+        self.assertEqual(self.tabs.surface.pictures[0].toImage(),before)
+
+    def test_reversing_a_slide_promotes_the_target_to_its_current_live_data(self):
+        self.start();surface=self.tabs.surface
+        self.pages[0].caption.setText('Latest data')
+        self.tabs.setCurrentIndex(0);self.tabs.animation.pause();self.app.processEvents();surface.grab()
+        self.assertNotIn(0,surface.frozen);self.assertIn(1,surface.frozen)
+        self.assertEqual(surface.pictures[0].toImage(),self.pages[0].grab().toImage())
+
 
 if __name__=='__main__':unittest.main()

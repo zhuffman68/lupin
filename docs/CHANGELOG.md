@@ -7,6 +7,10 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased — performance and resource improvements
 
+- On-screen items now use the available height, with a return button that keeps
+  the selected item's details and scroll position. Pages keep their contents
+  steady while sliding away, including during card refreshes and fades.
+
 - Smoother wheel scrolling and less work during page slides, watched-list
   expansion and rolling numbers. Item cards resize smoothly between details
   and different items, with steadier text and interrupted transitions. Full
