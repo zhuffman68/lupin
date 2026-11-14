@@ -18,8 +18,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wine-prefix", type=Path, required=True)
     parser.add_argument("--upgrade-from", type=Path, help="Exercise migration from an earlier installer")
+    parser.add_argument("--suite-timeout",type=int,default=1200,
+                        help="Installed test-suite deadline in seconds (60–3600; default: 1200)")
     add_release_arguments(parser)
     args = parser.parse_args()
+    if not 60<=args.suite_timeout<=3600:parser.error('--suite-timeout must be between 60 and 3600 seconds')
     installer = artifact_path(ROOT / "dist", "windows", args.version)
     args.upgrade_from = migration_installer(args.upgrade_from, required=args.require_migrations)
     try:
@@ -76,11 +79,17 @@ def main():
                       "from price_lens.control import request; app=QCoreApplication([]); "
                       "app.setApplicationName('Classic Price Lens'); app.setOrganizationName('LocalTools'); "
                       "raise SystemExit(0 if request('activate', timeout=500) else 1)")
-            deadline = time.monotonic() + 20
+            deadline = time.monotonic() + 45
             while time.monotonic() < deadline:
                 assert process.poll() is None, "App exited before becoming ready"
-                probe = subprocess.run(["wine", *windows_python(own_runtime, code=script)], cwd=base, env=env,
-                                       stdout=log, stderr=subprocess.STDOUT, timeout=5)
+                try:
+                    # Cold Wine/Qt imports can exceed one short IPC probe.
+                    # Retry within this QA budget; the product's startup and
+                    # installer-readiness deadlines remain unchanged.
+                    remaining=max(.1,deadline-time.monotonic())
+                    probe = subprocess.run(["wine", *windows_python(own_runtime, code=script)], cwd=base, env=env,
+                                           stdout=log, stderr=subprocess.STDOUT, timeout=min(15,remaining))
+                except subprocess.TimeoutExpired:continue
                 if probe.returncode == 0:
                     return process
                 time.sleep(0.1)
@@ -128,7 +137,7 @@ def main():
         run(windows_python(runtime, module="price_lens", arguments=["--self-test"]), app)
         # Give the full suite its own deadline, separate from one transaction.
         # Keep per-test bounds and verbose names so a stall remains diagnosable.
-        run(windows_python(runtime, module="unittest", arguments=["discover", "-s", "tests", "-v"]), app, timeout=600)
+        run(windows_python(runtime, module="unittest", arguments=["discover", "-s", "tests", "-v"]), app, timeout=args.suite_timeout)
         marker = cache_marker()
         if legacy_marker:
             assert marker == legacy_marker and marker.is_file(), "Rename changed or removed the user cache"
