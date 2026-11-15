@@ -760,6 +760,19 @@ elapsed clocks remain one-second and numeric snapshots two-second. Saved positio
 and display fractions are restored/clamped by `window_size.py`, without a later
 move to a different display.
 
+`CardArea` uses `card_list_motion.ListingFrame` for incremental listing changes
+with retained same-size cards in the same relative order. Existing cards keep
+one aligned image position while their neighbors enter/leave; only changed
+positions interpolate. This avoids crossfading two vertically offset copies of
+every existing row when adding an item to a store. The existing 180 ms canvas
+clock also controls height; no per-row timers or bitmap copies are added.
+Rows clip shared before/after QPixmaps in logical coordinates, retaining DPI.
+An interrupted transition captures its currently painted row positions, and
+quote deliveries refresh its destination without restarting it. Description
+replacements, changed card sizes and complete page swaps retain the ordinary
+card morph. Reduce motion remains immediate. All snapshots are presentation
+only; current observations alone authorize overlays, prices and shop actions.
+
 `ReferenceMedia` is the shared network/disk/decoded-image service. `ThumbnailCache`
 adapts exact item IDs to it; Prices and Database keep independent demand scopes.
 One bounded disk worker reads/decodes/persists images and coalesces maintenance.

@@ -11,6 +11,7 @@ from .widget_lifetime import retire_widget
 from .smooth_scroll import smooth_scrolling
 from .slide_surface import SlideSurface,invalidate_surface
 from .card_morph import CardMorph,capture_card,background
+from .card_list_motion import ListingFrame,incremental
 
 
 def enabled(widget):
@@ -289,6 +290,7 @@ class CardArea(QWidget):
     def __init__(self,parent=None):
         super().__init__(parent)
         self.content=QWidget(self);self.before=None;self.before_card=None;self.frame_target=None;self.outgoing=None
+        self.frame_items=None;self.before_items=None
         self.full_height=0;self.start_height=0;self.setFixedHeight(0)
         self.animation=QVariantAnimation(self);self.animation.setDuration(180)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
@@ -299,7 +301,10 @@ class CardArea(QWidget):
         current_height=self.height()
         pixels=(self.grab() if current_height>0 else QPixmap()) if enabled(self) else None
         card=card_pixels(self,pixels,root=self.content)
+        items=(self.outgoing.current_items() if isinstance(self.outgoing,ListingFrame)
+               else self.frame_items() if self.frame_items else None)
         self.finish();self.setFixedHeight(current_height);self.before=pixels;self.before_card=card;self.start_height=current_height
+        self.before_items=items
 
     def measure(self):
         layout=self.content.layout()
@@ -324,6 +329,7 @@ class CardArea(QWidget):
 
     def complete(self):
         pixels=self.before;old_card=self.before_card;self.before=None;self.before_card=None
+        old_items,self.before_items=self.before_items,None
         target=self.measure()
         if pixels is None and self.animation.state()!=self.animation.State.Stopped and enabled(self):
             # Quote/age changes update the destination pixels, without restarting
@@ -351,7 +357,9 @@ class CardArea(QWidget):
                 self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
             return
         after=self.content.grab() if self.full_height else QPixmap()
-        self.outgoing=_ContentFrame(pixels,after,self,old_card,card_pixels(self,after,current=True,root=self.content))
+        new_items=self.frame_items() if self.frame_items else None
+        self.outgoing=(ListingFrame(pixels,after,old_items,new_items,self) if incremental(old_items,new_items)
+                       else _ContentFrame(pixels,after,self,old_card,card_pixels(self,after,current=True,root=self.content)))
         self.outgoing.setGeometry(0,0,self.width(),max(self.start_height,self.full_height))
         self.content.hide();self.outgoing.show();self.outgoing.raise_()
         self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()
@@ -373,7 +381,7 @@ class CardArea(QWidget):
         if self.content.layout():self.content.layout().activate()
 
     def finish(self):
-        self.animation.stop();self.before=None;self.before_card=None
+        self.animation.stop();self.before=None;self.before_card=None;self.before_items=None
         if self.outgoing:
             retire_widget(self,self.outgoing);self.outgoing=None
         self.setFixedHeight(self.full_height)

@@ -386,6 +386,7 @@ class LensWindow(QMainWindow):
         self.cards_stack.setContentsMargins(0,0,0,0);self.cards_stack.setSpacing(0)
         self.card_area=CardArea(self.cards)
         self.card_area.frame_target=self.description_frame
+        self.card_area.frame_items=self.screen_card_frames
         card_content=QVBoxLayout(self.card_area.content);card_content.setContentsMargins(0,0,0,0);card_content.setSpacing(8)
         card_content.addWidget(self.summary)
         self.card_list=QWidget(self.card_area.content);card_content.addWidget(self.card_list)
@@ -987,6 +988,11 @@ class LensWindow(QMainWindow):
     def description_frame(self):
         card=next((card for card in getattr(self,'card_views',{}).values() if isinstance(card,EntryDetails) and not card.isHidden()),None)
         return card.summary_card if card else None
+
+    def screen_card_frames(self):
+        return {key:QRect(card.mapTo(self.card_area.content,QPoint()),card.size())
+                for key,card in getattr(self,'card_views',{}).items()
+                if isinstance(key[0],bool) and not card.isHidden() and hasattr(card,'update_data')}
 
     def price_reference_demand(self):
         if self.tabs.currentIndex()!=self.search_tab_index or self.isMinimized():return []

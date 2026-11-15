@@ -5,6 +5,12 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## Unreleased
+
+- Adding items to a player shop no longer fades and shifts the cards already
+  visible in Lupin. New/removed cards animate individually, with existing rows
+  moving smoothly when their position changes.
+
 ## 1.0.6
 
 See [the patch record](PATCH_1.0.6.md) for downloads, installation and verification.

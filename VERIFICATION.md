@@ -1,4 +1,34 @@
-# Verification — 2026-11-14
+# Verification — 2026-11-15
+
+## Incremental shop-card transitions — unreleased
+
+Adding a listing replayed the entire active-card canvas's 180 ms fade/vertical
+offset, including rows which had not changed. A rendered append reproduction
+changed over 11,000 pixels of the existing card and visibly doubled its text.
+Incremental row snapshots now keep matched content at one position, interpolate
+only changed positions and fade new/removed rows independently. Interrupted
+insertion and quote delivery preserve the current frame and animation clock.
+The original canvas timing, detail morphs and Reduce motion remain intact.
+
+The **198 affected UI checks pass in 83.451 s**, covering the six new insertion,
+removal, interruption, quote-update and reduced-motion cases alongside shop,
+inventory, history, detail-navigation, resize and widget-retirement checks.
+The six new checks also pass with real xcb/software rendering at **2× DPI** in
+**5.670 s**. Pixel comparisons permit only one-channel alpha rounding, rejecting
+the original displaced/doubled text. The initial xcb run of older context
+fixtures used a 1920×1080 display against their fixed 800×800 captures; rerunning
+those contracts with their normal offscreen screen geometry passes, without
+changing recognition or overlay admission.
+
+A private 12-transition event-loop sample records **118 painted frames**, mean
+**0.523 ms** and maximum **1.069 ms** paint CPU. Each transition shares exactly
+two underlying snapshot buffers across all its rows; no per-row bitmap or timer
+is added. After motion, no listing-frame paint occurs during a 600 ms idle sample
+and no transition frame remains retained. Preparation is separate, reaching
+**53.319 ms** in this fixture; this is not a promise of physical frame rate,
+OCR latency or native Windows performance. The changes are GUI-only.
+
+Private evidence: `evidence/shop-insertion-flash-2026-11-15/`.
 
 ## Lupin 1.0.6 release
 
