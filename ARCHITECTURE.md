@@ -925,7 +925,10 @@ its title. `tooltip_association.rs` binds these frames to inventory sources.
 The inventory need not touch the capture edge, and the comparison's right edge
 need not align with the inventory. Native tabs, controls, the hovered grid cell,
 top cap and two adjacent horizontal frames establish the primary-left layout
-before OCR. Unsupported or ambiguous layouts are rejected rather
+before OCR. Two independently capped descriptions may have different widths
+and align at either their tops or fitted bottoms. Incomplete sibling recovery
+keeps the narrower top-aligned, similar-width family; arbitrary separated or
+offset panels cannot establish a positive role. Unsupported or ambiguous layouts are rejected rather
 than choosing the closest title. Verified standalone inventory descriptions carry
 the same cell/header binding. Single/equipped/linked descriptions outside that
 source retain their ordinary path, with explicit `tooltipPanel` geometry when a
@@ -947,6 +950,10 @@ and complete current title ink, `PrimaryTitles` reads only that bounded header
 at two agreeing resamplings, caching at most 16 results. It never borrows a
 comparison title, previous item name or hidden text. Unprovable paired roles
 remain rejected; ordinary single/equipped/linked descriptions retain their path.
+Source-bound marker OCR failures also use that complete measured header rather
+than searching another title. An explicit retry can replace a truncated first
+fragment with the two-read complete header. The marker cache replaces its prior
+fragment for those same current pixels instead of returning the earlier entry.
 
 `tooltip_association.py` validates this native metadata in the same pixel space
 as the recognized name. Version-three metadata carries separate primary/comparison
@@ -964,6 +971,12 @@ retained card and brief OCR bridge. Python geometry preserves separate native
 panels instead of joining their translucent backgrounds. Annotation placement
 avoids the complete source and both native panels; when no safe placement fits, it withholds the
 card. These are screen-image proofs with no game-window identity or fuzzy names.
+Within the same source cell, retained panels can clamp independently along the
+pointer's movement axes. At most four candidate positions per pane are checked,
+with shared source/header validation and the complete current primary title.
+Both native frames must remain present and horizontally adjoining with overlapping
+bodies. This continuity path preserves an established identity only; it cannot
+select a new item, swap primary/comparison roles or supply a new shop offer.
 Inventory annotation commands name the verified primary `description_box` and
 optional `comparison_box` separately from protected inventory geometry. Placement
 prefers an eight-pixel gap directly above the primary, shifting horizontally to

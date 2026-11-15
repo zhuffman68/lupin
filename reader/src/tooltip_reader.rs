@@ -69,17 +69,28 @@ impl TooltipReader {
             let reader=self.reader.get_or_insert_with(ItemTooltipReader::bundled);
             value["tooltip"]=serde_json::to_value(reader.read(&tooltip_capture).tooltip)?;
             if !value["tooltip"]["found"]["name"].is_string() {
-                let popup=if let Some(title)=self.centered.read(&tooltip_capture) {
+                let popup=if let Some(header)=primary_header {
+                    // A source-bound description already has a measured title
+                    // lane. Read that complete lane instead of searching a
+                    // generic popup; a wide name must not become stat text or
+                    // the equipped comparison merely because its bullet fails.
+                    self.primary.read(&tooltip_capture,header)
+                } else if let Some(title)=self.centered.read(&tooltip_capture) {
                     marker_title=false;Some(title)
                 } else {tooltip_text::popup(reader,&mut tooltip_capture)};
                 if let Some(popup)=popup {
                     value["tooltip"]=serde_json::to_value(popup)?;
-                    value["tooltip"]["found"]["pinned"]=json!(true);
+                    if primary_header.is_none() {value["tooltip"]["found"]["pinned"]=json!(true);}
                 }
             }
         }
-        if marker_source && !cached && let Some(header)=primary_header {
-            self.markers.remember(&tooltip_capture,header,&value["tooltip"]);
+        if retry && marker_source && let Some(header)=primary_header {
+            // Retrying only the first measured fragment cannot recover a wide
+            // title cut short at an OCR word gap. Two agreeing bounded reads
+            // of the current full header can; no catalog guessing is involved.
+            if let Some(complete)=self.primary.read(&tooltip_capture,header) {
+                value["tooltip"]=serde_json::to_value(complete)?;
+            }
         }
         if retry {
             let found=&value["tooltip"]["found"];
@@ -88,6 +99,9 @@ impl TooltipReader {
                     &tooltip_capture.frame,tooltip_capture.origin,found,marker_title));
             }
             value["tooltipRetried"]=json!(true);
+        }
+        if marker_source && (!cached || retry) && let Some(header)=primary_header {
+            self.markers.remember(&tooltip_capture,header,&value["tooltip"]);
         }
         if association.panel.is_none() {
             value["tooltipPanel"]=tooltip_frame::export_for_title(

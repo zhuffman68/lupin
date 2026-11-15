@@ -1,5 +1,62 @@
 # Verification — 2026-11-15
 
+## Inventory comparison and wide-title recovery — unreleased
+
+Generated native-frame replays reproduce two acquisition failures: complete
+comparison descriptions with unequal widths or fitted bottom alignment were
+rejected, and a wide title whose first OCR fragment ended at a large word gap
+kept returning that same fragment on retry. Ten positive layout subcases and
+the complete-title retry/cache case fail against the previous reader.
+
+Two independently capped frames can now differ in width and align at either
+their tops or bottoms. Partial-frame recovery keeps its stricter layout limits.
+The source/header/cell, both current native frames and the primary's title still
+authorize the inventory item. Small independently clamped panel movements reuse
+those same proofs, without selecting the equipped comparison. A requested retry
+uses two agreeing reads of the complete measured primary header and replaces
+the fragment in its bounded recognition cache. Generic/shop ownership rules and
+exact catalog admission are unchanged.
+
+All **79 Rust tests** pass, and **23 generated native-reader tests** pass in
+**101.029 s**, including different-width/bottom-fit pairs with and without a
+shop, rejected arbitrary offsets/partial frames, complete long-title recovery,
+and wide use-tab scrolls at 1×, 1.25× and 2× scale. The generated-frame tests use
+the actual rebuilt musl reader. The final affected Python UI/overlay suite passes
+**239 tests in 123.814 s**, including bounded per-pane checks, unchanged-source
+cache invalidation and four native-to-GUI-to-canvas placement cases. An initial
+combined runner hit its 180-second QA limit; the completed rerun uses a larger
+test-runner allowance, without changing any application scan/startup deadline.
+
+All **26 saved manual/automatic inventory cases** still produce the expected
+result through real request scheduling, native IPC, current-frame admission and
+GUI annotations: 20 positive cases, six expected rejections and no wrong item IDs.
+The saved-capture run uses fake market/media/annotation sinks; the separate four
+generated placement cases use the real offscreen annotation canvas. Concurrent
+QA load affected wall-clock first-result times, so these are recognition and
+admission results rather than a live response-time guarantee.
+
+A controlled 30-frame CPU sample compares source `1a14d55` with this change:
+
+| Current proof | Previous median CPU | Current median CPU | Accepted before → after |
+| --- | --- | --- | --- |
+| Stationary panels | 4.363 ms | 4.320 ms | 30 → 30 |
+| Shared panel movement | 6.790 ms | 6.934 ms | 30 → 30 |
+| Independently clamped comparison | 10.840 ms | 8.622 ms | 0 → 30 |
+
+The installed baseline reader's SHA-256 matches the 1.0.6 build record. Alternating
+20-request native samples retain 18 cache hits in both versions; their warm title
+medians are 10.264–11.297 ms before and 11.314–12.469 ms afterward, with variable
+wall-clock outliers. Full-header recognition is limited to explicit retries or
+unreadable bound titles; there is no new idle timer, model or price request.
+
+QA uses private Xvfb/D-Bus/HOME/XDG environments with software rendering and
+generated/saved pixels only. No game input, hooks, game-process inspection or new
+sharing session is used. Native Windows capture and the user's currently hovered
+items are not independently confirmed by these fixtures. No installer or public
+release is produced for this change.
+
+Private evidence: `evidence/paired-inventory-2026-11-15/`.
+
 ## Incremental shop-card transitions — unreleased
 
 Adding a listing replayed the entire active-card canvas's 180 ms fade/vertical

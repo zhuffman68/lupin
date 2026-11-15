@@ -10,6 +10,12 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 - Adding items to a player shop no longer fades and shifts the cards already
   visible in Lupin. New/removed cards animate individually, with existing rows
   moving smoothly when their position changes.
+- Inventory comparison descriptions can use different widths or fit against
+  the bottom edge without losing the hovered item's price. Small independent
+  panel movements retain the same verified item while the pointer stays in its
+  inventory cell.
+- Long inventory titles retry the complete visible name line instead of the
+  first OCR fragment, improving wide scroll descriptions without guessing names.
 
 ## 1.0.6
 

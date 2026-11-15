@@ -79,6 +79,10 @@ impl MarkerTitles {
             || i64::from(found.y)+i64::from(found.height)>i64::from(area.y)+i64::from(area.height) {return}
         let Some(key)=marker_key(capture,area) else {return};
         let relative=ScreenRect{x:found.x-area.x,y:found.y-area.y,width:found.width,height:found.height};
+        if let Some(index)=self.cache.iter().position(|(old,_,_)|*old==key) {
+            if self.cache[index].1==relative && self.cache[index].2==name {return}
+            self.cache.remove(index);
+        }
         if self.cache.len()>=16 {self.cache.pop_front();}
         self.cache.push_back((key,relative,name));
     }
@@ -248,6 +252,19 @@ mod tests {
         }
         assert_eq!(cache.cache.len(),16);
         assert!(cache.get(&capture,area).is_none());
+    }
+
+    #[test]
+    fn a_complete_header_retry_replaces_its_earlier_fragment_in_the_marker_cache() {
+        let (capture,area,complete)=marker_fixture();let mut cache=MarkerTitles::default();
+        let mut fragment=complete.clone();fragment["found"]["name"]=serde_json::json!("Fixture");
+        fragment["found"]["area"]["width"]=serde_json::json!(44);
+        cache.remember(&capture,area,&fragment);
+        cache.remember(&capture,area,&complete);
+        assert_eq!(cache.cache.len(),1);
+        assert_eq!(serde_json::to_value(cache.get(&capture,area).unwrap()).unwrap(),complete);
+        cache.remember(&capture,area,&complete);
+        assert_eq!(cache.cache.len(),1);
     }
 
     #[test]

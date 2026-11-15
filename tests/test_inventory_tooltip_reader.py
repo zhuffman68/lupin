@@ -30,7 +30,8 @@ class InventoryTooltipReaderTests(unittest.TestCase):
         cls.font=QFont(QFontDatabase.applicationFontFamilies(font_id)[0]);cls.font.setPixelSize(14)
 
     def frame(self,*,marker=True,header=True,title=True,comparison=True,primary=True,shop=False,
-              tab=0,primary_name='Emerald Staff',single_name='Mithril Pole Arm'):
+              tab=0,primary_name='Emerald Staff',single_name='Mithril Pole Arm',
+              primary_rect=(1024,180,236,270),comparison_rect=(1263,180,236,240)):
         image=QImage(1500,900,QImage.Format.Format_RGBA8888);image.fill(QColor(20,35,20))
         painter=QPainter(image);painter.setFont(self.font)
         ix,iy=1293,90
@@ -43,32 +44,33 @@ class InventoryTooltipReaderTests(unittest.TestCase):
             painter.fillRect(ix+6+33*index,iy+23,29,17,
                 QColor(234,101,129) if index==tab else QColor(180,180,180))
         if not header:painter.fillRect(ix+4,iy+21,33,21,QColor(40,40,70))
-        for x,height,name,visible,is_primary in [
-            (1024,270,primary_name,primary,True),
-            (1263,240,single_name,comparison,False)]:
+        for (x,y,width,height),name,visible,is_primary in [
+            (primary_rect,primary_name,primary,True),
+            (comparison_rect,single_name,comparison,False)]:
             if not visible:continue
-            painter.fillRect(x,180,236,height,QColor(30,30,70))
-            painter.fillRect(x+1,180,1,height,QColor(190,190,205))
-            painter.fillRect(x+234,180,1,height,QColor(190,190,205))
-            painter.fillRect(x,181,236,1,QColor(190,190,205))
+            painter.fillRect(x,y,width,height,QColor(30,30,70))
+            painter.fillRect(x+1,y,1,height,QColor(190,190,205))
+            painter.fillRect(x+width-2,y,1,height,QColor(190,190,205))
+            painter.fillRect(x,y+1,width,1,QColor(190,190,205))
             if marker or not is_primary:
-                for y in range(5):
+                for dy in range(5):
                     for dx in range(5):
-                        if abs(dx-2)+abs(y-2)<=2:
-                            painter.fillRect(x+9+dx,195+y,1,1,QColor(85,204,255))
+                        if abs(dx-2)+abs(dy-2)<=2:
+                            painter.fillRect(x+9+dx,y+15+dy,1,1,QColor(85,204,255))
             if title or not is_primary:
-                painter.setPen(QColor(240,240,240));painter.drawText(x+17,203,name)
+                painter.setPen(QColor(240,240,240));painter.drawText(x+17,y+23,name)
         if shop:
             painter.drawImage(20,500,QImage(str(ROOT/'vendor/minerva/samples/player-shop/ideal-ratio-weapons-and-a-robe.png')))
         painter.end();return image
 
-    def read(self,images,*,pointer=(1378,152),annotations=(),inventory_only=False,progressive=False):
+    def read(self,images,*,pointer=(1378,152),annotations=(),inventory_only=False,progressive=False,retry=True):
         if isinstance(images,QImage):images=[images]
         with tempfile.TemporaryDirectory(prefix='lupin-generated-inventory-') as directory:
             requests=[]
             for index,image in enumerate(images):
                 path=Path(directory)/f'{index}.png';self.assertTrue(image.save(str(path)))
-                requests.append(dict(path=str(path),at_ms=index,tooltip=True,tooltip_retry=True,
+                requests.append(dict(path=str(path),at_ms=index,tooltip=True,
+                    tooltip_retry=retry if isinstance(retry,bool) else retry[index],
                     inventory_only=inventory_only,progressive_tooltip=progressive,progressive_shop=progressive,
                     pointer=dict(zip(('x','y'),pointer)),
                     annotations=[dict(zip(('x','y','width','height'),rect.getRect())) for rect in annotations]))
@@ -90,6 +92,69 @@ class InventoryTooltipReaderTests(unittest.TestCase):
             self.assertEqual(value['tooltip']['found']['name'],'Emerald Staff')
             self.assertFalse(value.get('shopPartial',False))
             self.assertFalse(value['inventoryProbe']['absent'])
+
+    def test_independently_capped_pairs_allow_different_widths_and_fitted_bottoms(self):
+        from price_lens.tooltip_association import TooltipAssociation
+        layouts=(
+            ((863,180,400,300),(1266,180,232,240)),
+            ((863,180,236,300),(1102,180,397,240)),
+            ((1024,280,236,200),(1263,180,236,300)),
+            ((1024,180,236,300),(1263,280,236,200)),
+            ((863,280,400,200),(1266,180,232,300)),
+        )
+        for primary,comparison in layouts:
+            for shop in (False,True):
+                with self.subTest(primary=primary,comparison=comparison,shop=shop):
+                    image=self.frame(primary_rect=primary,comparison_rect=comparison,shop=shop)
+                    result=self.read(image,inventory_only=shop,retry=False)[0]
+                    self.assertEqual(result['tooltipAssociation']['state'],'inventory-primary')
+                    self.assertEqual(result['tooltip']['found']['name'],'Emerald Staff')
+                    self.assertEqual(result['tooltipAssociation']['panel']['width'],primary[2])
+                    self.assertEqual(result['tooltipAssociation']['panel']['y'],primary[1])
+                    proof=TooltipAssociation.from_result(result,image,pointer=(1378,152))
+                    self.assertIsNotNone(proof);self.assertTrue(proof.matches(image,(1378,152)))
+
+    def test_arbitrary_vertical_offsets_and_incomplete_wide_pairs_remain_unbound(self):
+        for offset in (8,30):
+            with self.subTest(offset=offset):
+                image=self.frame(comparison_rect=(1263,180+offset,236,210))
+                result=self.read(image)[0]
+                self.assertEqual(result['tooltipAssociation']['state'],'rejected')
+                self.assertEqual(result['tooltip'],'none')
+        image=self.frame(primary_rect=(863,180,400,300),comparison_rect=(1266,180,232,240))
+        painter=QPainter(image);painter.fillRect(863,180,400,3,QColor(30,30,70));painter.end()
+        result=self.read(image)[0]
+        self.assertEqual(result['tooltipAssociation']['state'],'rejected')
+        self.assertEqual(result['tooltip'],'none')
+
+    def test_wide_scroll_retry_recovers_the_complete_current_header_after_a_short_fragment(self):
+        # A large word gap ends the marker reader's first fragment. Retrying
+        # just that fragment cannot see the remaining words even though the
+        # entire current native title is exposed inside the verified frame.
+        image=self.frame(primary=False,comparison_rect=(899,180,600,250),tab=1,
+                         single_name='Overall    DEX Greater')
+        first,retried,cached=self.read([image,image,image],retry=(False,True,False),inventory_only=True)
+        self.assertNotEqual(first['tooltip']['found']['name'],'Overall DEX Greater')
+        for result in (retried,cached):
+            self.assertEqual(result['tooltipAssociation']['layout'],'single')
+            self.assertEqual(result['tooltip']['found']['name'],'Overall DEX Greater')
+            self.assertGreater(result['tooltip']['found']['area']['width'],first['tooltip']['found']['area']['width'])
+        self.assertTrue(cached['tooltipCacheHit'])
+
+    def test_wide_scrolls_bind_without_retry_on_use_tab_at_multiple_scales(self):
+        from price_lens.tooltip_association import TooltipAssociation
+        for scale in (1,1.25,2):
+            for name in ('One-Handed Axe Attack Scroll: Intermediate','Bottomwear HP Scroll: Greater'):
+                with self.subTest(scale=scale,name=name):
+                    image=self.frame(primary=False,comparison_rect=(899,180,600,250),tab=1,single_name=name,shop=True)
+                    image=image.scaled(round(image.width()*scale),round(image.height()*scale),
+                        Qt.AspectRatioMode.IgnoreAspectRatio,Qt.TransformationMode.FastTransformation)
+                    pointer=(round(1378*scale),round(152*scale))
+                    result=self.read(image,pointer=pointer,retry=False,inventory_only=True)[0]
+                    self.assertEqual(result['tooltipAssociation']['layout'],'single')
+                    self.assertEqual(result['tooltip']['found']['name'],name)
+                    proof=TooltipAssociation.from_result(result,image,pointer=pointer)
+                    self.assertIsNotNone(proof);self.assertTrue(proof.matches(image,pointer))
 
     def test_shop_probe_cannot_promote_an_unbound_description_to_inventory(self):
         result=self.read(self.frame(primary=False,shop=True),pointer=(1250,150),inventory_only=True)[0]

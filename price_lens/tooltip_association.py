@@ -214,6 +214,8 @@ class TooltipAssociation:
 
     def at_current_position(self,image,pointer,*,exclude=()):
         """Reanchor only the same source-bound title on current native frames."""
+        exclude=tuple(exclude)
+        if len(exclude)>64 or any(not isinstance(rect,QRect) for rect in exclude):return None
         point=_point(pointer);anchor=self.panel_pointer or self.read_pointer
         if self.matches(image,pointer,exclude=exclude):
             return self if point==anchor else replace(self,panel_pointer=point)
@@ -224,31 +226,64 @@ class TooltipAssociation:
         if any(rect.intersects(frame) for rect in self.regions[1:]
                for frame in (self.panel,*((self.comparison,) if self.comparison is not None else ()))):return None
         dx,dy=point[0]-anchor[0],point[1]-anchor[1]
-        offsets=list(dict.fromkeys(((dx,dy),(dx,0),(0,dy))))
+        offsets=list(dict.fromkeys(((dx,dy),(dx,0),(0,dy),(0,0))))
+        if not self._source_current(image,point)[0]:return None
+        scale=self.source.width()/207
+        # Native panels can clamp independently at an edge. Check at most
+        # four positions per pane, sharing the source/header work; do not run
+        # a full source/title proof for every combination of their positions.
+        comparison_frames={}
         for x,y in offsets:
-            if x==0 and y==0:continue
             panel=self.panel.translated(x,y)
-            comparison=self.comparison.translated(x,y) if self.comparison is not None else None
+            if panel.contains(QPoint(*point)):continue
+            if not verified_frame(image,panel,scale=scale,cap=self.frame_caps[0],exclude=exclude):continue
             title=replace(self.title,rect=QRect(*self.title.rect).translated(x,y).getRect(),
                           panel=panel.getRect(),
                           pointer=(self.title.pointer[0]+x,self.title.pointer[1]+y) if self.title.pointer else None,
                           exclude=tuple(QRect(*r).translated(x,y).getRect() for r in self.title.exclude))
+            if not title.matches(image,panel=panel,pointer=point,antialias=True,exclude=exclude):continue
+            # Prefer their shared movement. The fallback remains a nearby
+            # horizontal pair with overlapping bodies, never a role swap or
+            # a distant frame. Only this already proved item can be retained.
+            comparison=None
+            if self.comparison is not None:
+                for offset in dict.fromkeys(((x,y),*offsets)):
+                    rect=self.comparison.translated(*offset)
+                    if (rect.contains(QPoint(*point)) or not 0<=rect.left()-panel.right()-1<=8*scale
+                            or min(rect.bottom(),panel.bottom())-max(rect.top(),panel.top())+1
+                                <min(rect.height(),panel.height())/2):continue
+                    if offset not in comparison_frames:
+                        comparison_frames[offset]=verified_frame(image,rect,scale=scale,
+                                                                cap=self.frame_caps[1],exclude=exclude)
+                    if comparison_frames[offset]:comparison=rect;break
+            if self.comparison is not None and comparison is None:continue
             candidate=replace(self,panel=panel,comparison=comparison,title=title,
                               regions=(self.regions[0].translated(x,y),*self.regions[1:]),panel_pointer=point)
-            if candidate.matches(image,point,exclude=exclude):return candidate
+            # Every constituent has just been checked against this exact owned
+            # frame, pointer and masks. Reuse that decision downstream rather
+            # than immediately repeating source/header/title/frame work.
+            key=(image.cacheKey(),point,tuple(rect.getRect() for rect in exclude))
+            candidate._matches_cache[key]=(True,None)
+            return candidate
         return None
+
+    def _source_current(self,image,pointer):
+        if any(not image.rect().contains(rect) for rect in (self.source,self.slot)):return False,'bounds'
+        if not self._slot_matches(image,pointer):return False,'cell'
+        if self.header is not None and not self.header.matches(image):return False,'header'
+        if not all(image.rect().contains(rect) and _fingerprint(image,rect)==proof
+                   for rect,proof in zip(self.regions[1:],self.fingerprints[1:])):return False,'guard'
+        return True,None
 
     def _matches_current(self,image,pointer,exclude):
         if any(not image.rect().contains(rect) for rect in
                (self.source,self.slot,self.panel,*((self.comparison,) if self.comparison is not None else ()))):return False,'bounds'
         frames=(self.panel,self.comparison) if self.comparison is not None else (self.panel,)
-        if not self._slot_matches(image,pointer):return False,'cell'
-        if self.header is not None and not self.header.matches(image):return False,'header'
+        if any(rect.contains(QPoint(*_point(pointer))) for rect in frames):return False,'pointer'
+        valid,reason=self._source_current(image,pointer)
+        if not valid:return False,reason
         if not all(verified_frame(image,rect,scale=self.source.width()/207,cap=cap,exclude=exclude)
                    for rect,cap in zip(frames,self.frame_caps)):return False,'frame'
         if not (self.title.matches(image,panel=self.panel,pointer=pointer,antialias=True,exclude=exclude) if self.title is not None
                 else _fingerprint(image,self.regions[0])==self.fingerprints[0]):return False,'title'
-        if not all(
-            image.rect().contains(rect) and _fingerprint(image,rect)==proof
-            for rect,proof in zip(self.regions[1:],self.fingerprints[1:])):return False,'guard'
         return True,None

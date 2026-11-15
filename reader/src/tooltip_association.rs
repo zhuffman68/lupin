@@ -247,11 +247,19 @@ fn source(
 }
 
 fn adjoining(a: Panel, b: Panel, s: f32) -> bool {
-    a.rect.right() <= b.rect.x
-        && b.rect.x - a.rect.right() <= (8.0 * s).ceil() as u32
-        && a.rect.y.abs_diff(b.rect.y) <= (4.0 * s).ceil() as u32
-        && a.rect.w as f32 / b.rect.w as f32 >= 0.7
-        && a.rect.w as f32 / b.rect.w as f32 <= 1.4
+    if a.rect.right() > b.rect.x
+        || b.rect.x - a.rect.right() > (8.0 * s).ceil() as u32 {return false}
+    let tolerance=(4.0*s).ceil() as u32;
+    let same_top=a.rect.y.abs_diff(b.rect.y)<=tolerance;
+    // Complete independent frames do not need equal widths. Fitting a pair
+    // above the bottom edge can also align their bottoms rather than their
+    // tops. Incomplete sibling recovery retains its narrower layout family;
+    // a stray rail may not widen that ambiguity into a positive inventory ID.
+    if a.cap && b.cap {
+        same_top || a.rect.bottom().abs_diff(b.rect.bottom())<=tolerance
+    } else {
+        same_top && (0.7..=1.4).contains(&(a.rect.w as f32/b.rect.w as f32))
+    }
 }
 
 fn paired(a: Panel, b: Panel, s: f32) -> bool {
@@ -577,7 +585,7 @@ impl Selector {
             let near_source = slot.is_some_and(|slot| {
                 i64::from(a.rect.x) <= i64::from(slot.right()) + margin
                     && i64::from(b.rect.right()) + margin >= i64::from(slot.x)
-                    && i64::from(a.rect.y) <= i64::from(slot.bottom()) + margin
+                    && i64::from(a.rect.y.min(b.rect.y)) <= i64::from(slot.bottom()) + margin
                     && i64::from(a.rect.bottom().max(b.rect.bottom())) + margin >= i64::from(slot.y)
             });
             if paired(a,b,s) && near_source && (a.marker || a.cap)

@@ -38,7 +38,11 @@ pointer movements; they do not inherit inventory-cell authority.
 
 For modern independently bound inventory proofs, pointer movement within the
 same verified cell can propose a translation of the measured native panes.
-The bounded candidates are the pointer delta and its two axis projections.
+The bounded candidates are the pointer delta, its two axis projections and
+the unchanged position, checked independently for each pane. This handles
+one description reaching a screen edge before its comparison. At most four
+positions per pane are tested, with shared source/header/cell work; their
+current bodies must still overlap vertically and retain the horizontal seam.
 Both panes, source/header/cell evidence and the translated title must still pass
 the existing current-pixel checks. An out-of-image cap, unknown source or changed
 opaque title is rejected. The reference keeps its exact identity and changes
@@ -48,6 +52,14 @@ Capture can reuse such a current source-bound proof after pointer movement
 instead of treating every within-cell movement as a reason to repeat OCR.
 Generic title/fingerprint shortcuts still require a stationary pointer.
 Explicit retries and changed shop pixels retain their normal scheduling.
+
+Two independently complete capped frames can establish the inventory-primary
+role with different widths or fitted bottom alignment. Incomplete sibling
+recovery keeps its tighter top/width constraints. A failed source-bound title
+uses its current full measured header instead of generic popup searches. Explicit
+retries can replace a short OCR fragment only after two full-header readings
+agree; subsequent unchanged-title cache hits return that complete reading.
+Neither path guesses a name or borrows the comparison's title.
 
 The annotation's pointer region is the actual proved inventory cell, transformed
 into screen coordinates, rather than the entire game area. Scaled cells retain

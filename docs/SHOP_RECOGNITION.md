@@ -105,6 +105,16 @@ reanchor the panes after revalidating all proofs. This does not authorize a
 shop-origin description, a new item or a fresh asking amount. The annotation
 avoids both captured and predicted pane positions; see
 [the stability record](BLUE_DESCRIPTION_STABILITY.md).
+Two separately capped comparison descriptions may differ in width or align at
+their fitted bottoms. Partial-frame sibling recovery retains its stricter
+top/width constraints. Current-source continuity permits independently clamped
+panes within the same cell, checking at most four positions per pane against
+their current rails/caps and the unchanged primary title. Source/header/cell
+changes still retire the reference; the comparison never supplies its name.
+An unreadable source-bound title retries only its measured header, and an
+explicit OCR retry reads that full header at two agreeing resamplings rather
+than repeatedly recognizing a clipped first fragment. Exact catalog admission,
+shop-hover suppression and NPC ownership stay independent and unchanged.
 Inventory acquisition checks all six selected-tab positions. The same measured
 source/header/grid/panel proof applies to non-equipment single descriptions;
 they do not have to use the generic shop-hover path. A tab change invalidates

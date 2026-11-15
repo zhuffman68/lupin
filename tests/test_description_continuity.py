@@ -112,6 +112,64 @@ class DescriptionContinuityTests(unittest.TestCase):
         changed.setPixelColor(self.context.slot.left()+5,self.context.slot.top()+2,QColor('red'))
         self.assertIsNone(reference.observe(None,changed,point,now=10))
 
+    def move_panels(self,primary_offset,comparison_offset):
+        from PySide6.QtGui import QPainter
+        changed=QImage(self.image);painter=QPainter(changed)
+        for panel in (self.context.panel,self.context.comparison):painter.fillRect(panel,QColor('#142314'))
+        for panel,offset in ((self.context.panel,primary_offset),(self.context.comparison,comparison_offset)):
+            painter.drawImage(panel.topLeft()+QPoint(*offset),self.image.copy(panel))
+        painter.end();return changed
+
+    def test_a_comparison_can_clamp_independently_without_losing_the_hovered_price(self):
+        for primary,comparison in (((-2,3),(0,3)),((0,3),(-2,3)),
+                                   ((-2,3),(-2,0)),((-2,0),(-2,3)),((0,0),(-2,3))):
+            with self.subTest(primary=primary,comparison=comparison):
+                reference=self.reference();changed=self.move_panels(primary,comparison)
+                point=(self.pointer[0]-2,self.pointer[1]+3)
+                held=reference.observe(None,changed,point,now=20)
+                self.assertIsNotNone(held);self.assertEqual(held['name'],'Emerald Staff')
+                self.assertEqual(reference.context.panel,self.context.panel.translated(*primary))
+                self.assertEqual(reference.context.comparison,self.context.comparison.translated(*comparison))
+                self.assertTrue(reference.context.matches(changed,point))
+
+    def test_independent_pane_motion_keeps_source_title_and_pair_separation_checks(self):
+        for field in ('source','header','title','seam','mask'):
+            with self.subTest(field=field):
+                point=(self.pointer[0]-2,self.pointer[1]+3)
+                reference=self.reference();changed=self.move_panels((-2,3),(0,3))
+                if field=='source':changed.setPixelColor(self.context.slot.left()+5,self.context.slot.top()+2,QColor('red'))
+                elif field=='header':changed.setPixelColor(self.context.source.left()+12,self.context.source.top()+7,QColor('red'))
+                elif field=='title':
+                    rect=QRect(*self.context.title.rect).translated(-2,3)
+                    pixel=next((x,y) for y in range(rect.top(),rect.bottom()+1) for x in range(rect.left(),rect.right()+1)
+                               if min(changed.pixelColor(x,y).getRgb()[:3])>230)
+                    changed.setPixelColor(*pixel,QColor('#142314'))
+                elif field=='seam':
+                    changed=self.move_panels((-10,3),(0,3));point=(self.pointer[0]-10,self.pointer[1]+3)
+                masks=[object()] if field=='mask' else ()
+                self.assertIsNone(reference.current(changed,point,exclude=masks))
+
+    def test_independent_pane_reanchoring_checks_each_position_a_bounded_number_of_times(self):
+        from unittest.mock import patch
+        from price_lens.tooltip_geometry import verified_frame
+        changed=self.move_panels((-2,3),(0,3));point=(self.pointer[0]-2,self.pointer[1]+3)
+        with patch('price_lens.tooltip_association.verified_frame',wraps=verified_frame) as frames:
+            current=self.context.at_current_position(changed,point)
+            self.assertIsNotNone(current)
+            self.assertLessEqual(frames.call_count,12)
+
+    def test_shared_pane_motion_does_not_probe_other_clamps_or_repeat_its_completed_proof(self):
+        from unittest.mock import patch
+        from price_lens.tooltip_geometry import verified_frame
+        changed=self.move_panels((-2,3),(-2,3));point=(self.pointer[0]-2,self.pointer[1]+3)
+        with patch('price_lens.tooltip_association.verified_frame',wraps=verified_frame) as frames:
+            current=self.context.at_current_position(changed,point)
+            self.assertIsNotNone(current);self.assertLessEqual(frames.call_count,4)
+            calls=frames.call_count
+            self.assertTrue(current.matches(changed,point));self.assertEqual(frames.call_count,calls)
+            changed.setPixelColor(self.context.slot.left()+5,self.context.slot.top()+2,QColor('red'))
+            self.assertFalse(current.matches(changed,point))
+
     def test_real_native_identity_survives_a_failed_next_read_through_the_gui(self):
         import time
         import test_ui_context as ui
