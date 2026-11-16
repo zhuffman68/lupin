@@ -1107,6 +1107,10 @@ when its updated signal invalidates them; pending/error text stays live. Hidden
 Where seen panels neither build their body nor render saved rows until selected.
 Their bounded sighting records use one virtual painted viewport, with shared
 age-roll/fade clocks and visible-row painting rather than per-row widget trees.
+Refreshes match offer presentation keys: new rows fade/lift over 220 ms while
+retained rows move at full opacity. Changed retained content keeps its 130 ms
+fade. Interrupted updates reuse current positions/opacities, unchanged data
+retains its records/clock, and hidden/finished views release the row motion map.
 Performance changes must retain animation effects and durations; Reduce motion
 and hidden surfaces remain the explicit exceptions.
 

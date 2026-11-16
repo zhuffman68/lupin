@@ -99,9 +99,14 @@ and layouts. The first loaded result fades in from transparent with an
 eight-pixel upward settling motion over 220 ms. A result prepared before its
 first show waits for visibility; reopening already displayed rows does not
 replay the reveal. The scroll content keeps its final height throughout, so
-text and surrounding controls do not shift. Changed nonempty results retain
-the existing 130 ms refresh fade. Only changed listing data replaces records;
-unchanged refreshes do not restart motion. Minute age updates
+text and surrounding controls do not shift. On a changed nonempty result, new
+offers use that same 220 ms fade/lift and retained rows slide to their new
+positions without fading unchanged content. Changed data on a retained offer
+keeps the 130 ms refresh fade. Matching uses seller/location/channel/room,
+asking amount/quantity and set basis, with bounded occurrence keys for duplicate
+offers; it supplies presentation continuity only. An interrupted refresh begins
+from the current drawn positions/opacities. Unchanged records retain their age
+state, and unchanged refreshes do not restart motion. Minute age updates
 retain records and visible rolling digits or text fades through shared
 160/110 ms clocks. Hidden rows do not acquire independent animations. Hidden
 pages perform no age animation or background listing refresh. Reduce motion

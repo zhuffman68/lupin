@@ -375,9 +375,6 @@ class LensWindow(QMainWindow):
         setup.addWidget(self.setup_details)
         layout.addWidget(self.setup_frame)
 
-        self.summary = label("", "font-size: 12px; color: #dde1e7", True)
-        self.summary.setFixedHeight(20)
-
         self.scroll = StableScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -388,7 +385,6 @@ class LensWindow(QMainWindow):
         self.card_area.frame_target=self.description_frame
         self.card_area.frame_items=self.screen_card_frames
         card_content=QVBoxLayout(self.card_area.content);card_content.setContentsMargins(0,0,0,0);card_content.setSpacing(8)
-        card_content.addWidget(self.summary)
         self.card_list=QWidget(self.card_area.content);card_content.addWidget(self.card_list)
         self.cards_layout = QVBoxLayout(self.card_list)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
@@ -621,7 +617,6 @@ class LensWindow(QMainWindow):
         detail=bool(self.search_panel.selected or self.search_panel.pending_identity)
         active=bool(self.search_panel.query.text().strip() or detail or self.search_panel.watch_focus)
         if not self.rows and not detail and not self.search_panel.query.text().strip():active=False
-        self.summary.setVisible(bool(self.summary.text()))
         count=len(self.rows)+bool(self.tooltip_result)
         available=bool(count or self.recent_items.rows_by_id)
         changed=self.price_content.apply(detail=detail,active=active,count=count,available=available)
@@ -2262,19 +2257,6 @@ class LensWindow(QMainWindow):
         structure_changed=previous!=structure
         if structure_changed:self.card_area.begin()
         self.screen_card_structure=structure
-        ready = 0
-        if self.catalog:
-            for row in displayed:
-                item = self.item_for(row)
-                quote = self.quote_for(item)
-                if quote and quote.price is not None and quote.fresh(now, self.ttl):
-                    ready += 1
-        count = len(displayed)
-        if count:
-            self.summary.setText(("Last read: " if self.mode == "paused" else "") + f"{count} item{'s' if count != 1 else ''} · {ready} market reference{'s' if ready != 1 else ''} ready")
-        else:
-            self.summary.clear()
-        self.summary.setVisible(bool(self.summary.text()))
         # Keep the UI small at rest. Rebuild only when content/state changes or
         # the five-second age bucket changes; screen frames never rebuild cards.
         visible=[]

@@ -38,6 +38,7 @@ class ListingRows(QWidget):
     def __init__(self,parent=None):
         super().__init__(parent);self.rows=[];self.boxes=[];self.starts=[];self.alpha=1.0;self.lift=0.0;self.last_painted_count=0
         self.revealing=False;self.pending_reveal=False
+        self.row_motion={}
         self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);self.setMouseTracking(True)
         self.animation=QVariantAnimation(self);self.animation.setDuration(130)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic);self.animation.valueChanged.connect(self.advance)
@@ -47,6 +48,7 @@ class ListingRows(QWidget):
         self.digits.setEasingCurve(QEasingCurve.Type.OutCubic);self.digits.valueChanged.connect(self.advance_ages)
         self.fade=QVariantAnimation(self);self.fade.setDuration(110)
         self.fade.setEasingCurve(QEasingCurve.Type.OutCubic);self.fade.valueChanged.connect(self.fade_ages)
+        self.setFixedHeight(0)
 
     def fonts(self):
         regular=QFont(self.font());regular.setPixelSize(10)
@@ -55,22 +57,66 @@ class ListingRows(QWidget):
         return regular,bold,price
 
     def set_rows(self,rows):
-        self.animation.stop();self.finish_ages()
+        def keys(values):
+            counts={};result=[]
+            for row in values:
+                listing=row.listing
+                offer=(listing.seller,listing.location,getattr(listing,'channel',None),
+                       getattr(listing,'room',None),listing.price,listing.quantity,row.per_set)
+                occurrence=counts.get(offer,0);counts[offer]=occurrence+1
+                result.append((offer,occurrence))
+            return result
+        old_keys,new_keys=keys(self.rows),keys(rows)
+        unchanged=(old_keys==new_keys and all(a.listing==b.listing for a,b in zip(self.rows,rows)))
+        if unchanged:
+            rows[:]=self.rows;self.rows=rows
+            return
+        before={key:(row,self.starts[index]+self.row_visual(index)[0],self.row_visual(index)[1])
+                for index,(key,row) in enumerate(zip(old_keys,self.rows))}
         entering=bool(rows) and not self.rows
+        self.animation.stop();self.finish_ages();self.finish_reveal()
+        for index,key in enumerate(new_keys):
+            previous=before.get(key)
+            if previous is not None and previous[0].listing==rows[index].listing:rows[index]=previous[0]
         self.rows=rows;self.reflow()
-        self.finish_reveal()
-        if enabled(self) and rows:self.start_reveal(entering)
+        if enabled(self) and rows:
+            if entering:self.start_reveal()
+            else:
+                for index,key in enumerate(new_keys):
+                    previous=before.get(key)
+                    if previous is None:motion=(8.,0.,220)
+                    else:
+                        old,top,alpha=previous
+                        dy=top-self.starts[index]
+                        changed=old.listing!=rows[index].listing
+                        if changed and alpha==1:alpha=.55
+                        if abs(dy)<.01 and alpha==1:continue
+                        motion=(dy,alpha,130 if changed else 220)
+                    self.row_motion[index]=motion
+                if self.row_motion:
+                    self.animation.setDuration(220 if any(dy or duration==220 for dy,_,duration in self.row_motion.values()) else 130)
+                    self.animation.setStartValue(0.);self.animation.setEndValue(1.);self.advance(0.)
+                    self.animation.start()
         else:self.pending_reveal=entering and not self.isVisible()
 
-    def start_reveal(self,entering):
-        self.pending_reveal=False;self.revealing=entering
-        self.animation.setDuration(220 if entering else 130)
-        self.advance(0.0 if entering else .55)
+    def start_reveal(self):
+        self.pending_reveal=False;self.revealing=True
+        self.animation.setDuration(220)
+        self.advance(0.0)
         self.animation.setStartValue(self.alpha);self.animation.setEndValue(1.0);self.animation.start()
 
     def finish_reveal(self):
         self.animation.stop();self.revealing=False;self.pending_reveal=False
+        self.row_motion.clear()
         self.alpha=1.0;self.lift=0.0;self.redraw()
+
+    def row_visual(self,index):
+        motion=self.row_motion.get(index)
+        if motion is None:return (self.lift,self.alpha) if self.revealing else (0.,1.)
+        dy,alpha,duration=motion
+        elapsed=min(1.,self.animation.currentTime()/duration)
+        fade=1-(1-elapsed)**3
+        return dy*(1-self.alpha),alpha+(1-alpha)*fade
 
     def refresh_ages(self,now):
         updates=[(index,row.age) for index,row in enumerate(self.rows) if row.age!=row.formatted_age(now)]
@@ -120,14 +166,18 @@ class ListingRows(QWidget):
 
     def paintEvent(self,event):
         if self.alpha<1 and not enabled(self):self.finish_reveal()
-        painter=QPainter(self);painter.setOpacity(self.alpha);painter.translate(0.0,self.lift)
+        painter=QPainter(self)
         regular,bold,price=self.fonts();seller_metrics=QFontMetrics(bold);price_metrics=QFontMetrics(price);self.last_painted_count=0
         top=event.rect().top()-self.lift;bottom=event.rect().bottom()-self.lift
-        first=max(0,bisect_right(self.starts,top)-1)
+        first=max(0,bisect_right(self.starts,top)-1);visible=set(self.row_motion)
         for index in range(first,len(self.rows)):
+            if self.boxes[index][0].top()>bottom:break
+            visible.add(index)
+        for index in sorted(visible):
             box,head,place_h,age_h=self.boxes[index]
-            if box.top()>bottom:break
-            if box.bottom()<top:continue
+            lift,alpha=self.row_visual(index);drawn=QRectF(box).translated(0,lift)
+            if drawn.top()>event.rect().bottom() or drawn.bottom()<event.rect().top() or alpha<=0:continue
+            painter.save();painter.setOpacity(alpha);painter.translate(0.,lift)
             self.last_painted_count+=1;row=self.rows[index]
             painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(QColor('#263345'))
             painter.drawRoundedRect(QRectF(box),6,6)
@@ -146,23 +196,27 @@ class ListingRows(QWidget):
             if index in self.rolling:row.roll.paint(painter,age_box,Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
             else:
                 painter.save()
-                if index in self.fading:painter.setOpacity(self.alpha*self.age_alpha)
+                if index in self.fading:painter.setOpacity(alpha*self.age_alpha)
                 painter.drawText(age_box,int(Qt.TextFlag.TextWordWrap),row.age);painter.restore()
+            painter.restore()
 
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if event.oldSize().width()!=event.size().width():self.reflow()
 
     def mouseMoveEvent(self,event):
-        y=round(event.position().y()-self.lift);index=bisect_right(self.starts,y)-1
-        inside=0<=index<len(self.rows) and self.boxes[index][0].contains(round(event.position().x()),y)
-        self.setToolTip(self.rows[index].listing.location if inside else '')
+        location=''
+        for index in reversed(range(len(self.rows))):
+            lift,alpha=self.row_visual(index)
+            if alpha>0 and QRectF(self.boxes[index][0]).translated(0,lift).contains(event.position()):
+                location=self.rows[index].listing.location;break
+        self.setToolTip(location)
         super().mouseMoveEvent(event)
 
     def showEvent(self,event):
         super().showEvent(event)
         if self.pending_reveal:
-            if enabled(self):self.start_reveal(True)
+            if enabled(self):self.start_reveal()
             else:self.finish_reveal()
 
     def hideEvent(self,event):

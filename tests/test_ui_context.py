@@ -542,7 +542,7 @@ class ContextUiTests(unittest.TestCase):
         timer.stop();self.app.processEvents()
         self.assertTrue(retired);self.assertGreaterEqual(retired[0]-started,1.999)
         self.assertFalse(w.card_views);self.assertEqual(w.card_area.height(),0);self.assertEqual(w.card_area.full_height,0)
-        self.assertTrue(w.card_list.isHidden());self.assertTrue(w.summary.isHidden())
+        self.assertTrue(w.card_list.isHidden())
         self.assertEqual(w.recent_items.mapTo(w,QPoint()).y(),w.card_area.mapTo(w,QPoint()).y())
         self.assertEqual(w.reader.game_area,original_area);self.assertEqual(w.reader.starts,0)
         self.assertTrue(all(height<=initial for height,_ in samples),samples)
@@ -1786,7 +1786,7 @@ class ContextUiTests(unittest.TestCase):
                 self.window.service.deliver_quote(1, replace(valid, **change))
                 self.assertFalse(self.window.first_price_seen)
                 self.assertNotIn("987,654", "\n".join(row["text"] for row in self.window.overlay.rows))
-                self.assertIn("0 market references ready", self.window.summary.text())
+                self.assertIsNone(self.window.quote_for(self.window.item_for(self.window.rows[0])))
 
     def test_first_fresh_reference_is_confirmed_in_the_draw_path(self):
         self.window.on_reading(self.reading(shop_hover=True))

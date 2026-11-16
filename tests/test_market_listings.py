@@ -257,6 +257,24 @@ class ListingWidgetTests(ListingTestCase):
         self.host.showNormal();self.app.processEvents();self.panel.sync()
         self.assertTrue(self.service.interests);self.assertEqual(len(self.fetcher.requests),1)
 
+    def test_expired_lookup_keeps_old_rows_then_reveals_only_new_sightings(self):
+        self.tabs.setCurrentWidget(self.panel);self.until(lambda:bool(self.fetcher.requests))
+        self.app.setProperty('reduceMotion',False);self.accept()
+        view=self.panel.listing_view;view.animation.setCurrentTime(220)
+        original=view.rows[0];self.now+=LISTING_TTL+1;self.service._pump()
+        self.until(lambda:len(self.fetcher.requests)==2)
+        self.assertIs(view.rows[0],original)
+        data=document(ITEM,self.now)
+        data['listings']=[dict(data['listings'][0],seller='New seller'),
+                          dict(data['listings'][0],lastSeen=iso(original.listing.last_seen))]
+        self.accept(data);view.animation.pause();view.animation.setCurrentTime(0)
+        self.assertEqual(view.animation.duration(),220)
+        self.assertEqual(view.rows[0].listing.seller,'New seller')
+        self.assertEqual(view.row_visual(0),(8,0));self.assertEqual(view.row_visual(1)[1],1)
+        self.assertIs(view.rows[1],original)
+        self.panel.refresh();self.assertEqual(view.animation.currentTime(),0)
+        self.assertEqual(len(self.fetcher.requests),2)
+
     def test_live_slide_reaches_sightings_while_selection_checks_run(self):
         import gc
         self.app.setProperty('reduceMotion',False)

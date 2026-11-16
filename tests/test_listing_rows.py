@@ -66,6 +66,7 @@ class ListingRowsTests(unittest.TestCase):
             event=QMouseEvent(QMouseEvent.Type.MouseMove,point,point,point,Qt.MouseButton.NoButton,Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier)
             self.app.sendEvent(view,event)
         move(3);self.assertEqual(view.toolTip(),'')
+        view.animation.setCurrentTime(110)
         move(12);self.assertEqual(view.toolTip(),'Channel 1, FM 1')
         self.app.setProperty('reduceMotion',True);view.advance(.5)
         self.assertEqual(view.animation.state(),view.animation.State.Stopped)
@@ -105,6 +106,72 @@ class ListingRowsTests(unittest.TestCase):
             area.hide();self.app.processEvents()
             self.assertEqual(row.roll.progress,1);self.assertFalse(view.rolling)
         finally:area.close();area.deleteLater();self.app.processEvents()
+
+    def test_new_refresh_rows_reveal_without_fading_unchanged_sightings(self):
+        area,view=self.view();view.set_rows(self.rows(1));view.animation.setCurrentTime(220)
+        def pixels():
+            image=view.grab().toImage();box=view.boxes[0][0];scale=image.devicePixelRatio()
+            return image.copy(round(box.x()*scale),round(box.y()*scale),round(box.width()*scale),round(box.height()*scale))
+        original=pixels()
+        rows=self.rows(2);view.set_rows(rows);view.animation.pause();view.animation.setCurrentTime(0)
+        height=view.height()
+        self.assertEqual(view.animation.duration(),220)
+        self.assertEqual(view.row_visual(0),(0,1));self.assertEqual(view.row_visual(1),(8,0))
+        self.assertEqual(pixels(),original)
+        view.animation.setCurrentTime(110)
+        lift,alpha=view.row_visual(1)
+        self.assertGreater(lift,0);self.assertLess(lift,8);self.assertGreater(alpha,0);self.assertLess(alpha,1)
+        self.assertEqual(view.row_visual(0),(0,1));self.assertEqual(view.height(),height)
+        view.animation.setCurrentTime(220)
+        self.assertEqual(view.row_visual(1),(0,1));self.assertFalse(view.row_motion)
+
+    def test_existing_rows_slide_to_their_new_positions_on_refresh(self):
+        area,view=self.view();old=self.rows(2);view.set_rows(old);view.animation.setCurrentTime(220)
+        top=view.starts[0];incoming=self.rows(3)
+        incoming=[incoming[-1],*incoming[:-1]]
+        view.set_rows(incoming);view.animation.pause();view.animation.setCurrentTime(0)
+        self.assertEqual(view.starts[1]+view.row_visual(1)[0],top)
+        self.assertEqual(view.row_visual(1)[1],1)
+        view.animation.setCurrentTime(110)
+        drawn=view.starts[1]+view.row_visual(1)[0]
+        self.assertGreater(drawn,top);self.assertLess(drawn,view.starts[1])
+        self.assertEqual(view.row_visual(1)[1],1)
+        view.animation.setCurrentTime(220)
+        self.assertEqual(view.row_visual(1),(0,1))
+
+    def test_unchanged_refresh_and_age_updates_do_not_restart_the_row_reveal(self):
+        area,view=self.view();view.set_rows(self.rows(1));view.animation.setCurrentTime(220)
+        view.set_rows(self.rows(2));view.animation.pause();view.animation.setCurrentTime(70)
+        previous=view.row_visual(1);remaining=view.animation.currentTime()
+        view.set_rows(self.rows(2));view.refresh_ages(1120)
+        self.assertEqual(view.animation.currentTime(),remaining);self.assertEqual(view.row_visual(1),previous)
+
+    def test_an_interrupted_refresh_retains_the_current_row_position_and_opacity(self):
+        area,view=self.view();view.set_rows(self.rows(1));view.animation.setCurrentTime(220)
+        view.set_rows(self.rows(2));view.animation.pause();view.animation.setCurrentTime(70)
+        before=view.row_visual(1);top=view.starts[1]+before[0]
+        view.set_rows(self.rows(3));view.animation.pause();view.animation.setCurrentTime(0)
+        self.assertEqual(view.starts[1]+view.row_visual(1)[0],top)
+        self.assertEqual(view.row_visual(1)[1],before[1])
+        self.app.setProperty('reduceMotion',True);view.advance(.5)
+        self.assertFalse(view.row_motion);self.assertEqual(view.animation.state(),view.animation.State.Stopped)
+
+    def test_changed_retained_rows_keep_the_short_refresh_fade(self):
+        area,view=self.view();view.set_rows(self.rows(2));view.animation.setCurrentTime(220)
+        rows=self.rows(2);rows[1].listing.stock=3
+        rows[1]=ListingRow(rows[1].listing);rows[1].update_age(1060)
+        view.set_rows(rows);view.animation.pause();view.animation.setCurrentTime(0)
+        self.assertEqual(view.animation.duration(),130)
+        self.assertEqual(view.row_visual(0),(0,1));self.assertEqual(view.row_visual(1),(0,.55))
+        view.animation.setCurrentTime(130);self.assertFalse(view.row_motion)
+
+    def test_refreshed_hundred_rows_still_paint_only_the_visible_rows_and_stop_when_hidden(self):
+        area,view=self.view();view.set_rows(self.rows(100));view.animation.setCurrentTime(220)
+        rows=self.rows(100);rows[0].listing.seller='New seller'
+        view.set_rows(rows);view.animation.pause();view.animation.setCurrentTime(110);area.grab()
+        self.assertLessEqual(view.last_painted_count,5);self.assertFalse(view.findChildren(QWidget))
+        area.hide();self.app.processEvents()
+        self.assertFalse(view.row_motion);self.assertEqual(view.animation.state(),view.animation.State.Stopped)
 
 
 if __name__=='__main__':unittest.main()

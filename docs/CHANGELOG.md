@@ -7,6 +7,9 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased
 
+- New shop-location sightings fade and slide in when Where seen refreshes;
+  existing rows move smoothly without flashing. Removed the item/reference
+  count line above on-screen prices.
 - Adding items to a player shop no longer fades and shifts the cards already
   visible in Lupin. New/removed cards animate individually, with existing rows
   moving smoothly when their position changes.

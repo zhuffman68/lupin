@@ -1,4 +1,31 @@
-# Verification — 2026-11-15
+# Verification — 2026-11-16
+
+## Refreshed shop-location rows and simpler Prices — unreleased
+
+New Where seen sightings use the existing 220 ms fade/eight-pixel settling
+motion on refresh as well as first load. Unchanged offers remain opaque and
+move smoothly to their new positions, while changed retained data keeps its
+130 ms fade. Matching is bounded to the validated reply's presentation records;
+it never supplies source authority or market-reference prices. Interrupted
+refreshes preserve the current row positions/opacities. Identical replies and
+age ticks do not restart the reveal. No row widgets, snapshots, independent row
+timers or extra network requests are added. The final content height stays fixed
+during each transition; hidden/reduced-motion views finish and clear motion.
+
+The Prices item/reference-ready count line and its reserved height are removed,
+including its redundant per-render quote-count loop. Reading controls, source
+errors, per-item prices and the Database's result counts remain available.
+
+All **170 affected UI, listing, service and motion tests pass in 56.822 s** in
+private offscreen/Xvfb/D-Bus/HOME/XDG state. The **11 painted-list checks also
+pass at 2× DPI in 0.164 s** with xcb/software rendering. New coverage compares
+unchanged row pixels at intermediate frames, verifies animated insertion and
+interruption, tests a real expiry/refresh through the controlled listing service,
+and retains 100-row visible-only painting, age animation, hidden/minimized demand,
+Reduce motion, price validity and history-collapse checks. These are isolated
+generated GUI/service fixtures, without game input, OS sharing or live requests.
+
+Private evidence: `evidence/listing-refresh-2026-11-16/`.
 
 ## Inventory comparison and wide-title recovery — unreleased
 
