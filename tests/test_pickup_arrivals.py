@@ -19,7 +19,7 @@ def anchor(label, y=156, *, visual=None):
 
 
 def unknown(visual, y=156):
-    return dict(key=f'unknown:{visual}', mesos=None, kind='unknown',
+    return dict(key=f'visual:{visual}', mesos=None, kind='unknown',
                 rect=dict(x=350, y=y, width=200, height=10), visualKey=visual)
 
 
@@ -77,6 +77,36 @@ class PickupArrivalTests(unittest.TestCase):
         self.assertEqual(self.tracker.gain, 0)
         self.sample(.8, line(29), partial=True)
         self.assertEqual(self.tracker.gain, 29)
+
+    def test_deferred_amount_keeps_its_arrival_until_two_literal_readings(self):
+        self.sample(.2, anchor('baseline'))
+        for at in (.4, .6):
+            self.sample(at, anchor('baseline', 142), unknown('meso-pixels-29'), partial=True)
+        # Repeated visual-only evidence must not consume an unknown pickup as
+        # a non-currency anchor, or act as a first literal amount confirmation.
+        self.sample(.8, anchor('baseline', 142), line(29))
+        self.assertEqual(self.tracker.gain, 0)
+        self.sample(1, anchor('baseline', 142), line(29))
+        self.assertEqual(self.tracker.gain, 29)
+        self.sample(1.2, anchor('baseline', 142), line(29))
+        self.assertEqual(self.tracker.gain, 29)
+
+    def test_seeded_unknown_amount_is_never_retroactively_credited(self):
+        self.sample(.2, unknown('meso-pixels-29'), partial=True)
+        self.sample(.4, line(29))
+        self.sample(.6, line(29))
+        self.assertEqual(self.tracker.gain, 0)
+        self.assertIsNone(self.tracker.last_pickup)
+
+    def test_equal_deferred_amounts_are_distinct_only_with_proven_scroll(self):
+        self.sample(.2, anchor('baseline'))
+        self.sample(.4, anchor('baseline', 142), unknown('meso-pixels-29'), partial=True)
+        self.sample(.6, anchor('baseline', 128), unknown('meso-pixels-29', 142),
+                    unknown('meso-pixels-29'), partial=True)
+        self.sample(.8, anchor('baseline', 128), line(29, 142), line(29))
+        self.assertEqual(self.tracker.gain, 0)
+        self.sample(1, anchor('baseline', 128), line(29, 142), line(29))
+        self.assertEqual(self.tracker.gain, 58)
 
     def test_identical_visual_anchor_does_not_make_a_gap_when_ocr_spelling_changes(self):
         self.sample(.2, anchor('first-read', visual='same-receipt-pixels'))

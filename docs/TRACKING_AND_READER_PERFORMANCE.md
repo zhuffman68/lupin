@@ -5,6 +5,45 @@ remaining acceptance checks. It supplements [ARCHITECTURE.md](../ARCHITECTURE.md
 and [SHOP_RECOGNITION.md](SHOP_RECOGNITION.md); the latter remains authoritative
 for shop, inventory and NPC source proofs.
 
+## Current pickup checkpoint — 2026-11-17
+
+The latest missing-meso report reproduced two distinct problems: slow receipt
+OCR skipped short-lived captures, and initially unknown arrivals could be
+consumed before their currency amount was recognized. See the current tracking
+section of [ARCHITECTURE.md](../ARCHITECTURE.md) for the complete queue, cache,
+recognition-budget and literal-confirmation contracts.
+
+The native reader now looks up all current row masks before inference, keeps
+successful masks through failed-scenery churn and bounds new OCR per job.
+Learned meso prefixes prioritize work only. At most six immutable pickup crops
+are retained in capture order, including their own name proofs; no full-screen
+backlog or second pickup worker is added. Queue age is capped at one second and
+all existing 1.5-second admission, service and continuity limits remain intact.
+Unrecognized arrivals remain pending until two fresh literal amount readings;
+Start/Resume seeding, pause/cover holds and the two-second pending limit remain.
+Gains/rates still display every two seconds and elapsed clocks every second.
+
+A 31.799-second saved screen sample contains 13 manually verified new pickups
+totaling 419. An old-path original-speed replay counted 302; two repaired
+worker/admission/panel replays counted all 419. Those replays use fixture game
+readiness and character proofs. They are separate from fresh live training and
+physical Windows acceptance, both still pending for this change.
+
+| Same 180 saved images, native service only | Before | After |
+| --- | ---: | ---: |
+| Median | 13.2 ms | 8.0 ms |
+| 95th percentile | 1,459 ms | 342 ms |
+| Maximum | 2,225 ms | 422 ms |
+| Jobs beyond 1.5 seconds | 7 | 0 |
+| Total service time | 48.53 s | 15.39 s |
+
+Host load affects these measurements. The 50 ms OCR budget is checked between
+calls and cannot interrupt an inference. The queue retains at most 4.4 MiB of
+crop pixels at the largest supported capture crop, plus the in-flight image.
+Private evidence, the 180 passing Python checks, 81 passing Rust checks and the
+anonymized fast-burst regression are recorded in [VERIFICATION.md](../VERIFICATION.md).
+The local reader was rebuilt; installers and publication remain unchanged.
+
 ## Baseline — 2026-11-02
 
 A 30-second authorized screen observation showed the live meso total unchanged

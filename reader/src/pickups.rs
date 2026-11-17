@@ -4,9 +4,12 @@ use minerva_core::Frame;
 use serde_json::{Value, json};
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
+use std::time::{Duration, Instant};
 
-const MAX_OCR_CALLS: usize = 12;
+const MAX_OCR_CALLS: usize = 4;
+const OCR_BUDGET: Duration = Duration::from_millis(50);
 const MAX_CACHE_ENTRIES: usize = 256;
+type PatchKey = (u32, u32, Vec<u8>);
 
 #[derive(Clone, Debug, PartialEq)]
 struct Message {
@@ -17,7 +20,31 @@ struct Message {
 
 #[derive(Default)]
 pub struct PickupLogReader {
-    cache: HashMap<(u32, u32, Vec<u8>), Option<Message>>,
+    cache: HashMap<PatchKey, CachedMessage>,
+    cache_clock: u64,
+    meso_prefixes: Vec<GrayImage>,
+}
+
+struct CachedMessage {
+    value: Option<Message>,
+    used: u64,
+}
+
+struct LogRow {
+    top: u32,
+    bottom: u32,
+    right: u32,
+    starts: Vec<u32>,
+    white: bool,
+    found: Option<Value>,
+    evidence: Option<Value>,
+}
+
+struct PendingPatch {
+    key: PatchKey,
+    pixels: GrayImage,
+    left: u32,
+    visual: String,
 }
 
 fn amount(text: &str) -> Option<u32> {
@@ -202,7 +229,119 @@ fn visual_key(patch: &GrayImage) -> String {
 }
 
 impl PickupLogReader {
+    fn cached(&mut self, key: &PatchKey) -> Option<Option<Message>> {
+        let entry = self.cache.get_mut(key)?;
+        self.cache_clock += 1;
+        entry.used = self.cache_clock;
+        Some(entry.value.clone())
+    }
+
+    fn remember(&mut self, key: PatchKey, value: Option<Message>) {
+        if value.as_ref().is_some_and(|value| value.mesos.is_some()) {
+            let width = (key.0 * 2 / 3).min(120);
+            let prefix =
+                GrayImage::from_fn(width, key.1, |x, y| Luma([key.2[(y * key.0 + x) as usize]]));
+            if !self.meso_prefixes.contains(&prefix) {
+                if self.meso_prefixes.len() >= 4 {
+                    self.meso_prefixes.remove(0);
+                }
+                self.meso_prefixes.push(prefix);
+            }
+        }
+        if self.cache.len() >= MAX_CACHE_ENTRIES && !self.cache.contains_key(&key) {
+            // Moving scenery creates many distinct failed masks. Evict one
+            // failed/old mask, never flush all of the proven pickup amounts.
+            let oldest = self
+                .cache
+                .iter()
+                .min_by_key(|(_, entry)| (entry.value.is_some(), entry.used))
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                self.cache.remove(&oldest);
+            }
+        }
+        self.cache_clock += 1;
+        self.cache.insert(
+            key,
+            CachedMessage {
+                value,
+                used: self.cache_clock,
+            },
+        );
+    }
+
+    fn advance(
+        &mut self,
+        row: &mut LogRow,
+        white: &GrayImage,
+        yellow: &GrayImage,
+    ) -> Option<PendingPatch> {
+        let strength = if row.white { white } else { yellow };
+        let mut pending = None;
+        let mut deferred = Vec::new();
+        while let Some(left) = row.starts.pop() {
+            let patch = normalized_patch(
+                strength,
+                left,
+                row.top,
+                row.right - left,
+                row.bottom - row.top,
+            );
+            let key = (patch.width(), patch.height(), patch.as_raw().clone());
+            let visual = visual_key(&patch);
+            match self.cached(&key) {
+                Some(Some(value)) => {
+                    row.found = Some(Self::recognized(row, left, visual, value));
+                    return None;
+                }
+                Some(None) => {}
+                None => {
+                    if pending.is_none() {
+                        pending = Some(PendingPatch {
+                            key,
+                            pixels: patch,
+                            left,
+                            visual,
+                        });
+                    } else {
+                        deferred.push(left);
+                    }
+                }
+            }
+        }
+        row.starts = deferred.into_iter().rev().collect();
+        pending
+    }
+
+    fn currency_hint(&self, patch: &GrayImage) -> bool {
+        // Scheduling only: a prefix learned from a complete literal pickup can
+        // prioritize new amounts ahead of noisy receipts. It never supplies a
+        // message, amount, arrival, or proof; full ordinary OCR is still required.
+        self.meso_prefixes.iter().any(|prefix| {
+            patch.height() == prefix.height()
+                && patch.width() >= prefix.width()
+                && prefix
+                    .enumerate_pixels()
+                    .all(|(x, y, pixel)| patch.get_pixel(x, y) == pixel)
+        })
+    }
+
+    fn recognized(row: &LogRow, left: u32, visual: String, value: Message) -> Value {
+        json!({"key":value.key,"mesos":value.mesos,"kind":value.kind,
+            "rect":{"x":left,"y":row.top,"width":row.right-left,"height":row.bottom-row.top},
+            "visualKey":visual})
+    }
+
     pub fn read(&mut self, frame: &Frame) -> Value {
+        self.read_with(frame, crate::text::read)
+    }
+
+    fn read_with(
+        &mut self,
+        frame: &Frame,
+        mut recognize: impl FnMut(&GrayImage) -> Option<String>,
+    ) -> Value {
+        let started = Instant::now();
         if !(180..=720).contains(&frame.width) || !(40..=340).contains(&frame.height) {
             return json!({"valid":false,"state":"unreadable","partial":true,"lines":[]});
         }
@@ -220,11 +359,7 @@ impl PickupLogReader {
                 strength.put_pixel(x, y, Luma([a.max(b)]));
             }
         }
-        let mut rows = Vec::new();
-        let mut calls = 0;
-        let mut unresolved = false;
-        let mut candidates = 0;
-        let mut budget_exhausted = false;
+        let mut work = Vec::new();
         for (top, bottom) in bands(&strength)
             .into_iter()
             .rev()
@@ -270,64 +405,76 @@ impl PickupLogReader {
                 }
             }
             let right = *columns.last().unwrap() + 1;
-            let mut found = None;
-            let mut evidence = None;
-            let mut plausible = false;
-            for left in starts.into_iter().rev() {
-                let width = right - left;
-                if !(80..=600).contains(&width) {
-                    continue;
-                }
-                plausible = true;
-                let patch = normalized_patch(line_strength, left, top, width, bottom - top);
-                let visual = visual_key(&patch);
-                if right + 24 >= frame.width {
-                    evidence = Some(
-                        json!({"key":format!("visual:{visual}"),"mesos":null,"kind":"unknown",
-                        "rect":{"x":left,"y":top,"width":width,"height":bottom-top},"visualKey":visual}),
-                    );
-                }
-                let key = (patch.width(), patch.height(), patch.as_raw().clone());
-                let value = if let Some(value) = self.cache.get(&key) {
-                    value.clone()
-                } else {
-                    if calls >= MAX_OCR_CALLS {
-                        budget_exhausted = true;
-                        break;
-                    }
-                    calls += 1;
-                    let value = crate::text::read(&patch).and_then(|text| message(&text));
-                    if self.cache.len() >= MAX_CACHE_ENTRIES {
-                        self.cache.clear();
-                    }
-                    self.cache.insert(key, value.clone());
-                    value
-                };
-                if let Some(value) = value {
-                    found = Some(
-                        json!({"key":value.key,"mesos":value.mesos,"kind":value.kind,
-                        "rect":{"x":left,"y":top,"width":width,"height":bottom-top},
-                        "visualKey":visual}),
-                    );
+            starts.retain(|&left| (80..=600).contains(&(right - left)));
+            let Some(&left) = starts.first() else {
+                continue;
+            };
+            // Keep every visible row as non-currency continuity evidence even
+            // when recognition is deferred. A budget limit is never an empty log.
+            let patch = normalized_patch(line_strength, left, top, right - left, bottom - top);
+            let visual = visual_key(&patch);
+            let evidence = (right+24 >= frame.width).then(|| json!({
+                "key":format!("visual:{visual}"),"mesos":null,"kind":"unknown",
+                "rect":{"x":left,"y":top,"width":right-left,"height":bottom-top},"visualKey":visual}));
+            work.push(LogRow {
+                top,
+                bottom,
+                right,
+                starts,
+                white: white_pixels >= 8 && white_pixels >= yellow_pixels,
+                found: None,
+                evidence,
+            });
+        }
+
+        // Cache lookup spans the whole log before any OCR. Newest rows get the
+        // first inference, one candidate per row per round; a difficult older
+        // receipt cannot monopolize the job or hide a cached amount below it.
+        let mut pending = work
+            .iter_mut()
+            .map(|row| self.advance(row, &white, &yellow))
+            .collect::<Vec<_>>();
+        let mut calls = 0;
+        loop {
+            let mut progressed = false;
+            let mut order = (0..work.len()).rev().collect::<Vec<_>>();
+            order.sort_by_key(|&index| {
+                !pending[index]
+                    .as_ref()
+                    .is_some_and(|patch| self.currency_hint(&patch.pixels))
+            });
+            for index in order {
+                if calls >= MAX_OCR_CALLS || started.elapsed() >= OCR_BUDGET {
                     break;
                 }
-            }
-            if plausible {
-                candidates += 1;
-            }
-            if let Some(value) = found {
-                rows.push(value);
-            } else if plausible {
-                unresolved = true;
-                if let Some(value) = evidence {
-                    rows.push(value);
+                let Some(patch) = pending[index].take() else {
+                    continue;
+                };
+                calls += 1;
+                progressed = true;
+                let value = recognize(&patch.pixels).and_then(|text| message(&text));
+                self.remember(patch.key, value.clone());
+                if let Some(value) = value {
+                    work[index].found = Some(Self::recognized(
+                        &work[index],
+                        patch.left,
+                        patch.visual,
+                        value,
+                    ));
+                } else {
+                    pending[index] = self.advance(&mut work[index], &white, &yellow);
                 }
             }
-            if budget_exhausted {
-                unresolved = true;
+            if !progressed || calls >= MAX_OCR_CALLS || started.elapsed() >= OCR_BUDGET {
                 break;
             }
         }
+        let unresolved = work.iter().any(|row| row.found.is_none());
+        let candidates = work.len();
+        let rows = work
+            .into_iter()
+            .filter_map(|row| row.found.or(row.evidence))
+            .collect::<Vec<_>>();
         let state = if rows.iter().any(|row| row["kind"] != "unknown") {
             "readable"
         } else if candidates > 0 {
@@ -341,8 +488,59 @@ impl PickupLogReader {
 
 #[cfg(test)]
 mod tests {
-    use super::{message, normalized_patch, visual_key};
+    use super::{
+        MAX_CACHE_ENTRIES, MAX_OCR_CALLS, PickupLogReader, message, normalized_patch, visual_key,
+    };
     use image::{GrayImage, Luma, Rgba, RgbaImage};
+    use minerva_core::Frame;
+
+    #[test]
+    fn failed_scenery_masks_cannot_flush_known_pickup_amounts() {
+        let mut reader = PickupLogReader::default();
+        let key = (1, 1, vec![29]);
+        let known = message("You have gained mesos (+29)").unwrap();
+        reader.remember(key.clone(), Some(known.clone()));
+        for index in 0..4 * MAX_CACHE_ENTRIES {
+            reader.remember((2, 1, index.to_be_bytes().to_vec()), None);
+            assert!(reader.cache.len() <= MAX_CACHE_ENTRIES);
+        }
+        assert_eq!(reader.cached(&key), Some(Some(known)));
+    }
+
+    #[test]
+    fn deferred_log_rows_remain_visible_without_unbounded_inference() {
+        let pixels =
+            image::load_from_memory(include_bytes!("../../tests/fixtures/pickups/budget.png"))
+                .unwrap()
+                .into_rgba8();
+        let frame = Frame {
+            width: pixels.width(),
+            height: pixels.height(),
+            rgba: pixels.into_raw(),
+            at_ms: 0,
+        };
+        let mut reader = PickupLogReader::default();
+        let mut calls = 0;
+        let result = reader.read_with(&frame, |_| {
+            calls += 1;
+            None
+        });
+        assert!(calls > 0 && calls <= MAX_OCR_CALLS);
+        assert_eq!(result["partial"], true);
+        assert_eq!(result["state"], "unreadable");
+        // More visible rows than the inference budget: deferred rows cannot
+        // disappear, look empty, or gain a currency value from a previous page.
+        let rows = result["lines"].as_array().unwrap();
+        assert!(rows.len() > MAX_OCR_CALLS);
+        assert!(
+            rows.iter()
+                .all(|row| row["kind"] == "unknown" && row["mesos"].is_null())
+        );
+        assert!(
+            rows.windows(2)
+                .all(|pair| pair[0]["rect"]["y"].as_u64() < pair[1]["rect"]["y"].as_u64())
+        );
+    }
 
     #[test]
     fn white_glyphs_keep_exact_shape_while_fading_over_colored_scenery() {

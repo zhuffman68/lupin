@@ -259,6 +259,11 @@ positively different pixels hold the session for EXP/context reconfirmation.
 Do not reset arrival continuity on an ordinary temporary OCR failure or extend
 freshness/timeouts to guess missed pickups. Keep numeric diagnostics bounded and
 text-free; optional LUPIN_READER_DIAGNOSTICS export is developer-only.
+Preserve the bounded six-crop pickup queue and each crop's own name proof while
+the single worker is busy; pause, holds, obstruction and source changes revoke
+queued work. Unknown arrivals cannot be consumed as non-currency anchors, and
+recovered amounts still need two literal observations. Native learned meso
+prefixes affect OCR scheduling only and never authorize an amount or arrival.
 
 The native complete-page cache requires capture_generation, shop_epoch, a
 current shop_area and exact table/icon/rim pixels. It must never bypass Python's

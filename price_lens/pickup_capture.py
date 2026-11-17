@@ -10,6 +10,51 @@ from PySide6.QtGui import QImage
 from .platform_paths import reader_binary
 
 
+class PickupFrames:
+    """Keep short bursts in capture order without an unbounded OCR backlog."""
+    MAX_FRAMES = 6
+    MAX_AGE = 1.0
+
+    def __init__(self):
+        self.frames = deque()
+        self.latest = None
+        self.submitted_at = None
+
+    def clear(self):
+        self.frames.clear()
+        self.latest = None
+        self.submitted_at = None
+
+    def add(self, image, captured_at, generation, epoch, name_proof):
+        key = (generation, epoch, captured_at)
+        if (image.isNull() or self.latest and self.latest[:2] == key[:2]
+                and captured_at <= self.latest[2]):
+            return
+        self.latest = key
+        if len(self.frames) >= self.MAX_FRAMES:
+            self.frames.popleft()
+        # QImage is an owned immutable crop; no full-display frames or files
+        # are retained. The name proof belongs to these same captured pixels.
+        self.frames.append((QImage(image), captured_at, generation, epoch, name_proof))
+
+    def submit(self, worker, now, generation, epoch, covered_at=0):
+        if worker.pending:
+            return False
+        while self.frames:
+            frame = self.frames[0]
+            _, at, source, session, _ = frame
+            if (source != generation or session != epoch or int(at*1000) <= covered_at
+                    or not 0 <= now-at < self.MAX_AGE):
+                self.frames.popleft()
+                continue
+            if not worker.submit(*frame):
+                return False
+            self.frames.popleft()
+            self.submitted_at = at
+            return True
+        return False
+
+
 class PickupWorker(QObject):
     result = Signal(dict)
     issue = Signal(str)

@@ -15,7 +15,7 @@ from .platform_paths import reader_binary
 from .capture_platform import uses_system_picker
 from .tracking_identity import name_proof
 from .tooltip_association import TooltipAssociation,association_state
-from .pickup_capture import PickupWorker
+from .pickup_capture import PickupFrames, PickupWorker
 from .shop_browsing import ShopBrowsing
 from .reader_request import SubmittedRequest
 from .reader_metrics import ReaderMetrics
@@ -55,6 +55,7 @@ class PixelReader(QObject):
             self.diagnostics_timer.timeout.connect(lambda:self.metrics.write(diagnostics))
             self.diagnostics_timer.start()
         self._experience_enabled = False
+        self.pickup_frames = PickupFrames()
         self.pickups_enabled = True
         self.tracking_epoch = 0
         self.tracking_frame_at = 0.0
@@ -200,6 +201,7 @@ class PixelReader(QObject):
         self.reader_process.pause()
         self.generation += 1
         self.paused = True
+        self.pickup_frames.clear()
         self.source_check.cancel()
         self.timer.stop()
         self.screenshot_timer.stop()
@@ -335,10 +337,20 @@ class PixelReader(QObject):
     @experience_enabled.setter
     def experience_enabled(self, enabled):
         self._experience_enabled=bool(enabled)
+        if not enabled:self.pickup_frames.clear()
         worker=getattr(self,'pickup_worker',None)
         if not enabled and worker is not None:
             worker.close()
             self.pickup_worker=None
+
+    @property
+    def pickups_enabled(self):
+        return self._pickups_enabled
+
+    @pickups_enabled.setter
+    def pickups_enabled(self, enabled):
+        self._pickups_enabled=bool(enabled)
+        if not enabled:self.pickup_frames.clear()
 
     @property
     def tracking_area(self):
@@ -367,6 +379,7 @@ class PixelReader(QObject):
         self.tracking_frame_at = 0.0
         self.tracking_identity_area = None
         self.pickup_covered_at = 0
+        self.pickup_frames.clear()
         if self.pickup_worker is not None:
             self.pickup_worker.invalidate()
         self.next_area_search = 0
@@ -439,7 +452,7 @@ class PixelReader(QObject):
             self.pickup_worker.close()
             self.pickup_worker = None
         if (self.experience_enabled and self.pickups_enabled and self.tracking_ready
-                and now-self.last_pickup >= .2 and self.last_frame > self.last_pickup_frame):
+                and (self.pickup_frames.frames or self.last_frame > self.last_pickup_frame)):
             self.scan_pickups(now)
         if self.pending:
             request=self.active_request;viewport=getattr(self,'shop_browsing',None)
@@ -627,21 +640,26 @@ class PixelReader(QObject):
 
     def scan_pickups(self,now):
         game=self.tracking_area
-        if game is None or not self.tracking_ready or not self.pickups_enabled:return
+        if (self.closed or not self.experience_enabled or game is None
+                or not self.tracking_ready or not self.pickups_enabled):return
         area=self.pickup_area(game).intersected(self.image.rect())
         if any(area.intersects(region) for region in self.exclude_regions()):
             self.metrics.record('pickup.covered')
             self.pickup_status.emit('covered')
             self.last_pickup=now;self.last_pickup_frame=self.last_frame
             self.pickup_covered_at=int(self.last_frame*1000)
+            self.pickup_frames.clear()
             if self.pickup_worker is not None:self.pickup_worker.invalidate()
             self.experience.emit({'atMs':int(self.last_frame*1000),'pickupsRead':True,
                                   'trackingEpoch':self.tracking_epoch,
                                   'pickups':{'valid':False,'covered':True,'lines':[]}})
             return
-        if self.pickup_worker is not None and self.pickup_worker.pending:return
-        image=self.image.copy(area).convertToFormat(QImage.Format.Format_RGBA8888)
-        if image.isNull():return
+        if self.last_frame>self.last_pickup_frame:
+            image=self.image.copy(area).convertToFormat(QImage.Format.Format_RGBA8888)
+            if image.isNull():return
+            identity_proof=name_proof(self.image,self.tracking_identity_area,QPoint())
+            self.pickup_frames.add(image,self.last_frame,self.generation,self.tracking_epoch,identity_proof)
+            self.last_pickup_frame=self.last_frame
         if self.pickup_worker is None:
             self.pickup_worker=PickupWorker(self.root,self.temp.name,self)
             self.temp_writers=[process for process in self.temp_writers
@@ -649,11 +667,16 @@ class PixelReader(QObject):
             process=getattr(self.pickup_worker,'process',None)
             if process is not None:self.temp_writers.append(process)
             self.pickup_worker.result.connect(self.on_pickup_result)
+            self.pickup_worker.result.connect(self.continue_pickups)
             self.pickup_worker.issue.connect(self.on_pickup_issue)
-        identity_proof=name_proof(self.image,self.tracking_identity_area,QPoint())
-        if self.pickup_worker.submit(image,self.last_frame,self.generation,self.tracking_epoch,identity_proof):
-            self.metrics.record('pickup.submitted',age_ms=max(0,(now-self.last_frame)*1000))
-            self.last_pickup=now;self.last_pickup_frame=self.last_frame
+        if self.pickup_frames.submit(self.pickup_worker,now,self.generation,self.tracking_epoch,self.pickup_covered_at):
+            self.metrics.record('pickup.submitted',age_ms=max(0,(now-self.pickup_frames.submitted_at)*1000))
+            self.last_pickup=now
+
+    def continue_pickups(self,_result):
+        # Dispatch the next captured crop as soon as this job finishes, without
+        # reentering result admission or running the full shop/UI scan here.
+        QTimer.singleShot(0,self,lambda:self.scan_pickups(time.monotonic()))
 
     def on_pickup_issue(self, reason):
         self.metrics.record('pickup.'+reason)
@@ -997,6 +1020,7 @@ class PixelReader(QObject):
         if self.closed:return
         self.closed=True
         self.paused=True
+        self.pickup_frames.clear()
         self.source_check.close()
         if hasattr(self,'diagnostics_timer'):self.diagnostics_timer.stop()
         self.timer.stop()

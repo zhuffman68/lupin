@@ -34,19 +34,21 @@ class PickupReaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'synthetic.png';image.save(str(path))
             request={'path':str(path),'pickups_only':True}
-            result=subprocess.run([str(binary)],input=''.join(json.dumps({**request,'at_ms':n})+'\n' for n in (1000,1200)),
+            result=subprocess.run([str(binary)],input=''.join(json.dumps({**request,'at_ms':n})+'\n' for n in (1000,1200,1400,1600)),
                 text=True,capture_output=True,check=True,timeout=20,
                 env={**os.environ,'RAYON_NUM_THREADS':'1','RTEN_NUM_THREADS':'1','OMP_NUM_THREADS':'1'})
-        first,second=[json.loads(line) for line in result.stdout.splitlines()]
+        # A cold time-bounded job may defer older rows. Once visited, every
+        # unchanged native-size row must reuse recognition and retain geometry.
+        first,second=[json.loads(line) for line in result.stdout.splitlines()][-2:]
         self.assertEqual([row['mesos'] for row in first['pickups']['lines']],[29,29,29])
-        self.assertEqual(first['pickups'],second['pickups']);self.assertEqual(second['atMs'],1200)
+        self.assertEqual(first['pickups'],second['pickups']);self.assertEqual(second['atMs'],1600)
         self.assertNotIn('shop',second);self.assertNotIn('experience',second)
         self.assertEqual(first['pickups']['state'],'readable')
         self.assertTrue(all(row['kind']=='meso' and row['visualKey'] for row in first['pickups']['lines']))
         self.assertEqual(len({row['rect']['y'] for row in first['pickups']['lines']}),3)
 
     def test_classic_exp_party_and_item_receipts_anchor_without_currency(self):
-        result=self.read_images([self.fixture('classic-anchors.png')])[0]
+        result=self.read_images([self.fixture('classic-anchors.png')]*4)[-1]
         self.assertEqual([row['kind'] for row in result['lines']],['exp','party_exp','item','meso'])
         self.assertEqual([row['mesos'] for row in result['lines']],[None,None,None,29])
         self.assertEqual(result['state'],'readable')
@@ -69,9 +71,15 @@ class PickupReaderTests(unittest.TestCase):
             for row in unknown['lines']))
 
     def test_budget_exhaustion_keeps_previously_verified_rows(self):
-        result=self.read_images([self.fixture('budget.png')])[0]
+        # Uncached older rows can be deferred so newest arrivals get first OCR.
+        # Each exact failed mask is cached; later frames finish older work while
+        # retaining every visible row as non-currency continuity evidence.
+        results=self.read_images([self.fixture('budget.png')]*18)
+        result=results[-1]
         self.assertEqual([row['mesos'] for row in result['lines'] if row['mesos'] is not None],[29])
         self.assertEqual(result['state'],'readable');self.assertTrue(result['partial'])
+        self.assertTrue(all(read['lines'] and read['partial'] for read in results))
+        self.assertEqual(len(results[0]['lines']),len(result['lines']))
 
     def test_chat_prefix_and_invalid_amounts_never_become_currency(self):
         names=['chat-prefix.png','abbreviated-amount.png','invalid-grouping.png','negative-amount.png']

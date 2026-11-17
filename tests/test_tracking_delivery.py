@@ -7,9 +7,11 @@ import unittest
 from unittest.mock import patch
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QImage
 
 from price_lens.capture import PixelReader
 from price_lens.experience_ui import ExperiencePanel
+from price_lens.pickup_capture import PickupFrames
 from test_experience import payload
 from test_tracking_identity import proof
 
@@ -68,3 +70,32 @@ class TrackingDeliveryTests(unittest.TestCase):
         self.deliver(1002,empty)
         self.assertTrue(self.panel.mesos.observed)
         self.assertEqual(self.panel.pickup_issue,'')
+
+    def test_fast_burst_survives_capturing_while_worker_is_busy(self):
+        trace=json.loads((Path(__file__).parent/'fixtures/pickup-fast-burst.json').read_text())
+        baseline,*frames=trace['frames'];self.deliver(1000,baseline['pickups'])
+        queue=PickupFrames();owner=self
+
+        class Worker:
+            pending=True
+
+            def submit(self,image,at,generation,epoch,name_proof):
+                packet=next(frame for frame in frames if abs(at-(1000+frame['atMs']/1000))<.001)
+                owner.deliver(at,packet['pickups'],pickupNameProof=name_proof)
+                return True
+
+        worker=Worker();image=QImage(256,128,QImage.Format.Format_RGBA8888);image.fill(0)
+        # Without the intermediate captures a later latest-frame read cannot
+        # confirm both short-lived pickups before they leave the visible log.
+        for frame in frames[:3]:
+            self.now=1000+frame['atMs']/1000
+            queue.add(image,self.now,3,self.capture.tracking_epoch,proof())
+            self.assertFalse(queue.submit(worker,self.now,3,self.capture.tracking_epoch))
+        worker.pending=False;self.now+=.01
+        while queue.frames:
+            self.assertTrue(queue.submit(worker,self.now,3,self.capture.tracking_epoch))
+        for frame in frames[3:]:
+            at=1000+frame['atMs']/1000;self.now=at+.01
+            self.deliver(at,frame['pickups'])
+        self.assertEqual(self.panel.mesos.gain,trace['expected_gain'])
+        self.assertEqual(self.panel.mesos.last_pickup,45)

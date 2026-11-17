@@ -38,6 +38,8 @@ class Arrival:
     last: float
     counted: bool
     proven: bool
+    amount_first: float | None = None
+    amount_value: int | None = None
 
 
 class PickupTracker:
@@ -246,8 +248,16 @@ class PickupTracker:
                 # replacement. Partial spatial rows can wait for a clear view.
                 seeded = not proven and (not row.rect or not partial)
                 item = Arrival(row, at, at, seeded, proven)
+            if semantic_amount is not None and item.amount_value != semantic_amount:
+                item.amount_value = semantic_amount
+                item.amount_first = at
+            amount_confirmed = (semantic_amount is not None
+                                and item.amount_value == semantic_amount
+                                and item.amount_first is not None
+                                and at-item.amount_first >= .08)
             if (not item.counted and item.proven and at-item.first >= .08
-                    and (item.line.amount is None or semantic_amount is not None)):
+                    and not row.unknown
+                    and (item.line.amount is None or amount_confirmed)):
                 item.counted = True
                 batch += item.line.amount or 0
                 if item.line.amount:

@@ -7,6 +7,8 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased
 
+- Meso tracking handles rapid pickup bursts more reliably, keeping short-lived
+  messages while OCR is busy and recovering amounts that were initially unreadable.
 - Tracking can recover after losing sight of the game even while EXP digits
   are unreadable, without resetting the session or counting hidden gains.
   Clearer messages distinguish a visibility hold from paused reading.

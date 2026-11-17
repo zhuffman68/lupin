@@ -1,4 +1,63 @@
-# Verification — 2026-11-16
+# Verification — 2026-11-17
+
+## Missed pickup bursts — unreleased
+
+A read-only sample from the existing authorized share contains 180 pickup-log
+crops over 31.799 seconds. Thirteen manually checked new pickups total **419**;
+the two messages already visible in the first frame are excluded. The private
+`amount-oracle.png` contact sheet preserves the individual visible amounts.
+No game inputs, game-process inspection or additional sharing request was used.
+
+The original native implementation spends repeated OCR on scenery-contaminated
+item receipts and clears successful masks together with failed masks at cache
+capacity. In a serial profile of all 180 images, seven jobs exceeded the unchanged
+1.5-second worker deadline; the maximum was **2,225 ms**. The old live-style path
+also skips intermediate captures while the worker is busy. One original-cadence
+worker/admission/panel replay counted **302/419**, omitting a four-pickup burst.
+That first diagnostic driver reported a deleted-QProcess error after recording
+the completed result; its shutdown check was corrected before the final replays.
+
+The repaired implementation bounds new OCR to four calls and a soft 50 ms budget
+between calls, searches exact cached masks across all rows, favors successful
+cache entries and prioritizes candidate currency prefixes. Prefixes only affect
+work ordering; complete strict literal OCR still supplies amounts. Six immutable
+pickup crops retain short-lived observations while the single worker is busy.
+Their same-frame name proofs, generation and epoch stay bound to their pixels.
+Queued crops already one second old are dropped; the 1.5-second worker, result
+freshness and ledger continuity limits remain unchanged. Pause/hold, cover,
+source reset and Stop clear queued work.
+
+A separate ledger error consumed unknown arrivals as non-currency anchors before
+their amounts became readable. Unknowns now remain pending; the first readable
+amount cannot credit them until another fresh matching literal observation at
+least 80 ms later. Seeded messages cannot become income retroactively. Two new
+deferred-arrival tests fail on the old model and pass on the repaired model.
+The old test helper's `unknown:` key was corrected to the real `visual:` wire
+format, so unknown-row tests now exercise admission rather than malformed input.
+
+All **180 focused Python checks pass in 15.328 s**, including native OCR,
+capture scheduling/admission, the cropped queue, identity and pause holds,
+arrival matching, rates/overlays and process/file lifetime. All **81 Rust checks
+pass in 5.25 s**. The anonymized `pickup-fast-burst.json` fixture permanently
+checks all four fast pickups through the bounded queue and production panel
+admission; it contains no screenshots, player text or original visual hashes.
+Cold OCR tests permit deferred rows to finish on subsequent frames while still
+requiring exact amounts, independent row positions and stable cached results.
+
+Two final original-cadence saved-frame runs through the real worker, capture
+admission and tracking panel both count **419/419**. These harnesses supply game
+readiness and character proofs as fixtures: they prove the recorded pickup path,
+not physical Windows capture or a fresh live training acceptance. The serial
+native profile on the same 180 images changes median/p95/maximum from
+**13.2/1,459/2,225 ms** to **8.0/342/422 ms**, with no service-deadline overruns.
+Total measured native service time falls from 48.53 s to 15.39 s. These are dated
+host-load-dependent observations, not CPU percentages or universal timing bounds.
+The soft budget cannot preempt an individual inference.
+
+Evidence is private under `evidence/meso-missing-2026-11-17/`. Only the local
+reader has been rebuilt; no installers, installed package or release upload
+were changed. Fresh live training confirmation remains pending. Existing saved
+totals are not increased using estimated wallet differences.
 
 ## Tracking reacquisition and stable item summaries — unreleased
 

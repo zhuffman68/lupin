@@ -1,0 +1,575 @@
+{
+  "schema": 1,
+  "description": "Anonymized fast six-line scroll burst. The initial 49 is seeded; four new literal pickups total 117. No images, player text, absolute time, original receipt names or glyph fingerprints.",
+  "expected_gain": 117,
+  "arrivals": [
+    14,
+    28,
+    30,
+    45
+  ],
+  "frames": [
+    {
+      "atMs": 0,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "exp:12",
+            "mesos": null,
+            "kind": "exp",
+            "rect": {
+              "height": 11,
+              "width": 126,
+              "x": 507,
+              "y": 88
+            },
+            "visualKey": "shape-001"
+          },
+          {
+            "key": "mesos:49",
+            "mesos": 49,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 102
+            },
+            "visualKey": "shape-002"
+          },
+          {
+            "key": "exp:26",
+            "mesos": null,
+            "kind": "exp",
+            "rect": {
+              "height": 11,
+              "width": 126,
+              "x": 507,
+              "y": 116
+            },
+            "visualKey": "shape-003"
+          },
+          {
+            "key": "visual:shape-004",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 428,
+              "x": 205,
+              "y": 130
+            },
+            "visualKey": "shape-004"
+          },
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 144
+            },
+            "visualKey": "shape-005"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 151,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "exp:12",
+            "mesos": null,
+            "kind": "exp",
+            "rect": {
+              "height": 11,
+              "width": 126,
+              "x": 507,
+              "y": 74
+            },
+            "visualKey": "shape-001"
+          },
+          {
+            "key": "mesos:49",
+            "mesos": 49,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 88
+            },
+            "visualKey": "shape-002"
+          },
+          {
+            "key": "exp:26",
+            "mesos": null,
+            "kind": "exp",
+            "rect": {
+              "height": 11,
+              "width": 126,
+              "x": 507,
+              "y": 102
+            },
+            "visualKey": "shape-003"
+          },
+          {
+            "key": "visual:shape-006",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 464,
+              "x": 169,
+              "y": 116
+            },
+            "visualKey": "shape-006"
+          },
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 130
+            },
+            "visualKey": "shape-005"
+          },
+          {
+            "key": "item:receipt-002",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 195,
+              "x": 438,
+              "y": 144
+            },
+            "visualKey": "shape-007"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 300,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "visual:shape-008",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 468,
+              "x": 165,
+              "y": 74
+            },
+            "visualKey": "shape-008"
+          },
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 88
+            },
+            "visualKey": "shape-005"
+          },
+          {
+            "key": "item:receipt-002",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 195,
+              "x": 438,
+              "y": 102
+            },
+            "visualKey": "shape-007"
+          },
+          {
+            "key": "mesos:14",
+            "mesos": 14,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 116
+            },
+            "visualKey": "shape-009"
+          },
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 130
+            },
+            "visualKey": "shape-005"
+          },
+          {
+            "key": "mesos:28",
+            "mesos": 28,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 144
+            },
+            "visualKey": "shape-010"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 613,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "item:receipt-002",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 195,
+              "x": 438,
+              "y": 74
+            },
+            "visualKey": "shape-007"
+          },
+          {
+            "key": "mesos:14",
+            "mesos": 14,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 88
+            },
+            "visualKey": "shape-009"
+          },
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 102
+            },
+            "visualKey": "shape-005"
+          },
+          {
+            "key": "mesos:28",
+            "mesos": 28,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 116
+            },
+            "visualKey": "shape-010"
+          },
+          {
+            "key": "visual:shape-011",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 428,
+              "x": 205,
+              "y": 130
+            },
+            "visualKey": "shape-011"
+          },
+          {
+            "key": "item:receipt-003",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 180,
+              "x": 453,
+              "y": 144
+            },
+            "visualKey": "shape-012"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 750,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "item:receipt-001",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 167,
+              "x": 466,
+              "y": 74
+            },
+            "visualKey": "shape-005"
+          },
+          {
+            "key": "mesos:28",
+            "mesos": 28,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 88
+            },
+            "visualKey": "shape-010"
+          },
+          {
+            "key": "visual:shape-013",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 439,
+              "x": 194,
+              "y": 102
+            },
+            "visualKey": "shape-013"
+          },
+          {
+            "key": "item:receipt-003",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 180,
+              "x": 453,
+              "y": 116
+            },
+            "visualKey": "shape-012"
+          },
+          {
+            "key": "visual:shape-014",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 428,
+              "x": 205,
+              "y": 130
+            },
+            "visualKey": "shape-014"
+          },
+          {
+            "key": "mesos:30",
+            "mesos": 30,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 144
+            },
+            "visualKey": "shape-015"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 901,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "visual:shape-016",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 440,
+              "x": 193,
+              "y": 74
+            },
+            "visualKey": "shape-016"
+          },
+          {
+            "key": "item:receipt-003",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 180,
+              "x": 453,
+              "y": 88
+            },
+            "visualKey": "shape-012"
+          },
+          {
+            "key": "visual:shape-017",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 439,
+              "x": 194,
+              "y": 102
+            },
+            "visualKey": "shape-017"
+          },
+          {
+            "key": "mesos:30",
+            "mesos": 30,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 116
+            },
+            "visualKey": "shape-015"
+          },
+          {
+            "key": "mesos:45",
+            "mesos": 45,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 130
+            },
+            "visualKey": "shape-018"
+          },
+          {
+            "key": "item:receipt-004",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 153,
+              "x": 480,
+              "y": 144
+            },
+            "visualKey": "shape-019"
+          }
+        ]
+      }
+    },
+    {
+      "atMs": 1050,
+      "pickups": {
+        "valid": true,
+        "state": "readable",
+        "partial": true,
+        "lines": [
+          {
+            "key": "visual:shape-020",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 493,
+              "x": 140,
+              "y": 74
+            },
+            "visualKey": "shape-020"
+          },
+          {
+            "key": "item:receipt-003",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 180,
+              "x": 453,
+              "y": 88
+            },
+            "visualKey": "shape-012"
+          },
+          {
+            "key": "visual:shape-021",
+            "mesos": null,
+            "kind": "unknown",
+            "rect": {
+              "height": 11,
+              "width": 468,
+              "x": 165,
+              "y": 102
+            },
+            "visualKey": "shape-021"
+          },
+          {
+            "key": "mesos:30",
+            "mesos": 30,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 116
+            },
+            "visualKey": "shape-015"
+          },
+          {
+            "key": "mesos:45",
+            "mesos": 45,
+            "kind": "meso",
+            "rect": {
+              "height": 11,
+              "width": 163,
+              "x": 470,
+              "y": 130
+            },
+            "visualKey": "shape-018"
+          },
+          {
+            "key": "item:receipt-004",
+            "mesos": null,
+            "kind": "item",
+            "rect": {
+              "height": 11,
+              "width": 153,
+              "x": 480,
+              "y": 144
+            },
+            "visualKey": "shape-019"
+          }
+        ]
+      }
+    }
+  ]
+}

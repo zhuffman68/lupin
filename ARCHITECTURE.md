@@ -590,7 +590,19 @@ Thumbnail downloads share a two-request queue, bounded memory/disk caches and ne
 
 ## Tracking and translation
 
-Tracking starts stopped. Explicit Start enables EXP sampling once a second and a bounded bottom-right pickup-log crop at up to five samples a second. Pickup OCR uses a separate invocation of the same native binary, restricted to one thread and one in-flight crop; it shares the approved capture and cannot queue a backlog behind shop OCR. Stop releases that worker even when display reading is paused. Timed-out, superseded, covered and wrong-generation replies are discarded.
+Tracking starts stopped. Explicit Start enables EXP sampling once a second and
+captures the bounded bottom-right pickup log from fresh shared frames. Pickup
+OCR uses a separate invocation of the same native binary, restricted to one
+thread and one in-flight crop. `PickupFrames` keeps at most six immutable crops
+in capture order while that worker is busy, separately from shop OCR. At the
+maximum 640 × 300 crop size this retains at most 4.4 MiB of image data, plus the
+in-flight crop. Submission drops queued crops already one second old or belonging
+to a different generation/epoch or a covered interval. The original same-frame
+name proof accompanies each crop. A completed job dispatches the next crop
+without waiting for the ordinary scan timer. Pause, Stop, context holds, source
+reset, known obstruction and close clear the queue. Stop releases that worker
+even when display reading is paused. Timed-out, superseded, covered and
+wrong-generation replies are discarded.
 
 Pickup-only results enter `ExperiencePanel.feed_pickups` independently of EXP
 numeric candidates. The existing same-frame visual name proof binds them to the
@@ -611,9 +623,28 @@ or screenshots. Normal runs do no diagnostics file I/O. The optional developer
 seconds. See [tracking and reader performance](docs/TRACKING_AND_READER_PERFORMANCE.md)
 for the implementation record and acceptance limits.
 
-The pickup reader supplies per-line geometry, kind and normalized visual evidence. Actual EXP, party-bonus and item-receipt messages anchor scrolling without adding currency. White glyphs fading over colored scenery use local blue-channel contrast; yellow EXP text is handled separately. Up to 256 normalized patterns are cached. Unreadable or partially recognized text is distinct from a proven empty log, and exhausting the OCR budget retains recognized rows.
+The pickup reader supplies per-line geometry, kind and normalized visual evidence.
+Actual EXP, party-bonus and item-receipt messages anchor scrolling without adding
+currency. White glyphs fading over colored scenery use local blue-channel
+contrast; yellow EXP text is handled separately. Up to 256 normalized patterns
+are cached; pressure evicts failed masks before successful recognition instead
+of clearing the cache. Exact cache lookup spans every candidate row before OCR.
+Each job permits at most four new OCR calls and a soft 50 ms work budget checked
+between calls; a single inference cannot be preempted. Newest rows get first
+ordinary work. Up to four prefixes learned from complete literal meso messages
+prioritize new candidate amounts ahead of noisy receipts. These exact pixel
+prefixes are scheduling hints only: they supply no amount, message, identity or
+arrival proof. The complete strict literal parser and independent observations
+still authorize every counted amount. Unreadable or deferred right-aligned rows
+retain unknown visual evidence, distinct from a proven empty log.
 
 A bounded arrival ledger follows individual lines through upward scrolling, preserves short-lived pending arrivals, distinguishes repeated equal amounts and never confirms a new currency amount from unknown visual evidence alone. A changed, independently recognized bottom slot can prove a replacement burst; this proof cannot promote recovered historical lines above shared anchors. Existing lines are seeded on Start/Resume, after actual coverage loss and after known obstruction. There are at most 96 active records and 301 recent-rate buckets. Frames and chat are not persisted in normal operation. Totals describe confirmed visible pickups, not profit or wallet changes; genuinely unseen or unresolved arrivals can still be missed. Legacy saved runs retain their wallet basis; new history/CSV records use pickups and record coverage gaps.
+
+Unknown arrivals remain pending instead of being consumed as non-currency
+anchors. A recovered amount requires two fresh consistent literal observations
+at least 80 ms apart; unknown visual observations do not satisfy that requirement.
+An unknown row already visible at Start/Resume remains seeded even when its
+amount is later recognized. The existing two-second pending limit still applies.
 
 One recognition gate applies to automatic and manual capture regions, job submission and result acceptance. Losing verified game bounds creates an automatic hold separate from manual Pause. The active clock is capped at the last verified frame, so a stopped stream does not accrue time while a timeout is detected. Capture-generation and tracking-epoch checks discard late work. Fresh same-frame name proofs also bind pickup-only jobs to an established character without additional OCR. Two fresh matching readings confirm the original character before an automatic return; another client cannot reset the held run. Hidden activity is excluded by rebaselining EXP and seeding the returned pickup log. Numerical EXP failures alone do not remove valid game recognition, and map-history changes preserve totals and pace.
 

@@ -182,6 +182,28 @@ class TrackingCaptureTests(unittest.TestCase):
         self.assertTrue(pending.closed)
         self.assertIsNone(reader.pickup_worker)
 
+    def test_pickup_capture_keeps_busy_worker_frames_and_clears_on_hold_or_reset(self):
+        reader=self.located_reader();reader.experience_enabled=True
+        pending=PendingPickupWorker();reader.pickup_worker=pending
+        first=reader.last_frame
+        for offset in (0, .15, .3, .45):
+            reader.last_frame=first+offset
+            reader.mark_tracking_frame()
+            with patch('price_lens.capture.time.monotonic',return_value=first+offset+.01):
+                reader.scan_pickups(first+offset+.01)
+        self.assertEqual([row[1] for row in reader.pickup_frames.frames],
+                         [first+offset for offset in (0, .15, .3, .45)])
+        self.assertTrue(pending.pending)
+        reader.pickups_enabled=False
+        self.assertFalse(reader.pickup_frames.frames)
+        reader.pickups_enabled=True
+        reader.last_pickup_frame=0
+        with patch('price_lens.capture.time.monotonic',return_value=first+.46):
+            reader.scan_pickups(first+.46)
+        self.assertTrue(reader.pickup_frames.frames)
+        reader.reset_area()
+        self.assertFalse(reader.pickup_frames.frames)
+
 
 class PickupWorkerTests(unittest.TestCase):
     @classmethod
