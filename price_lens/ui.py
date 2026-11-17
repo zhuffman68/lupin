@@ -912,7 +912,8 @@ class LensWindow(QMainWindow):
             ready=(time.time()-self.last_screen<1.5 and not getattr(self.reader,'paused',False)
                    and (self.reader.game_area is not None if self.reader.auto_active else self.reader.crop is not None))
         self.exp_panel.set_connected(self.mode=='live' and bool(ready),
-            frame_at=getattr(self.reader,'tracking_frame_at',None),refresh=refresh)
+            frame_at=getattr(self.reader,'tracking_frame_at',None),refresh=refresh,
+            reason='reading-paused' if self.mode!='live' or getattr(self.reader,'paused',False) else 'unverified')
         self.sync_tracking_reader()
         if self.exp_panel.connected and self.pending_exp_start:
             self.pending_exp_start=False
@@ -1476,7 +1477,7 @@ class LensWindow(QMainWindow):
         self.render()
 
     def pause(self):
-        self.exp_panel.set_connected(False,frame_at=getattr(self.reader,'tracking_frame_at',None))
+        self.exp_panel.set_connected(False,frame_at=getattr(self.reader,'tracking_frame_at',None),reason='reading-paused')
         if self.capture_starting:
             self.cancel_capture_setup()
             return

@@ -41,6 +41,7 @@ class ExperiencePanel(QWidget):
         except (OSError, sqlite3.Error) as error:
             self.storage_error = "Session storage unavailable: " + str(error)
         self.connected = False
+        self.connection_issue = 'unverified'
         self.capture_frame_at = None
         self.tracking_epoch = 0
         self.tracking_floor_ms = 0
@@ -56,6 +57,7 @@ class ExperiencePanel(QWidget):
         self.paused_context_ready = True
         self.pause_match_at = None
         self.pause_match_reading = None
+        self.pause_match_key = None
         self.watch_approximate = False
         self.watch_epoch = time.time()
         self.watch_totals = {"seconds":0.0,"progress":0.0,"exp":0.0}
@@ -105,18 +107,20 @@ class ExperiencePanel(QWidget):
         self.tracking_floor_ms=int(time.monotonic()*1000)
         self.tracking_epoch_changed.emit(self.tracking_epoch)
 
-    def set_connected(self, connected, *, frame_at=None, refresh=True):
+    def set_connected(self, connected, *, frame_at=None, refresh=True, reason='unverified'):
         # A missing/covered frame never advances the active clock beyond the
         # last verified pixels. Direct panel users may omit a capture clock.
         if frame_at is None:self.capture_frame_at=None
         elif type(frame_at) in (int,float) and math.isfinite(frame_at) and frame_at>0:
             self.capture_frame_at=frame_at
         self.tick_mesos()
-        changed=self.connected!=bool(connected)
+        issue='' if connected else 'reading-paused' if reason=='reading-paused' else 'unverified'
+        changed=self.connected!=bool(connected) or issue!=self.connection_issue
         if self.connected and not connected:
             self.interrupt_context()
             self.mesos.interrupt()
         self.connected = bool(connected)
+        self.connection_issue=issue
         if (self.connected and self.recognition_held
                 and not (self.tracker.current and self.tracker.current.character)):
             # Pickup tracking can run with an unreadable EXP bar. If no
@@ -133,21 +137,42 @@ class ExperiencePanel(QWidget):
             self.reacquiring=not self.user_paused
             self.invalidate_tracking()
             self.paused_context_ready=False
-            self.pause_match_at=None;self.pause_match_reading=None
+            self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
         self.tracker.interrupt()
         self.mesos.interrupt()
         self.identity.candidate=None
         if self.tracker.current:self.identity_ready=False
         if self.user_paused and self.tracker.current and self.tracker.current.character:
-            self.paused_context_ready=False;self.pause_match_at=None;self.pause_match_reading=None
+            self.paused_context_ready=False;self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
 
     def observe_paused_context(self,payload,at):
         """Identify the visible character without mutating a paused session."""
         original=self.tracker.current
         reading=Reading.parse(payload,at)
-        if not original or not original.character or reading is None or at<=original.at:return
+        if not original or not original.character or at<=original.at:return
+        key=payload.get('identityKey')
+        if original.identity_key and key and key!=original.identity_key:
+            self.paused_context_ready=False;self.pause_match_at=None
+            self.pause_match_reading=None;self.pause_match_key=None;self.identity_ready=False
+            return
+        if (self.recognition_held and not self.user_paused and original.identity_key
+                and key==original.identity_key and proof_pixels(payload.get('nameProof')) is not None):
+            # Coverage/character recovery is independent of EXP arithmetic.
+            # prepare() has verified this current name raster against the
+            # captured character; two fresh matching frames can resume pickup
+            # coverage even while EXP digits still need their own validation.
+            if (self.pause_match_key==key and self.pause_match_at is not None
+                    and 0<at-self.pause_match_at<=MAX_GAP):
+                self.paused_context_ready=True;self.pause_match_at=None
+            else:
+                self.pause_match_at=at;self.pause_match_reading=reading;self.pause_match_key=key
+            self.identity_ready=self.paused_context_ready
+            return
+        if reading is None:
+            self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
+            return
         if not reading.same_character(original):
-            self.paused_context_ready=False;self.pause_match_at=None;self.pause_match_reading=None
+            self.paused_context_ready=False;self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
         elif not self.paused_context_ready:
             prior=self.pause_match_reading
             consistent=bool(prior and prior.level==reading.level and reading.exp>=prior.exp
@@ -186,7 +211,10 @@ class ExperiencePanel(QWidget):
                 self.mesos.tick(self.clock_at(),False)
                 self.recognition_held=False
                 reading=Reading.parse(payload,at)
-                if reading and self.tracker.current and reading.level!=self.tracker.current.level:
+                prior=self.pause_match_reading
+                if (reading and self.tracker.current and reading.level!=self.tracker.current.level
+                        and prior and prior.level==reading.level and reading.exp>=prior.exp
+                        and max(prior.bounds[0],reading.bounds[0])<=min(prior.bounds[1],reading.bounds[1])):
                     resumed_level=reading
             if self.user_paused:
                 self.refresh();self.changed.emit();return
@@ -302,7 +330,7 @@ class ExperiencePanel(QWidget):
             self.requested=True;self.user_paused=False;self.paused_window=None
             self.paused_meso_rate=None;self.reacquiring=True
             self.recognition_held=False
-            self.paused_context_ready=True;self.pause_match_at=None;self.pause_match_reading=None
+            self.paused_context_ready=True;self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
             self.watch_totals={"seconds":0.0,"progress":0.0,"exp":0.0}
             self.watch_epoch=time.time();self.watch_approximate=False
             self.mesos.reset(time.monotonic())
@@ -323,7 +351,7 @@ class ExperiencePanel(QWidget):
         self.requested=False;self.user_paused=False;self.paused_window=None
         self.paused_meso_rate=None;self.reacquiring=False
         self.recognition_held=False
-        self.paused_context_ready=True;self.pause_match_at=None;self.pause_match_reading=None
+        self.paused_context_ready=True;self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
         self.enabled_changed.emit(False);self.refresh();self.changed.emit()
 
     def hold_pace(self):
@@ -339,7 +367,7 @@ class ExperiencePanel(QWidget):
         if not self.user_paused:self.hold_pace()
         self.user_paused = not self.user_paused
         self.paused_context_ready=not self.recognition_held
-        self.pause_match_at=None;self.pause_match_reading=None
+        self.pause_match_at=None;self.pause_match_reading=None;self.pause_match_key=None
         self.reacquiring=not self.user_paused
         self.tracker.pause(self.user_paused)
         self.mesos.pause(self.user_paused)
@@ -451,8 +479,9 @@ class ExperiencePanel(QWidget):
         values=self.numeric_values();update=display and values is not self.rendered_numbers
         if update:self.rendered_numbers=values;self.refresh_numbers(values)
         state=('' if not self.requested else
-               "Screen reading is paused · tracking is held." if not self.connected else
-               f"Paused · confirming {reading.character}." if self.recognition_held and reading else
+               ("Screen reading paused · session held." if self.connection_issue=='reading-paused'
+                else "Waiting for Classic World · session held.") if not self.connected else
+               f"Confirming {reading.character} · session held." if self.recognition_held and reading else
                f"Paused · waiting for {reading.character}." if self.user_paused and not self.paused_context_ready and reading else
                "Paused · elapsed time and gains are held." if self.user_paused else
                self.exp_waiting()[0] if reading and not fresh else
@@ -496,11 +525,12 @@ class ExperiencePanel(QWidget):
         if not self.requested:
             status = ''
         elif not self.connected:
-            status = 'Screen reading paused · pickups are held.'
+            status = ('Screen reading paused · pickups held.' if self.connection_issue=='reading-paused'
+                      else 'Waiting for Classic World · pickups held.')
         elif self.user_paused:
             status = 'Paused · recent pace held.'
         elif self.recognition_held:
-            status = 'Paused · confirming the captured character.'
+            status = 'Confirming the captured character · pickups held.'
         elif self.pickup_issue:
             status = self.pickup_waiting()[0]
         elif pickups.fresh(now):

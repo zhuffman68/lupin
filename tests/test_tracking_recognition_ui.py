@@ -104,6 +104,26 @@ class TrackingRecognitionUiTests(unittest.TestCase):
         self.assertFalse(panel.user_paused);self.assertTrue(reader.pickups_enabled)
         self.assertGreater(reader.tracking_epoch,epoch)
 
+    def test_matching_visual_context_resumes_pickups_without_waiting_for_exp_digits(self):
+        from test_tracking_identity import proof
+        w=self.window;panel=w.exp_panel;reader=w.reader
+        w.on_exp_hotkey()
+        def visual(exp):
+            self.frame()
+            w.on_experience({'atMs':int(self.now*1000),'trackingEpoch':panel.tracking_epoch,
+                'experience':{**payload(2000 if exp is None else exp),'nameProof':proof(),
+                    **({'bar':None} if exp is None else {})}})
+        visual(2000);visual(2010)
+        run=panel.tracker.run;totals=panel.totals()
+        self.frame(False,seconds=0)
+        self.assertFalse(reader.pickups_enabled)
+        self.assertIn('Waiting for Classic World',panel.state.text())
+        visual(None);self.assertTrue(panel.recognition_held)
+        visual(None)
+        self.assertFalse(panel.recognition_held);self.assertTrue(reader.pickups_enabled)
+        self.assertIs(panel.tracker.run,run);self.assertEqual(panel.totals(),totals)
+        self.assertEqual(panel.tracker.read_issue,'unreadable')
+
     def test_exp_hotkey_can_set_sticky_pause_during_lost_recognition_and_waits_to_resume(self):
         w=self.window;panel=w.exp_panel;reader=w.reader
         w.on_exp_hotkey();self.exp();self.frame();self.exp(2010)

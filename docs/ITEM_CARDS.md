@@ -91,6 +91,15 @@ animation must not trail the tab's clock. Retargeting starts at the visible
 height, including a return before the first tick. Quote updates retain the
 current geometry and transition clock.
 
+Detailed summaries are top-aligned so temporary spare card height cannot
+recenter the name and price fields. During Overview/Sources/Where seen motion,
+`card_summary_motion.py` keeps two small live presentation images above the
+animated body. It uses the existing surface invalidation observers: quote/digit,
+thumbnail and watch-button changes remain live, and shortened text gets a clean
+native background. No extra animation clock is added. The surface never receives
+mouse input and discards its images and observers at completion, hide or Reduce
+motion. These presentation images never establish item identity or price validity.
+
 Opening and closing a selected item in Prices retain the full 130 ms composited
 fade/lift transition. The factory initializes the price summary with the actual
 selected quote/offer once, avoiding temporary empty-price renders. Do not replace

@@ -7,6 +7,7 @@ from .motion import AnimatedTabs,RollingLabel,visibility,enabled
 from .ui_components import COLORS,mesos,text_label
 from .thumbnails import ItemImage
 from .watchlist_ui import WatchButton
+from .card_summary_motion import SummarySurface
 
 
 LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant unverified',
@@ -16,6 +17,7 @@ LOOKUP_MESSAGES={'no-sales':'No observed sales','variant-mismatch':'Item variant
 class ItemDetailTabs(AnimatedTabs):
     """Owned tab geometry: stable destination pages inside an animated card."""
     height_changed=Signal()
+    slide_finished=Signal()
     def __init__(self,parent=None):
         super().__init__(parent);self.setObjectName('itemDetailTabs')
         self.animation.setDuration(220)
@@ -58,6 +60,9 @@ class ItemDetailTabs(AnimatedTabs):
         return content+self.bar_height()
 
     def prepare_page(self,index):self.fit_page()
+
+    def finish_slide(self):
+        super().finish_slide();self.slide_finished.emit()
 
     def fit_page(self):
         height=self.page_height()
@@ -116,10 +121,13 @@ class PriceCard(QFrame):
     def __init__(self,watchlist=None,watch_button=None,**data):
         super().__init__()
         self.selectable=False
+        self.selected_mode=bool(data.get('selected'))
+        self.summary_surface=None;self.detail_tabs=None
         self.setObjectName("card")
         layout=QVBoxLayout(self)
         layout.setContentsMargins(12,10,12,10)
         layout.setSpacing(7)
+        if self.selected_mode:layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.fields={}
         def field(name,parent,style="font-size: 11px; color: #98a3b1",wrap=True):
             numeric = name in ('store','market')
@@ -138,7 +146,6 @@ class PriceCard(QFrame):
         self.watch_button=watch_button if watch_button is not None else WatchButton(self)
         if watchlist is not None:self.watch_button.bind(watchlist)
         header.addWidget(self.watch_button,0,Qt.AlignmentFlag.AlignTop);layout.addWidget(self.header_widget)
-        self.selected_mode=bool(data.get('selected'))
         self.price_column=QWidget();self.price_column.setStyleSheet('background:transparent')
         values=QVBoxLayout(self.price_column);values.setContentsMargins(0,0,0,0);values.setSpacing(6)
         layout.addWidget(self.price_column)
@@ -182,7 +189,20 @@ class PriceCard(QFrame):
 
     def set_panel(self,panel):
         panel.setMinimumWidth(0);self.layout().addWidget(panel)
+        if isinstance(panel,ItemDetailTabs):
+            self.detail_tabs=panel
+            for signal in (panel.currentChanged,panel.height_changed,panel.slide_finished):
+                signal.connect(self.sync_summary_motion)
         self.sync_summary_size()
+
+    def sync_summary_motion(self,*_):
+        tabs=self.detail_tabs
+        moving=bool(tabs and (tabs.sliding or tabs.resizing) and enabled(self))
+        if not moving:
+            if self.summary_surface:self.summary_surface.dispose();self.summary_surface=None
+        elif self.summary_surface is None:
+            self.summary_surface=SummarySurface(self,(self.header_widget,self.price_column))
+        else:self.summary_surface.sync_geometry()
 
     def sync_summary_size(self):
         if not self.selected_mode:return
@@ -197,6 +217,11 @@ class PriceCard(QFrame):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if hasattr(self,'selected_mode'):self.sync_summary_size()
+        if getattr(self,'summary_surface',None):self.summary_surface.sync_geometry()
+
+    def hideEvent(self,event):
+        if self.summary_surface:self.summary_surface.dispose();self.summary_surface=None
+        super().hideEvent(event)
 
     def set_selectable(self,enabled):
         if self.selectable==bool(enabled):return

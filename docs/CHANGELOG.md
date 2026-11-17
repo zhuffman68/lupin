@@ -7,6 +7,11 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased
 
+- Tracking can recover after losing sight of the game even while EXP digits
+  are unreadable, without resetting the session or counting hidden gains.
+  Clearer messages distinguish a visibility hold from paused reading.
+- Item names and prices stay steady while switching detail tabs; tab slides,
+  resizing, live price updates and watch controls remain active.
 - New shop-location sightings fade and slide in when Where seen refreshes;
   existing rows move smoothly without flashing. Removed the item/reference
   count line above on-screen prices.

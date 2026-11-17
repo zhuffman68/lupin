@@ -69,6 +69,76 @@ class ExperienceUiTests(unittest.TestCase):
         self.assertNotIn("EXP",self.panel.overlay_rows()[0]["metrics"][1][1])
         self.assertIn("Lv.",self.panel.overlay_rows()[0]["name"])
 
+    def test_completing_warmup_keeps_the_same_exp_and_meso_session_running(self):
+        self.train();panel=self.panel;run=panel.tracker.run
+        self.assertIsNotNone(panel.tracker.window(300)['rate'])
+        for _ in range(12):
+            self.feed(panel.tracker.current.exp+10,1)
+            self.assertTrue(panel.requested);self.assertFalse(panel.user_paused)
+            self.assertFalse(panel.recognition_held);self.assertIs(panel.tracker.run,run)
+            self.assertFalse(panel.tracker.paused)
+        self.assertEqual(panel.history.rows(),[])
+
+    def test_automatic_coverage_hold_and_explicit_reading_pause_have_distinct_messages(self):
+        self.train();panel=self.panel;run=panel.tracker.run
+        panel.set_connected(False)
+        self.assertIn('Waiting for Classic World',panel.state.text())
+        self.assertIn('session held',panel.state.text());self.assertTrue(panel.requested)
+        panel.set_connected(False,reason='reading-paused')
+        self.assertIn('Screen reading paused',panel.state.text())
+        self.assertIs(panel.tracker.run,run);self.assertFalse(panel.user_paused)
+
+    def test_same_visible_character_recovers_an_automatic_hold_even_with_unreadable_exp(self):
+        from test_tracking_identity import proof
+        panel=self.panel;panel.set_connected(True);panel.start()
+        def visual(exp=2000,*,pixels=None,at=None):
+            self.now+=1
+            raw={**payload(2000 if exp is None else exp),'nameProof':proof() if pixels is None else pixels}
+            if exp is None:raw['bar']=None
+            panel.feed({'atMs':int((self.now if at is None else at)*1000),'experience':raw})
+        # Establish both a real accepted visual identity and a usable pace.
+        for second in range(32):visual(2000+second*10)
+        run=panel.tracker.run;totals=panel.totals();rate=panel.tracker.window(300)['rate']
+        panel.set_connected(False);self.now+=2;panel.set_connected(True)
+        visual(None);self.assertTrue(panel.recognition_held)
+        visual(None)
+        self.assertFalse(panel.recognition_held);self.assertTrue(panel.identity_ready)
+        self.assertTrue(panel.requested);self.assertFalse(panel.user_paused)
+        self.assertIs(panel.tracker.run,run);self.assertEqual(panel.totals(),totals)
+        self.assertEqual(panel.numeric_values()['window']['rate'],rate)
+        self.assertEqual(panel.tracker.read_issue,'unreadable')
+        # Numbers are still independently required for EXP; the first valid
+        # sample reanchors its baseline rather than inventing a hidden gain.
+        visual(2600);self.assertEqual(panel.totals(),totals)
+        visual(2610);self.assertEqual(panel.totals()['exp'],totals['exp']+10)
+
+    def test_foreign_missing_and_duplicate_name_proofs_cannot_release_an_automatic_hold(self):
+        from test_tracking_identity import proof
+        panel=self.panel;panel.set_connected(True);panel.start()
+        panel.feed({'atMs':int(self.now*1000),'experience':{**payload(),'nameProof':proof()}})
+        panel.set_connected(False);self.now+=2;panel.set_connected(True)
+        def unreadable(pixels,at):
+            panel.feed({'atMs':int(at*1000),'experience':{**payload(),'bar':None,'nameProof':pixels}})
+        for pixels in (proof(True),None):
+            for _ in range(2):
+                self.now+=1;unreadable(pixels,self.now)
+                self.assertTrue(panel.recognition_held)
+        self.now+=1;unreadable(proof(),self.now);unreadable(proof(),self.now)
+        self.assertTrue(panel.recognition_held)
+        self.now+=1;unreadable(proof(),self.now)
+        self.assertFalse(panel.recognition_held)
+
+    def test_manual_pause_cannot_resume_on_a_different_visible_name_with_unreadable_exp(self):
+        from test_tracking_identity import proof
+        panel=self.panel;panel.set_connected(True);panel.start()
+        panel.feed({'atMs':int(self.now*1000),'experience':{**payload(),'nameProof':proof()}})
+        panel.toggle_pause();self.assertTrue(panel.paused_context_ready)
+        self.now+=1
+        panel.feed({'atMs':int(self.now*1000),'experience':{**payload(),'bar':None,'nameProof':proof(True)}})
+        self.assertTrue(panel.user_paused);self.assertFalse(panel.paused_context_ready)
+        self.assertFalse(panel.pause_button.isEnabled())
+        panel.toggle_pause();self.assertTrue(panel.user_paused)
+
     def test_tracking_clock_adds_hours_and_keeps_seconds_without_shifting_controls(self):
         from price_lens.experience import clock_text
         self.panel.resize(428,650);self.panel.show();self.panel.set_connected(True);self.panel.start()

@@ -596,7 +596,7 @@ Pickup-only results enter `ExperiencePanel.feed_pickups` independently of EXP
 numeric candidates. The existing same-frame visual name proof binds them to the
 established character. A missing proof holds just that job and preserves bounded
 arrival continuity; positively different pixels trigger the existing context
-hold and EXP-based reconfirmation. Pickup jobs cannot teach a new identity or
+hold and captured-character reconfirmation. Pickup jobs cannot teach a new identity or
 release a recognition hold. Legacy combined EXP/pickup fixtures retain explicit
 same-character checking. Capture's 1.5-second result-age bound, the worker's
 1.5-second service deadline and the ledger's 1.5-second observation continuity
@@ -616,6 +616,18 @@ The pickup reader supplies per-line geometry, kind and normalized visual evidenc
 A bounded arrival ledger follows individual lines through upward scrolling, preserves short-lived pending arrivals, distinguishes repeated equal amounts and never confirms a new currency amount from unknown visual evidence alone. A changed, independently recognized bottom slot can prove a replacement burst; this proof cannot promote recovered historical lines above shared anchors. Existing lines are seeded on Start/Resume, after actual coverage loss and after known obstruction. There are at most 96 active records and 301 recent-rate buckets. Frames and chat are not persisted in normal operation. Totals describe confirmed visible pickups, not profit or wallet changes; genuinely unseen or unresolved arrivals can still be missed. Legacy saved runs retain their wallet basis; new history/CSV records use pickups and record coverage gaps.
 
 One recognition gate applies to automatic and manual capture regions, job submission and result acceptance. Losing verified game bounds creates an automatic hold separate from manual Pause. The active clock is capped at the last verified frame, so a stopped stream does not accrue time while a timeout is detected. Capture-generation and tracking-epoch checks discard late work. Fresh same-frame name proofs also bind pickup-only jobs to an established character without additional OCR. Two fresh matching readings confirm the original character before an automatic return; another client cannot reset the held run. Hidden activity is excluded by rebaselining EXP and seeding the returned pickup log. Numerical EXP failures alone do not remove valid game recognition, and map-history changes preserve totals and pace.
+
+For an established visual character key, automatic recovery accepts two fresh
+matching name proofs from EXP/context observations even if their EXP digits are
+unreadable. This releases pickup coverage only for the original captured name;
+it learns no new template or identity. EXP retains its own numerical validation
+and first-readable baseline, preserving held gains/rates without counting hidden
+activity. Legacy readings keep their existing numerical/context checks. Missing,
+different, duplicate-timestamp and old-epoch proofs cannot release the hold.
+A positively different visual key also disables manual Resume when its numbers
+are unreadable. Visibility holds, explicit screen-reading pause and manual
+tracking pause have separate status text. Completing the pace warmup performs
+no pause, stop, save or session reset.
 
 EXP pace needs 30 seconds of accepted readings; pickup rates need 10 seconds. Covered/rejected intervals can extend the warmup beyond wall-clock time. A bounded four-reading numerical recovery buffer prevents a bad initial total from rejecting correct readings indefinitely. Replacement requires at least three distinct increasing EXP values, two percentages, compatible inferred totals and two seconds of fresh captures for the same identity/level. Unchanged or repeated-time observations cannot vote a different total into place. Reanchoring retains the session and confirmed gains but excludes the untrusted interval. Pause, capture loss, invalid figures and identity/level changes clear the evidence. The UI distinguishes unreadable pixels, unreadable identity, inconsistent values and an unconfirmed level/change.
 
@@ -1107,6 +1119,14 @@ when its updated signal invalidates them; pending/error text stays live. Hidden
 Where seen panels neither build their body nor render saved rows until selected.
 Their bounded sighting records use one virtual painted viewport, with shared
 age-roll/fade clocks and visible-row painting rather than per-row widget trees.
+`card_summary_motion.py` reuses the existing owned-surface observers for two
+small live summary images during detail-tab movement. The name/price sections
+stay at the top while the body retains its slide and height clocks; unchanged
+summary widgets need not repaint on every resize. Quote/digit, thumbnail and
+button changes update the corresponding section, including shortened text.
+The surface is mouse-transparent and releases its images/observers when motion
+finishes, is interrupted, or becomes hidden/reduced-motion. It creates no timer
+and supplies no observation, offer or market-price authority.
 Refreshes match offer presentation keys: new rows fade/lift over 220 ms while
 retained rows move at full opacity. Changed retained content keeps its 130 ms
 fade. Interrupted updates reuse current positions/opacities, unchanged data

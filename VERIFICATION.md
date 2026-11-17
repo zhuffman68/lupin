@@ -1,5 +1,55 @@
 # Verification — 2026-11-16
 
+## Tracking reacquisition and stable item summaries — unreleased
+
+An established session could remain automatically held after its game bounds
+returned: context reconfirmation required parseable EXP digits even when current
+name pixels independently matched the captured character. Two fresh matching
+visual name proofs from EXP/context observations now release that identity hold.
+EXP still requires independently accepted numbers and a new readable baseline;
+hidden gains/time are not inferred. Session identity, gains and the five-minute
+pace remain intact. Different, missing, stale and duplicate-timestamp proofs
+cannot release the hold. A different current visual key also prevents manual
+Resume when its EXP digits are unreadable. Status text distinguishes unverified
+game visibility from explicitly paused screen reading.
+
+The reported incident used Resume on the tracking page, which means the manual
+pause flag was set. Its original button/shortcut activation was not captured.
+A completed warmup replay remains running; there is no warmup action that pauses,
+stops or saves the session. The automatic-recovery fix is not proof of that past
+manual-pause trigger. The private preview records at most 96 state transitions
+and its own button/shortcut-control activations, without keys, names, messages,
+EXP values or pickup amounts, to identify a recurrence without another recording.
+This preview-only, event-driven trace is outside shipped application code.
+
+Detail-tab resize repeatedly repainted unchanged summary widgets, and spare
+vertical space could recenter their contents before layout settled. Detailed
+summaries now stay top-aligned. `card_summary_motion.py` retains two small live
+presentation images during the existing 220 ms slide/height motion, using the
+existing surface observers. Quote/digit, thumbnail and watch changes remain live;
+the layer never handles input. Completion, interruption, hide and Reduce motion
+release its images and observers, with no additional animation or idle timer.
+A four-switch sample drops summary/name/price paints from **81 to 8**, while the
+outer card and tab body retain their native resizing and motion. This is an
+isolated paint count, not a hardware frame-rate claim.
+
+All **330 affected tests pass in 77.185 s**, including the tracking model, panel,
+capture admission, pickup delivery, context/identity recovery, overlays and item
+card/view/motion lifecycles. The five new summary tests also pass at **2× in
+3.104 s**: intermediate pixels stay stable within one-channel icon compositing
+rounding; quotes update through the active layer; mouse transparency, reduced
+paint counts and observer cleanup are checked. The fixtures use an explicit
+520×840 window so the high-DPI offscreen screen default cannot clip the reference
+crop. An older view test selected the first MotionLabel, which became a hidden
+field after the preceding summary-line removal; it also fails against `9caaffc`.
+It now targets visible incoming text, retaining all its pixel/clock assertions.
+
+QA uses private Xvfb/D-Bus/HOME/XDG state and generated GUI/service fixtures.
+The original user pause was not reproduced live. No game input, hooks, game-process
+inspection, installer build or publication is part of this change.
+
+Private evidence: `evidence/tracking-tabs-2026-11-16/`.
+
 ## Refreshed shop-location rows and simpler Prices — unreleased
 
 New Where seen sightings use the existing 220 ms fade/eight-pixel settling
