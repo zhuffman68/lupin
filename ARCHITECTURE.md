@@ -944,12 +944,17 @@ files are at most 512 pixels per edge / 1 MiB each, limited to 64 files / 16 MiB
 
 `reference_maps.py` paints only visible markers and supports pointer-centered
 wheel zoom, Fit / + / −, bounded drag panning and separate portal/spawn layers.
-Portal tooltips name exact released destinations; clicks use the ordinary
-Database navigation and Back restores zoom, pan, layers and the previous subpage.
-Same-map portals are distinguished from external exits. Unknown destinations are
-never opened as released entries. Map controls handle only Lupin widget events;
-they do not observe or send game input. An API spawn count remains a count of
-exported placements, not live population or timing.
+Numbered pins follow the map's long axis. The Find portal menu and destination
+label use the same verified entrance identity, including its position and
+destination portal. Overlapping numbers reduce to dots, with the selected
+entrance drawn on top. A same-map arrival is highlighted only when exactly one
+other verified portal matches the named arrival. A single bounded label follows
+the selected or hovered entrance and stays within the preview. Selecting an
+offscreen entrance pans it into view at the current zoom. Click and Enter use
+ordinary Database navigation for released destinations. Back restores the zoom,
+pan, layers, selection and subpage. Maps without verified positions retain
+the Connections list. Map controls handle only Lupin widget events. An API
+spawn count remains a count of exported placements.
 
 Reader title contrast now shares colored-ink handling across marker and centered
 headers. Exact upgrade-suffix validation also applies to independent second reads;

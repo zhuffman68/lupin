@@ -6,13 +6,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import QPoint,QPointF,Qt
+from PySide6.QtCore import QEvent,QPoint,QPointF,Qt
 from PySide6.QtGui import QColor,QImage,QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication,QToolTip
+from PySide6.QtWidgets import QApplication
 
 from price_lens.reference_geometry import MapGeometry,PORTALS,RENDERS,verified_portals,preview_png
-from price_lens.reference_maps import MapPreview
+from price_lens.reference_maps import MapPreview,portal_key
 from price_lens.reference_data import ReferenceStore
 from test_reference import documents,generation,allow_fixture
 from test_reference_ui import ANIMATION,FakeMedia
@@ -113,14 +113,17 @@ class MapInteractionTests(unittest.TestCase):
         self.proof=dict(width=200,height=100,dx=0,dy=0,projection_verified=True,portals=[self.point])
         self.targets={101:dict(name='Mushroom Garden',target=('maps',101))}
         self.view.set_geometry(self.proof,{13:'Green Mushroom'},self.targets)
-        self.view.show();self.app.processEvents();self.view.grab()
+        self.view.show();QTest.qWaitForWindowExposed(self.view);self.view.grab()
         self.addCleanup(self.view.close)
 
     def test_portal_and_monster_have_independent_names_and_click_targets(self):
         maps=[];monsters=[];self.view.map_chosen.connect(maps.append);self.view.chosen.connect(monsters.append)
         center,point,_=self.view.portal_markers[0]
+        QTest.mouseMove(self.view,QPoint(15,15))
         QTest.mouseMove(self.view,center.toPoint());self.app.processEvents()
-        self.assertIn('Mushroom Garden',QToolTip.text())
+        self.assertTrue(self.view.portal_label.isVisible())
+        self.assertIn('Mushroom Garden',self.view.portal_label.text())
+        self.assertTrue(self.view.viewport_rect().contains(self.view.portal_label.geometry()))
         QTest.mouseClick(self.view,Qt.MouseButton.LeftButton,pos=center.toPoint())
         center,identity=self.view.markers[0];QTest.mouseClick(self.view,Qt.MouseButton.LeftButton,pos=center.toPoint())
         self.assertEqual(maps,[101]);self.assertEqual(monsters,[13])
@@ -177,7 +180,74 @@ class MapInteractionTests(unittest.TestCase):
     def test_unverified_minimap_gets_no_markers_until_a_verified_render_preview_arrives(self):
         proof={**self.proof,'projection_verified':False,'preview':True}
         self.view.set_geometry(proof,{},self.targets);self.view.grab();self.assertEqual(self.view.portal_markers,[])
+        self.assertFalse(self.view.portal_picker.isEnabled())
         self.view.set_geometry(proof,{},self.targets,self.image);self.view.grab();self.assertEqual(len(self.view.portal_markers),1)
+        self.assertTrue(self.view.portal_picker.isEnabled())
+
+    def test_menu_selects_the_exact_entrance_when_two_ports_overlap(self):
+        other=portal(name='stairs',x=self.point['x'],y=self.point['y'],dest_map_id=102,type=3)
+        proof={**self.proof,'portals':[other,self.point]}
+        targets={**self.targets,102:dict(name='East Tower',target=('maps',102))}
+        self.view.set_geometry(proof,{},targets)
+        self.view.populate_portal_menu()
+        action,hidden=self.view.portal_menu.actions()
+        self.assertIn('Mushroom Garden',action.text())
+        self.assertIn('East Tower · Hidden',hidden.text())
+
+        maps=[];self.view.map_chosen.connect(maps.append)
+        hidden.trigger()
+        QApplication.sendEvent(self.view,QEvent(QEvent.Type.Leave))
+        self.assertTrue(self.view.portal_label.isVisible())
+        self.assertEqual(self.view.portal_label.text(),hidden.text())
+        self.assertEqual(maps,[])  # Finding an entrance stays on the source map.
+        self.view.grab()
+        selected=self.view.portal_at(self.view.portal_markers[-1][0])
+        self.assertEqual(selected[1],other)
+        QTest.keyClick(self.view,Qt.Key.Key_Return)
+        self.assertEqual(maps,[102])
+        QTest.keyClick(self.view,Qt.Key.Key_Escape)
+        self.assertFalse(self.view.portal_label.isVisible())
+
+    def test_find_portal_reveals_a_verified_entrance_outside_the_panned_view(self):
+        self.view.zoom_at(7)
+        self.view.pan=QPointF(1e4,0);self.view.clamp_pan();self.view.grab()
+        self.assertEqual(self.view.portal_markers,[])
+        self.view.portals_button.setChecked(False)
+        self.view.populate_portal_menu()
+        self.view.portal_menu.actions()[0].trigger()
+        self.view.grab()
+        self.assertTrue(self.view.portals_button.isChecked())
+        self.assertEqual(self.view.zoom,7)
+        self.assertEqual(len(self.view.portal_markers),1)
+        self.assertTrue(self.view.portal_label.isVisible())
+        self.view.set_geometry(None)
+        self.assertFalse(self.view.portal_label.isVisible())
+
+    def test_local_portal_names_its_exact_arrival_and_never_navigates(self):
+        local=portal(name='bottom',x=56,y=67,dest_map_id=100,dest_portal='top')
+        top=portal(name='top',x=92,y=16,dest_map_id=100,dest_portal='bottom')
+        proof={**self.proof,'portals':[top,local]}
+        self.view.set_geometry(proof,{},self.targets);self.view.grab()
+        maps=[];self.view.map_chosen.connect(maps.append)
+        center=next(center for center,point,_ in self.view.portal_markers if point==local)
+        QTest.mouseClick(self.view,Qt.MouseButton.LeftButton,pos=center.toPoint())
+        self.assertIn('Portal 2 on this map',self.view.portal_label.text())
+        self.assertEqual(self.view.paired_portal(local),portal_key(top))
+        self.assertEqual(maps,[])
+        self.view.set_geometry({**proof,'portals':[local,top,{**top,'x':97}]})
+        self.assertIn('Within this map',self.view.portal_label.text())
+
+    def test_trimmed_preview_keeps_verified_entrances_in_the_transparent_margin(self):
+        from PySide6.QtGui import QPainter
+        self.image=QImage(200,100,QImage.Format.Format_ARGB32)
+        self.image.fill(Qt.GlobalColor.transparent)
+        painter=QPainter(self.image)
+        painter.fillRect(5,60,90,35,QColor('#577456'))
+        painter.end()
+        self.view.set_geometry(self.proof,{},self.targets)
+        self.view.grab()
+        self.assertEqual(len(self.view.portal_markers),1)
+        self.assertEqual(self.view.portal_markers[0][1],self.point)
 
     def test_tall_map_zoom_reveals_more_detail_without_changing_panel_height(self):
         self.image=QImage(40,400,QImage.Format.Format_RGB32);self.image.fill(QColor('#577456'))
@@ -206,7 +276,8 @@ class PortalNavigationTests(unittest.TestCase):
         with patch.object(self.service.geometry,'select'),patch.object(self.service.geometry,'cached',side_effect=lambda row:proof if row['id']==100 else None):
             self.panel.open(('maps',100));self.app.processEvents();detail=self.panel.detail
             self.panel.geometry_updated(100)
-            detail.map_preview.zoom_at(1.5);self.app.processEvents();detail.map_preview.grab()
+            detail.map_preview.zoom_at(1.5);detail.map_preview.locate_portal(portal_key(point))
+            self.app.processEvents();detail.map_preview.grab()
             center=detail.map_preview.portal_markers[0][0];detail.tabs.setCurrentIndex(1)
             QTest.mouseClick(detail.map_preview,Qt.MouseButton.LeftButton,pos=center.toPoint())
             self.assertEqual(self.panel.selected.key,('maps',101))
@@ -214,3 +285,4 @@ class PortalNavigationTests(unittest.TestCase):
             self.assertEqual(self.panel.selected.key,('maps',100))
             self.assertEqual(self.panel.detail.tabs.currentIndex(),1)
             self.assertEqual(self.panel.detail.map_preview.zoom,1.5)
+            self.assertEqual(self.panel.detail.map_preview.selected_portal,portal_key(point))

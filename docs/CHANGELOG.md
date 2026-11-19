@@ -7,6 +7,9 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 
 ## Unreleased
 
+- Database maps show numbered portals and their destinations. Find portal
+  highlights the entrance and pans it into view, while Back restores the
+  selection and map view.
 - Meso tracking handles rapid pickup bursts more reliably, keeping short-lived
   messages while OCR is busy and recovering amounts that were initially unreadable.
 - Tracking can recover after losing sight of the game even while EXP digits

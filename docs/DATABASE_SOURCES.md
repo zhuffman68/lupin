@@ -126,11 +126,15 @@ place even when the currently selected quest's own row has not changed. Rowen's
 Classic World export; those steps rely on reverse completion requirements.
 
 Maps use the published minimap and symbol URLs. The compact preview supports
-wheel zoom, + / − / Fit controls, dragging to pan and double-click to fit. Portal
-markers show destination names on hover; clicking a released destination opens
-its map entry, and Back restores the previous map's zoom, pan, layers and subpage.
-Portals are shown by default. The optional Spawns layer shows exported monster
-placements, not live populations or respawn timing.
+wheel zoom, + / − / Fit controls, dragging to pan and double-click to fit.
+Hover over a numbered pin to see its destination on the map. **Find portal**
+lists each entrance by number and destination. Selecting one highlights it
+and pans it into view as needed. Overlapping numbers appear as dots until
+highlighted. For a portal within the same map, the label and highlights show
+the arrival point when both ends are verified. Click a pin or press Enter after
+selecting a portal to open its released destination. Back restores the previous
+map's zoom, pan, layers, selection and subpage. Portals are shown by default.
+The optional Spawns layer shows exported monster placements.
 
 Portal coordinates come from the provider's current map viewer index. Each
 portal must match the exported name, type, destination map and destination portal;

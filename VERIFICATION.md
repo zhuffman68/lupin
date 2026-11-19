@@ -1,4 +1,17 @@
-# Verification — 2026-11-17
+# Verification — 2026-11-19
+
+## Interactive minimap portals — unreleased
+
+All **134 Database and reference tests passed** on a private desktop. The
+portal checks cover hovering, overlapping entrances, offscreen panning,
+hidden and same-map destinations, loss of verification, and Back restoration.
+The existing cached proofs for The Forest North of Ellinia and The Tree That
+Grew I were also checked at 460 logical pixels and at 1× and 2× scaling. The
+Forest's 21-entry Find portal menu selected the exact entrance, returned focus
+to the map, opened the released destination with Enter, and restored the
+selection and pan on Back. Evidence is under
+`evidence/interactive-minimaps-2026-11-19/`. These checks exercised Lupin's
+Database view on Linux with local map data.
 
 ## Missed pickup bursts — unreleased
 

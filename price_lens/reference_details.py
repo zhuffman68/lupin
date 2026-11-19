@@ -470,7 +470,7 @@ class EntryDetails(QFrame):
 
     def image_ready(self,url):
         if self.summary_card and url==self.entry.icon:self.thumbnail.set_image(self.media.image(url))
-        if self.map_preview:self.map_preview.clamp_pan();self.map_preview.update()
+        if self.map_preview:self.map_preview.clamp_pan();self.map_preview.redraw()
         for listing in self.lists:listing.image_ready(url)
 
     def set_active(self,active):
