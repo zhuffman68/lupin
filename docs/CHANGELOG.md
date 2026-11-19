@@ -5,7 +5,9 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
-## Unreleased
+## 1.0.7
+
+See [the patch record](PATCH_1.0.7.md) for downloads, installation and verification.
 
 - Database maps show numbered portals and their destinations. Find portal
   highlights the entrance and pans it into view, while Back restores the
@@ -23,12 +25,8 @@ remain in [VERIFICATION.md](../VERIFICATION.md).
 - Adding items to a player shop no longer fades and shifts the cards already
   visible in Lupin. New/removed cards animate individually, with existing rows
   moving smoothly when their position changes.
-- Inventory comparison descriptions can use different widths or fit against
-  the bottom edge without losing the hovered item's price. Small independent
-  panel movements retain the same verified item while the pointer stays in its
-  inventory cell.
-- Long inventory titles retry the complete visible name line instead of the
-  first OCR fragment, improving wide scroll descriptions without guessing names.
+- Inventory prices recognize more long scroll titles and equipment descriptions,
+  including unequal comparison panels and descriptions fitted to the bottom edge.
 
 ## 1.0.6
 

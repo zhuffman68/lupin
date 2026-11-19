@@ -53,7 +53,7 @@ Both directions run on your device, with everything included.
 
 Browse Classic World **Items, Monsters, Skills, Maps, and Quests**. Search for an entry or explore illustrated categories and jobs.
 
-Look up item stats, market prices and recent shop locations in the same item card. Browse monster drops and locations, skill ranks, and quest rewards. Explore maps with zoom and portal destinations, or follow quests to their next step. Downloaded information stays available offline.
+Look up item stats, market prices and recent shop locations in the same item card. Browse monster drops and locations, skill ranks, and quest rewards. Zoom into maps, hover over portal pins to see their destinations, or use **Find portal** to locate an entrance. Downloaded information stays available offline.
 
 ## Screenshots
 
