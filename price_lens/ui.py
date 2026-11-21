@@ -982,8 +982,14 @@ class LensWindow(QMainWindow):
         return card.summary_card if isinstance(card,EntryDetails) else card
 
     def description_frame(self):
-        card=next((card for card in getattr(self,'card_views',{}).values() if isinstance(card,EntryDetails) and not card.isHidden()),None)
-        return card.summary_card if card else None
+        for key,card in getattr(self,'card_views',{}).items():
+            if key[0] is not True or card.isHidden():
+                continue
+            if isinstance(card,EntryDetails):
+                return card.summary_card
+            if getattr(card,'selected_mode',False):
+                return card
+        return None
 
     def screen_card_frames(self):
         return {key:QRect(card.mapTo(self.card_area.content,QPoint()),card.size())

@@ -266,6 +266,32 @@ class InventoryTooltipReaderTests(unittest.TestCase):
             changed=after.copy();changed.setPixelColor(1375,139,QColor('red'))
             self.assertFalse(proof.matches(changed,(1378,152)))
 
+    def test_bright_tab_and_blinking_rim_bind_cold_and_across_capture_phases(self):
+        from price_lens.tooltip_association import TooltipAssociation
+        image=self.frame(primary=False,tab=1,shop=True,single_name='Red Potion')
+        painter=QPainter(image);painter.fillRect(1372,137,32,1,QColor(245,246,247))
+        painter.fillRect(1372,138,32,1,QColor(206,201,190));painter.end()
+        bright=image.copy();painter=QPainter(bright)
+        painter.setOpacity(.8);painter.fillRect(1332,113,29,17,QColor('white'))
+        painter.setOpacity(.55);painter.fillRect(1431,113,29,17,QColor('white'))
+        painter.setOpacity(1);painter.fillRect(1372,137,32,1,QColor(253,172,49))
+        painter.fillRect(1372,138,32,1,QColor(255,204,0));painter.end()
+        for scale in (1,1.25,1.5,2):
+            with self.subTest(scale=scale):
+                size=(round(image.width()*scale),round(image.height()*scale))
+                plain,flash=(frame.scaled(*size,Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation) for frame in (image,bright))
+                pointer=(round(1378*scale),round(152*scale))
+                for captured in (plain,flash):
+                    result=self.read(captured,pointer=pointer,inventory_only=True,retry=False)[0]
+                    self.assertEqual(result['tooltipAssociation']['state'],'inventory-primary')
+                    self.assertEqual(result['tooltipAssociation']['sourceTab'],1)
+                    self.assertEqual(result['tooltip']['found']['name'],'Red Potion')
+                    proof=TooltipAssociation.read(result['tooltipAssociation'],result['tooltip']['found'],captured,pointer=pointer)
+                    self.assertIsNotNone(proof)
+                    self.assertTrue(proof.matches(plain,pointer),proof.failure_reason(plain,pointer))
+                    self.assertTrue(proof.matches(flash,pointer),proof.failure_reason(flash,pointer))
+
     def test_owner_line_is_separate_from_the_primary_item_title(self):
         image=self.frame(shop=True);p=QPainter(image);p.setFont(self.font)
         p.fillRect(1028,184,228,54,QColor(30,30,70))

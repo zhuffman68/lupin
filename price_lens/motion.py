@@ -358,8 +358,9 @@ class CardArea(QWidget):
             return
         after=self.content.grab() if self.full_height else QPixmap()
         new_items=self.frame_items() if self.frame_items else None
-        self.outgoing=(ListingFrame(pixels,after,old_items,new_items,self) if incremental(old_items,new_items)
-                       else _ContentFrame(pixels,after,self,old_card,card_pixels(self,after,current=True,root=self.content)))
+        new_card=card_pixels(self,after,current=True,root=self.content)
+        self.outgoing=(ListingFrame(pixels,after,old_items,new_items,self,old_card,new_card) if incremental(old_items,new_items)
+                       else _ContentFrame(pixels,after,self,old_card,new_card))
         self.outgoing.setGeometry(0,0,self.width(),max(self.start_height,self.full_height))
         self.content.hide();self.outgoing.show();self.outgoing.raise_()
         self.animation.setStartValue(0.0);self.animation.setEndValue(1.0);self.animation.start()

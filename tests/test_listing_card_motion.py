@@ -1,5 +1,6 @@
 """A new shop listing must not replay the animation of existing cards."""
 import time,unittest
+from unittest.mock import patch
 
 import numpy as np
 from PySide6.QtCore import QRect
@@ -102,6 +103,55 @@ class ListingCardMotionTests(unittest.TestCase):
             rect=frame.item_rect((False,3,0));positions.append(rect.y())
             self.same_pixels(self.sample(rect),before);self.same_pixels(self.sample(self.rect(1)),first)
         self.assertEqual(positions,sorted(positions,reverse=True));self.assertGreater(positions[0],positions[-1])
+
+    def test_inventory_overlay_changes_leave_one_copy_of_each_shop_card(self):
+        w = self.w
+        screen = w.screens[w.screen_index]
+        w.reader.image = QImage(screen.size() * screen.devicePixelRatio(), QImage.Format.Format_RGB32)
+        w.reader.image.fill(0)
+        w.last_screen = time.time()
+        key = (False, 1, 0)
+        with patch('price_lens.ui.time.time', return_value=w.last_screen):
+            self.settled([1])
+            shop_card = w.card_views[key]
+            original = self.sample(self.rect(1).adjusted(3, 3, -3, -3))
+            switches = (('Example Cape', 179), ('Example Gloves', 90), ('Example Cape', 179), (None, 179))
+            for index, (name, cutoff) in enumerate(switches):
+                with self.subTest(description=name, step=index):
+                    if name:
+                        w.tooltip_result = dict(name=name, area=dict(x=100, y=100, width=180, height=25),
+                                                _pointer=(105, 105))
+                    else:
+                        w.tooltip_result = None
+                        # Grace and history timing are covered separately.
+                        w.card_sightings.discard(True)
+                    w.render()
+                    self.assertEqual([row['kind'] for row in w.overlay.rows].count('item'), int(bool(name)))
+                    self.assertIs(w.card_views[key], shop_card)
+                    area = w.card_area
+                    self.assertEqual(area.animation.duration(), 180)
+                    frame = area.outgoing
+                    self.assertIsInstance(frame, ListingFrame)
+                    self.assertIsNotNone(frame.morph)
+                    area.animation.pause()
+                    positions = []
+                    for ms in (0, 36, 72, 90, 108, 144, 179):
+                        if ms > cutoff:
+                            break
+                        area.animation.setCurrentTime(ms)
+                        self.app.processEvents()
+                        rect = frame.item_rect(key)
+                        positions.append(rect.y())
+                        self.same_pixels(self.sample(rect.adjusted(3, 3, -3, -3)), original)
+                    if index == 0:
+                        self.assertEqual(positions, sorted(positions))
+                        self.assertGreater(positions[-1], positions[0])
+                    if name is None:
+                        self.assertEqual(positions, sorted(positions, reverse=True))
+                        self.assertLess(positions[-1], positions[0])
+                    if cutoff == 179:
+                        area.finish()
+                        self.app.processEvents()
 
     def test_reduced_motion_does_not_retain_a_listing_frame(self):
         self.settled([1]);self.app.setProperty('reduceMotion',True);self.show_rows([1,2]);area=self.w.card_area

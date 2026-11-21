@@ -90,6 +90,7 @@ class CategoryEvidenceTests(unittest.TestCase):
                 dict(id=4,name='Warrior advancement',region='Warrior'),
                 dict(id=5,name='Future quest',region='Forgotten Hollow')]
             store.replace(*generation(docs));allow_fixture(store)
+            with store.connect() as db:db.execute("DELETE FROM availability WHERE kind='quests' AND id=5")
             groups={row['value']:row for row in store.groups('quests','region')}
             self.assertEqual(groups['Citizenship']['count'],2);self.assertTrue(groups['Citizenship']['entry'].icon)
             self.assertIn('Crafting',groups);self.assertNotIn('Forgotten Hollow',groups)

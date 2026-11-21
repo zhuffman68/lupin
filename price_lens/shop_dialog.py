@@ -1,5 +1,6 @@
 """Screen-pixel detection and presentation state for Classic's shop price form."""
 from dataclasses import dataclass,field
+from itertools import combinations
 import time
 
 import numpy as np
@@ -61,7 +62,7 @@ def _search_area(image,shop):
     return roi if not roi.isEmpty() and roi.width()*roi.height()<=2_500_000 else None
 
 
-def price_entry_dialog(image,shop,exclude=()):
+def price_entry_dialog(image,shop,exclude=(),*,recover_fragments=False):
     """Require native form structure and exposed controls or proven own occlusion.
 
     All evidence comes from exposed pixels beside an independently known shop.
@@ -119,6 +120,8 @@ def price_entry_dialog(image,shop,exclude=()):
                             lambda colors:(colors.max(axis=2)>=190)&(colors.max(axis=2)-colors.min(axis=2)<90),
                             minimum=round(180*s*s),fraction=.6):continue
             return rect
+    if recover_fragments and exclude:
+        return _form_from_footer(image,shop,exclude,None,raster=(roi,rgb,visible,pink))
     return None
 
 
@@ -151,7 +154,7 @@ def _native_form_rails(rgb,visible,rect):
     return True
 
 
-def _known_form_present(image,rect,exclude,*,allow_hidden_labels=False,complete_controls=False):
+def _known_form_present(image,rect,exclude,*,allow_hidden_labels=False,complete_controls=False,require_caption_ink=False):
     """Recheck a measured form when a cursor fragments one label's colour run."""
     if image is None or image.isNull() or not image.rect().contains(rect):return False
     s=rect.width()/232
@@ -172,6 +175,8 @@ def _known_form_present(image,rect,exclude,*,allow_hidden_labels=False,complete_
     white=lambda a:(a.min(axis=2)>=220)&(a.max(axis=2)-a.min(axis=2)<45)
     orange=lambda a:(a[:,:,0]>=190)&(a[:,:,0]-a[:,:,1]>=25)&(a[:,:,1]-a[:,:,2]>=12)
     caption=check(5,4,220,13,white,.6)
+    if require_caption_ink and (not check(6,5,79,13,white,.55)
+            or not check(6,5,79,13,lambda rgb:rgb.max(2)<150,.025)):return False
     inputs=[check(118,29+20*i,104,12,white,.75,control=True) for i in range(3)]
     buttons=[check(x,118,40,12,orange,.35,control=True) for x in (132,182)]
     labels=[check(6,27+20*i,108,16,pink,.25,control=allow_hidden_labels) for i in range(3)]
@@ -222,24 +227,41 @@ def _intact_form(image,shop):
     return None
 
 
-def _relocated_form(image,shop,exclude,reference):
-    """Find an existing form by exposed footer controls when labels hide its left."""
-    roi=_search_area(image,shop)
-    if roi is None:return None
-    patch=image.copy(roi).convertToFormat(QImage.Format.Format_RGBA8888)
-    data=np.frombuffer(patch.constBits(),np.uint8).reshape(patch.height(),patch.bytesPerLine())
-    rgb=data[:,:patch.width()*4].reshape(patch.height(),patch.width(),4)[:,:,:3].astype(np.int16)
-    visible=np.ones(rgb.shape[:2],dtype=bool)
-    for hidden in exclude:
-        part=roi.intersected(hidden.adjusted(-1,-1,1,1))
-        if not part.isEmpty():visible[part.top()-roi.top():part.bottom()-roi.top()+1,
-            part.left()-roi.left():part.right()-roi.left()+1]=False
+def _form_from_footer(image,shop,exclude,reference,*,raster=None):
+    """Locate the form from physical rails when label fragments cannot place it."""
+    if raster is not None:roi,rgb,visible,pink=raster
+    else:
+        roi=_search_area(image,shop)
+        if roi is None:return None
+        patch=image.copy(roi).convertToFormat(QImage.Format.Format_RGBA8888)
+        data=np.frombuffer(patch.constBits(),np.uint8).reshape(patch.height(),patch.bytesPerLine())
+        rgb=data[:,:patch.width()*4].reshape(patch.height(),patch.width(),4)[:,:,:3].astype(np.int16)
+        visible=np.ones(rgb.shape[:2],dtype=bool)
+        for hidden in exclude:
+            part=roi.intersected(hidden.adjusted(-1,-1,1,1))
+            if not part.isEmpty():visible[part.top()-roi.top():part.bottom()-roi.top()+1,
+                part.left()-roi.left():part.right()-roi.left()+1]=False
     r,g,b=rgb[:,:,0],rgb[:,:,1],rgb[:,:,2]
+    cold=reference is None
+    label_tops=[]
+    if cold:
+        scale=max(.65,min(2.1,shop.width()/199))
+        reference=QRect(0,0,round(232*scale),round(139*scale))
+        starts=[top for top,bottom in _runs(np.flatnonzero(pink.sum(1)>=max(9,round(10*scale))),gap=max(1,round(scale)))
+                if 6*scale<=bottom-top+1<=20*scale]
+        # Two aligned bands are enough to narrow the footer search. A cursor
+        # can split or shorten the third band. All three still need positive
+        # label pixels, as well as the other form controls, at confirmation.
+        label_tops={top-20*first*scale for top,next_top in combinations(starts[:24],2)
+                    for first,last in ((0,1),(0,2),(1,2))
+                    if abs(next_top-top-20*(last-first)*scale)<=2*scale}
+        if not label_tops:return None
     orange=(r>=190)&(r-g>=25)&(g-b>=12)&visible
     s=reference.width()/232;seen=set();reach=max(3,round(4*s))
     for left,top,right,bottom in _colour_components(orange):
         height=bottom-top+1
         if not 6*s<=height<=20*s or not 8*s<=right-left+1<=55*s:continue
+        if cold and not any(abs(top-first-91*s)<=5*s for first in label_tops):continue
         for end in (172,222):
             x=roi.x()+right+1-round(end*s);y=roi.y()+top-round(119*s)
             for dy in range(-reach,reach+1):
@@ -250,7 +272,8 @@ def _relocated_form(image,shop,exclude,reference):
                     seen.add(key)
                     local=rect.translated(-roi.x(),-roi.y())
                     if (_native_form_rails(rgb,visible,local)
-                            and _known_form_present(image,rect,exclude,allow_hidden_labels=True)):
+                            and _known_form_present(image,rect,exclude,allow_hidden_labels=not cold,
+                                                    complete_controls=cold,require_caption_ink=cold)):
                         return rect
     return None
 
@@ -279,10 +302,10 @@ class ShopPriceEntry:
             self._memo_rect=(QRect(previous) if previous is not None
                 and (_known_form_present(image,previous,known_exclude,allow_hidden_labels=True)
                      or _intact_form_at(image,previous))
-                else price_entry_dialog(image,shop,exclude))
+                else price_entry_dialog(image,shop,exclude,recover_fragments=self._last_form is None))
             if self._memo_rect is None and exclude:self._memo_rect=_intact_form(image,shop)
             if self._memo_rect is None and self._last_form is not None:
-                self._memo_rect=_relocated_form(image,shop,exclude,self._last_form)
+                self._memo_rect=_form_from_footer(image,shop,exclude,self._last_form)
             self._memo_key=key
         return QRect(self._memo_rect) if self._memo_rect is not None else None
 

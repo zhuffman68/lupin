@@ -32,6 +32,13 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(self.store.sources_for(1001),rows)
         self.assertTrue(self.store.available('npcs',103))
 
+    def test_shop_records_accept_the_current_cdn_icon_and_reject_mismatches(self):
+        current=PAGE.replace(b'/msclassic/api/assets/icons/1001',b'https://cdn.meowdb.com/icons/1001.png?v=2')
+        self.assertEqual(npc_shops(current,self.store),npc_shops(PAGE,self.store))
+        for invalid in (b'https://elsewhere.invalid/icons/1001.png',b'https://cdn.meowdb.com/icons/4001.png'):
+            with self.assertRaises(ValueError):
+                npc_shops(current.replace(b'https://cdn.meowdb.com/icons/1001.png?v=2',invalid),self.store)
+
     def test_reward_boxes_use_verified_source_and_box_id_and_are_cached(self):
         calls=[]
         def fetch(url):calls.append(url);return BOX

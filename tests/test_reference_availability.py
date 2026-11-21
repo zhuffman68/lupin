@@ -66,13 +66,63 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertIsNone(self.loader.item(self.item(5001,'Wrong cosmetic','Cash Equip'),'Cash Equip'))
         self.assertIsNone(self.loader.item({**self.item(5001,'Test Cash Hat','Cash Equip'),'iconKey':'5001.0'},'Cash Equip'))
 
-    def test_future_expansion_and_gm_test_entities_remain_hidden_despite_provider_claims(self):
-        docs=documents();docs['monsters.json'] += [dict(id=54,name='Glowshroom',level=39,hp=1374),dict(id=9990000,name='Test(Basic)',level=1,hp=1)]
+    def test_gm_and_test_entities_remain_hidden_despite_provider_claims(self):
+        docs=documents();docs['monsters.json'].append(dict(id=9990000,name='Test(Basic)',level=1,hp=1))
         docs['items.json'].append(dict(id=2100001,name='GM Black Sack: Mano Level 20',category='Consumable'))
         self.store.replace(*generation(docs))
-        for kind,identity,name in [('monsters',54,'Glowshroom'),('monsters',9990000,'Test(Basic)'),('items',2100001,'GM Black Sack: Mano Level 20')]:
+        for kind,identity,name in [('monsters',9990000,'Test(Basic)'),('items',2100001,'GM Black Sack: Mano Level 20')]:
             with self.assertRaises(ValueError):self.store.confirm([dict(kind=kind,id=identity,name=name)],'nia-release')
             self.assertFalse(self.store.available(kind,identity))
+
+    def test_forgotten_hollow_patch_applies_to_saved_catalog_when_indexes_are_down(self):
+        docs=documents()
+        docs['monsters.json'] += [dict(id=54,name='Glowshroom',level=39,hp=1377),
+                                  dict(id=800026,name='Glowshroom',level=41,hp=3192),
+                                  dict(id=55,name='Unmatched monster',level=40,hp=1722)]
+        docs['maps.json'].append(dict(id=10006040,name='Forgotten Entrance I',region='Victoria Island'))
+        docs['maps.json'].append(dict(id=10006002,name='Cave Fairy Store',region='Victoria Island'))
+        docs['npcs.json'].append(dict(id=700,name='Luma',maps=[10006002]))
+        docs['quests.json'] += [dict(id=10607,name='The Roots of Regret',region='Forgotten Hollow',
+                                    rewards=[dict(type='item',id=4001,count=1)]),
+                                dict(id=10605,name='Unconfirmed quest',region='Forgotten Hollow')]
+        docs['items.json'].append(dict(id=1302020,name='Bamboo Sword',category='Equipment'))
+        docs['items.json'].append(dict(id=2000003,name='Blue Potion',category='Consumable'))
+        docs['items.json'] += [dict(id=2430000,name="Companion's Magic Box",category='Consumable'),
+                              dict(id=2100010,name='Black Sack: Mano',category='Consumable'),
+                              dict(id=2100011,name='Black Sack: Stumpy',category='Consumable'),
+                              dict(id=2100012,name='Black Sack: Mushmom',category='Consumable')]
+        meta,payloads=generation(docs);self.store.replace(meta,payloads)
+        def unavailable(url):raise OSError('Release index offline')
+        self.loader.fetch_bytes=unavailable
+        with self.assertRaises(OSError):self.loader.refresh(RequestToken())
+        self.assertFalse(self.store.available('monsters',54))
+        meta['data_updated_at']='2026-11-18T18:54:44Z';self.store.replace(meta,payloads)
+        with self.store.connect() as db:
+            self.store.put_meta(db,'november_release_generation',meta['data_updated_at'])
+        self.store.save_sources('npc',[dict(kind='npc',id=700,name='Luma',item_id=2000003,item_name='Blue Potion',price=230)])
+        with self.assertRaises(OSError):self.loader.refresh(RequestToken())
+        for kind,identity in (('monsters',54),('maps',10006040),('quests',10607),('items',1302020),('items',4001)):
+            self.assertTrue(self.store.available(kind,identity))
+            self.assertEqual(self.store.evidence(kind,identity)[0]['source'],'patch-notes')
+        for kind,identity in (('monsters',800026),('monsters',55),('quests',10605)):
+            self.assertFalse(self.store.available(kind,identity))
+        self.assertTrue(self.store.available('npcs',700))
+        self.assertTrue(self.store.available('items',2000003))
+        self.assertEqual(self.store.sources_for(2000003)[0]['price'],230)
+        for identity in (2100010,2100011):
+            self.assertTrue(self.store.available('items',identity))
+            source=self.store.sources_for(identity)[0]
+            self.assertEqual((source['kind'],source['id'],source['basis']),('box',2430000,'Player reported'))
+        self.assertFalse(self.store.available('items',2100012))
+
+    def test_old_release_cache_version_rechecks_even_within_the_daily_window(self):
+        with self.store.connect() as db:
+            self.store.put_meta(db,'availability_schema',2)
+            self.store.put_meta(db,'availability_checked_at',time.time())
+        self.loader.refresh(RequestToken())
+        self.assertTrue(self.calls)
+        self.calls.clear();self.loader.refresh(RequestToken())
+        self.assertEqual(self.calls,[])
 
     def test_evidence_is_bound_to_exact_names_and_does_not_survive_an_id_rename(self):
         self.loader.refresh(RequestToken());docs=documents();docs['items.json'][0]['name']='Other item';self.store.replace(*generation(docs))

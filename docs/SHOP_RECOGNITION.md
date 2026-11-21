@@ -119,6 +119,12 @@ Inventory acquisition checks all six selected-tab positions. The same measured
 source/header/grid/panel proof applies to non-equipment single descriptions;
 they do not have to use the generic shop-hover path. A tab change invalidates
 the old source token and requires the newly selected header to verify.
+Bright selected tabs can be acquired from their remaining pink shape. The
+same selection can survive a white pulse on another tab when that tab's
+letter shape and the rest of the header agree. A blinking new-item outline can
+transition between native gold and its plain cell bevel, with aligned exposed
+rim anchors and exact icon-interior pixels. These allowances apply to decor
+around an independently verified slot and title.
 That proof can reanchor a first reply within the same source cell; its submitted
 name/context remain separate from the independently checked current placement.
 Native title-cache hits save recognition only, retain the original complete
@@ -167,7 +173,11 @@ Cap discovery checks a bounded set of alternatives when an earlier horizontal
 stroke fails the complete-frame checks.
 
 The add-item form is independent presentation state. Only overlapping shop
-labels fade, while observations/history remain intact. A previously verified
+labels fade, while observations/history remain intact. If Lupin's labels clip
+the magenta strips at first opening, exposed footer buttons and both physical
+rails can locate the form. Confirmation still requires caption ink on the
+native heading, all three magenta fragments, every entry field and both
+footer controls. A previously verified
 form can mask the bounded current cursor over its controls, with independent
 current frame/control evidence; initial acquisition cannot use this mask.
 Exposed contradictions or disappearance release the form. Stale recognition

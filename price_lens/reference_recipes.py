@@ -7,10 +7,10 @@ import time
 
 from .reference_data import API,validate_meta
 
-# OSMS documents the current client cap explicitly: skills still export max 10.
-# A later date or a higher raw max_level must not automatically unlock 9/10.
-CRAFTING_CAP=8
-CAP_SOURCE=API+'README.md'
+# Nexon's November update raised the live limit. The exported skills still
+# include rank 10.
+CRAFTING_CAP=9
+CAP_SOURCE='https://www.nexon.com/maplestory/news/update/48255/november-update-forgotten-hollow-patch-notes'
 CATALYST_ID=4130003
 CATALYST_NAME='Scroll Crafting Catalyst'
 CATALYST_TEXT='When used while crafting scrolls, there is a chance to produce an Intermediate, Greater, or Chaos scroll of the same category.'

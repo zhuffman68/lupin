@@ -1,6 +1,6 @@
 # Database sources and accuracy
 
-Availability audit updated October 30, 2026. Database is specific to **MapleStory Classic World**.
+Availability audit updated November 20, 2026. Database is specific to **MapleStory Classic World**.
 Original MapleStory, Mapleland and private-server balance tables are not fallbacks.
 
 ## Items, monsters, maps and skills
@@ -9,9 +9,10 @@ Original MapleStory, Mapleland and private-server balance tables are not fallbac
 provides a [manifest](https://osmsdataexplorer.com/data/api/v1/meta.json) with the
 world, client build, update date, SHA-256 hashes and record counts. Lupin verifies
 all seven used files before replacing the local generation. These include NPCs
-and quests alongside items, cash items, monsters, skills and maps. The October 26 generation
-contains 5,164 named regular/cash items, 117 monsters and 99 skills, including six
-crafting disciplines, 343 quest records and 301 NPCs. Empty client placeholders are omitted from search.
+and quests alongside items, cash items, monsters, skills and maps. The November 18
+generation contains 5,275 named regular/cash items, 128 monster records, 99 skills,
+364 maps, 391 quests and 311 NPCs. These counts include records that still require
+release evidence. Search omits empty client placeholders.
 
 Records retain their original fields and rank descriptions in SQLite. Map links
 use exact map IDs; location counts are **spawn points**, not a live monster count
@@ -37,12 +38,17 @@ positive release/circulation evidence.
   `availableDate` values are independently rejected. An internal provider ID
   alone never establishes identity: canonical icon ID and English name must match.
 - Monsters use the public index's canonical ID/name/level/HP. Encounter-specific
-  duplicate aliases do not inherit the ordinary monster's status. GM/test
-  placeholders and the ten Forgotten Hollow monsters plus Rotten Mushmom are
-  excluded. The [roadmap](https://meowdb.com/msclassic/news/classic-world-roadmap-maplestory-fest-2026)
-  and [area guide](https://meowdb.com/msclassic/guides/forgotten-hollow-the-new-endgame-area)
-  place the area after this build, on November 18. A scheduled date does not
-  automatically unlock those records; a verified release update is required.
+  duplicate aliases need their own evidence. GM and test records remain hidden.
+- The [November 18 patch notes](https://www.nexon.com/maplestory/news/update/48255/november-update-forgotten-hollow-patch-notes)
+  and [individual quest listings](https://mapleclassic.wiki/wiki/Update:18_November_2026_Forgotten_Hollow#Quests)
+  confirm exact game IDs and names in the verified November 18 or later catalog.
+  This covers 29 Hollow maps, ten field monsters and Rotten Mushmom, 34 Hollow
+  quests and 16 other new quests. It also covers the weapons, furniture, rank-nine
+  crafting outputs, item rewards and event entries verified for the update. Quest
+  reward sources include items from verified choice and random pools. Lupin
+  applies this evidence before contacting the public release index, so it works
+  with a verified cached catalog during an index outage. Unplaced monster
+  duplicates remain hidden without their own evidence.
 - The existing validated [MesoWatch](https://meso.watch/) snapshot can additionally
   prove circulation, including formerly available cosmetics. It must match the
   exact game ID/name/world, have a positive observed-sale sample, and contain a
@@ -65,8 +71,8 @@ manifest's exact byte count, SHA-256, record count and generation before use.
 Reachable Arcforge recipes require the already-confirmed base scroll, every
 ingredient and the exact [Scroll Crafting Catalyst](https://meowdb.com/msclassic/item-db/2723).
 The catalyst description permits Intermediate, Greater and Chaos outcomes of
-the same category. The documented current crafting cap is eight; raw skill
-levels nine/ten do not establish availability. Exact family, slot, stat, tier
+the same category. The November 18 update raised the crafting cap to nine.
+Rank-ten recipes cannot establish availability. Exact family, slot, stat, tier
 and success/destroy values must agree.
 
 This supports 13 previously hidden Chaos outcomes (Hat Accuracy/HP/MP,
@@ -85,12 +91,12 @@ this evidence. Repeat observations avoid writes; newly confirmed identities
 refresh the shared released search catalog once per batch. Missing market
 prices remain missing regardless of an item's availability.
 
-The checked source-only generation contains 1,742 eligible items (293 cash items)
-and 70 ordinary monsters, with 332 maps and 332 quests. Dated market sales can extend the item collection. This is a conservative
-sourced subset, not a complete official release ledger: some legitimate content
-can remain hidden until supported. Source filters and name/status changes need
-periodic review. No third-party application code is copied or executed; downloaded
-index records stay in the per-user cache.
+The November 20 audit verified this against a copy of the November 18 catalog.
+Applying patch, shop and recipe evidence brought the snapshot to 2,102 searchable items,
+83 monsters, 361 maps and 387 quests. The public release index returned HTTP 403
+during that check. The verified patch records and prior positive evidence remained
+available. Counts can change with sales observations and source coverage.
+Downloaded index records stay in the per-user cache.
 
 Cash entries retain their release/market Sources, with no generic monster-drop section, empty drop message or drop-report
 button. Opening one does not request a drop feed. Client NX retail prices and
@@ -108,8 +114,9 @@ whose lowest-ID entry has no artwork.
 The public [map index](https://meowdb.com/msclassic/maps/all) and
 [quest index](https://meowdb.com/msclassic/quest-tracker/all) confirm exact game
 IDs/names. Known chain/step/class decorations are normalized, never guessed by
-similarity. Developer maps, unconfirmed records and Forgotten Hollow quests stay
-hidden. The cached API quest fields supply requirements, rewards, quest givers
+similarity. Developer maps and unconfirmed records stay hidden. Published Hollow
+quest steps and their follow-ups use the same release evidence as the rest of
+Database browsing. The cached API quest fields supply requirements, rewards, quest givers
 and portraits. Reverse reward links make named quests appear in item Sources.
 Random reward weights are divided within their own class/choice group; duplicate
 flat export rows are omitted. These client references are not measured server
@@ -247,7 +254,13 @@ research copies and live captures are excluded from source, installers and archi
 
 ## NPC shops and reward boxes
 
-Checked October 29, 2026. The public [Nia NPC shop list](https://meowdb.com/msclassic/npc-shops) supplies named shop inventories, locations and published NPC purchase prices. Lupin requires each canonical item icon ID/name and NPC ID/name to match the local database; provider item IDs alone are not used as canonical IDs. The checked page yielded 599 matching item/NPC rows across 31 NPCs. Historical launch-price qualifications remain attached to the source. These prices never replace market references or a player shop asking price.
+The [Kerning City Party Quest reward reports](https://meowdb.com/msclassic/guides/kerning-city-party-quest-kpq-guide)
+establish Black Sack: Mano and Black Sack: Stumpy as Companion's Magic Box
+rewards. Both exact item IDs are searchable and link to the box in Sources.
+The other four boss sacks still need release evidence independently of their
+records in the client export.
+
+The public [Nia NPC shop list](https://meowdb.com/msclassic/npc-shops) supplies named inventories, locations and published purchase prices. Lupin checks canonical item icon IDs and names and verifies the NPC identity. Both published icon URL formats are supported, with explicit name aliases for the two arrow types and Subi Throwing Stars. On November 20, all 44 rows for Luma, Torin and Nyroth matched the November catalog. Those launch inventory entries fill missing rows when the live index is offline. Refreshes can replace them with newer published data. NPC prices are displayed separately from market references and player shop asking prices.
 
 Selected item pages may also publish player-reported reward boxes, for example [Green Bamboo Hat](https://meowdb.com/msclassic/item-db/790). Both ends require a fresh matching public index binding before a box is linked to a canonical database entry. Box relationships are reports, not drop rates. Shops refresh daily; selected-item source checks cache successful/empty results for a day and errors for 30 minutes. Failures preserve matching last-good relationships.
 

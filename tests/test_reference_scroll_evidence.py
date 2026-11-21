@@ -20,7 +20,7 @@ from test_reference import documents,generation
 
 
 # Current reachable recipe families; this fixture deliberately leaves other
-# unproven families and the crafting-9/10 recipes outside the release ledger.
+# unproven families and the rank-10 recipes outside the release ledger.
 BASES=((2040000,'Hat Accuracy',2),(2040004,'Hat HP',2),(2040008,'Hat MP',2),
     (2040404,'Topwear HP',3),(2040408,'Topwear MP',3),(2040604,'Bottomwear HP',4),
     (2040608,'Bottomwear MP',4),(2040900,'Shield DEF',5),(2040904,'Shield Accuracy',5),
@@ -123,6 +123,15 @@ class ScrollEvidenceTests(unittest.TestCase):
             with self.store.connect() as db:db.execute("DELETE FROM availability WHERE kind='items' AND id=?",(identity,))
             self.assertEqual(recipe_proofs(self.store,self.meta,self.raw),[])
             self.store.confirm([dict(kind='items',id=identity,name=self.store.entry('items',identity)[0].name)],'nia-release')
+
+    def test_current_rank_nine_recipe_proves_outcomes_but_rank_ten_does_not(self):
+        bases=(2040808,2040812,2041012)
+        self.store.confirm([dict(kind='items',id=i,name=self.store.entry('items',i)[0].name) for i in bases],'patch-notes')
+        by_id={row['id']:row['detail'] for row in recipe_proofs(self.store,self.meta,self.raw)}
+        for base in bases[:2]:
+            for identity in range(base+1,base+4):
+                self.assertEqual(by_id[identity]['crafting_level'],9)
+        self.assertTrue(all(identity not in by_id for identity in range(bases[-1]+1,bases[-1]+4)))
 
     def test_wrong_name_id_stat_tier_or_catalyst_text_is_not_guessed(self):
         mutations=(('name','Hat HP Scroll: Chaos'),('scroll',{'tier':'Greater','success_rate':10,'stats':{'incACC':4}}),

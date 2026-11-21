@@ -8,6 +8,10 @@ from .domain import key as name_key,WORLD
 from .reference_community import BASE,MonsterIndex
 from .reference_data import DAY,excluded
 from .reference_indexes import ReleaseIndex,release_name
+from .reference_release import apply_november_release
+
+
+AVAILABILITY_SCHEMA = 3
 
 
 def user_confirmed_proofs(store):
@@ -36,7 +40,7 @@ def screen_proof(store,catalog,*,game_id,visible_name,tier,surface,captured_at,g
             or type(captured_at) not in (int,float) or not math.isfinite(captured_at)
             or not -.25<=now-captured_at<=3 or not catalog):return None
     record=store.entry('items',game_id)
-    if not record or name_key(record[0].name)!=name_key(visible_name) or excluded('items',game_id,record[0].name):return None
+    if not record or name_key(record[0].name)!=name_key(visible_name) or excluded(record[0].name):return None
     # Exact key lookup only. Catalog.resolve also understands OCR confusions and
     # clipped names, which are useful for prices but never establish release.
     candidates=getattr(catalog,'names',{}).get(name_key(visible_name),[])
@@ -54,7 +58,8 @@ class AvailabilityLoader:
 
     def refresh(self,token,force=False):
         state=self.store.metadata()
-        if not force and state.get('availability_schema')==2 and 0<=time.time()-state.get('availability_checked_at',0)<DAY:return
+        apply_november_release(self.store,state,token)
+        if not force and state.get('availability_schema')==AVAILABILITY_SCHEMA and 0<=time.time()-state.get('availability_checked_at',0)<DAY:return
         raw=self.fetch_bytes(BASE+'monsters');token.check()
         if len(raw)>3*1024*1024:raise ValueError('Monster index too large')
         index=MonsterIndex();index.feed(raw.decode('utf-8'))
@@ -65,7 +70,7 @@ class AvailabilityLoader:
             if not record:continue
             entry,body=record
             if (entry.name==row['name'] and body.get('level')==row['level'] and body.get('hp')==row['hp']
-                    and not excluded('monsters',identity,entry.name)):
+                    and not excluded(entry.name)):
                 proofs.append(dict(kind='monsters',id=identity,name=entry.name,detail={'label':'Released Classic World monster','url':BASE+'monsters/'+text}))
         if not proofs:raise ValueError('Released monsters did not match the catalog')
         self.store.confirm(proofs,'nia-release',guard=token.check)
@@ -90,7 +95,7 @@ class AvailabilityLoader:
             self.store.confirm(proofs,'nia-release',guard=token.check)
         self.release_places(token)
         with self.store.connect() as db:
-            self.store.put_meta(db,'availability_checked_at',time.time());self.store.put_meta(db,'availability_schema',2);token.check()
+            self.store.put_meta(db,'availability_checked_at',time.time());self.store.put_meta(db,'availability_schema',AVAILABILITY_SCHEMA);token.check()
 
     def release_places(self,token):
         for kind,path in (('maps','maps/all'),('quests','quest-tracker/all')):
@@ -103,8 +108,7 @@ class AvailabilityLoader:
                 record=self.store.entry(kind,identity)
                 if not record:continue
                 entry,row=record
-                if not release_name(kind,row,label) or excluded(kind,identity,entry.name):continue
-                if row.get('region') in ('Dev','Forgotten Hollow') or any(point.get('mob_id') in (*range(54,64),700003) for point in row.get('mobs',[])):continue
+                if row.get('region')=='Dev' or excluded(entry.name) or not release_name(kind,row,label):continue
                 proofs.append(dict(kind=kind,id=identity,name=entry.name,detail={'label':'Released Classic World '+('map' if kind=='maps' else 'quest'),
                     'url':BASE+('maps/' if kind=='maps' else 'quest-tracker/')+str(identity)}))
             if proofs:self.store.confirm(proofs,'nia-release',guard=token.check)
@@ -114,7 +118,7 @@ class AvailabilityLoader:
         identity=row.get('iconKey')
         if not isinstance(identity,str) or not identity.isdecimal() or len(identity)>10:return None
         identity=int(identity);record=self.store.entry('items',identity)
-        if not record or record[0].name!=row.get('name') or excluded('items',identity,record[0].name):return None
+        if not record or record[0].name!=row.get('name') or excluded(record[0].name):return None
         try:stats=json.loads(row.get('stats') or '{}') if isinstance(row.get('stats'),str) else row.get('stats') or {}
         except (ValueError,TypeError):return None
         if not isinstance(stats,dict) or stats.get('cashShopLastSeenIn'):return None

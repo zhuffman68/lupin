@@ -1,4 +1,24 @@
-# Verification — 2026-11-19
+# Verification — 2026-11-20
+
+## Inventory animation and shop entry — unreleased
+
+The cold native reader bound the correct item in all 24 archived new-item
+captures. Across all 576 submitted/current frame comparisons, each active
+source proof stayed valid. Generated cases cover a bright selected tab, a
+flashing inactive tab and a blinking gold rim, including concurrent animation
+with a shop open. Synthetic capture tests cover 100%, 125%, 150% and 200% at
+the reader and source-proof stages. The 75% pixel checks and form checks are
+separate. A 75% downscaled native fixture with an edge-aligned source also
+fails to establish the inventory source on the installed reader.
+
+The recorded 93-frame shop sequence retained all 61 previous form detections.
+Five real form crops were then partially covered with simulated price labels.
+The previous detector missed all five cold openings. The updated detector
+recovered all five at the measured position. Generated negative checks reject
+absent caption, field, rail or magenta evidence. All 359 focused application
+tests and 81 native-reader tests passed. The tests use saved and generated
+pixels on a private desktop. Fresh in-game verification is pending.
+Private receipts are under `evidence/inventory-animation-2026-11-20/`.
 
 ## Interactive minimap portals — unreleased
 

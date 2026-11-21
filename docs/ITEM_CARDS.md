@@ -112,6 +112,9 @@ reveal includes its image instead of capturing an inner image fade at zero.
 `card_morph.py` interpolates the actual styled frame when replacing cards of
 different sizes. Foreground text and images keep their native size and crossfade
 with the existing short lift; the complete card is never stretched as a bitmap.
+When an inventory card appears, changes items or expires alongside a shop, the
+item frame morphs independently. Each retained shop row moves at one shared
+position through the same 180 ms animation, keeping its text and border steady.
 Clipping follows its outer viewport. An interruption captures the currently
 visible composition, avoiding a jump to an obsolete endpoint.
 

@@ -66,7 +66,7 @@ class CardMorph:
 
     def erased(self,pixels,card):
         copy=QPixmap(pixels)
-        if card:
+        if card and not copy.isNull():
             painter=QPainter(copy);painter.fillRect(card.rect.intersected(card.viewport),self.colour);painter.end()
         return copy
 
@@ -89,6 +89,10 @@ class CardMorph:
     def paint(self,painter,progress):
         painter.drawPixmap(0,-round(5*progress),self.before)
         painter.setOpacity(progress);painter.drawPixmap(0,round(5*(1-progress)),self.after)
+        self.paint_card(painter,progress)
+
+    def paint_card(self,painter,progress):
+        painter.save()
         rect=self.geometry(progress)
         painter.setClipRect(self.viewport(progress),Qt.ClipOperation.IntersectClip)
         opacity=1 if self.old and self.new else progress if self.new else 1-progress
@@ -98,3 +102,4 @@ class CardMorph:
             if card:
                 painter.setOpacity(alpha)
                 painter.drawPixmap(QPointF(rect.topLeft())+card.offset+QPointF(0,lift),card.foreground)
+        painter.restore()

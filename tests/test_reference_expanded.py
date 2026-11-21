@@ -31,13 +31,16 @@ class ExpandedReferenceTests(unittest.TestCase):
         self.assertEqual(source['name'],'Jane and the Mushroom');self.assertEqual(source['target'],('quests',10002))
         self.assertEqual(source['icon'],quest[0].icon)
 
-    def test_unreleased_hollow_and_dev_places_are_hidden_even_with_saved_index_evidence(self):
+    def test_hollow_quests_require_evidence_and_dev_maps_stay_hidden(self):
         docs=documents();docs['quests.json'].append(dict(id=999,name='Unreleased quest',region='Forgotten Hollow'))
         docs['maps.json'].append(dict(id=999,name='Test chamber',region='Dev'))
-        self.store.replace(*generation(docs));allow_fixture(self.store)
+        self.store.replace(*generation(docs))
+        self.store.confirm([dict(kind='maps',id=999,name='Test chamber')],'nia-release')
         self.assertFalse(self.store.available('quests',999));self.assertFalse(self.store.available('maps',999))
         self.assertEqual(self.store.search('quests','Unreleased')[1],0)
         self.assertNotIn('Forgotten Hollow',[g['value'] for g in self.store.groups('quests','region')])
+        self.store.confirm([dict(kind='quests',id=999,name='Unreleased quest')],'nia-release')
+        self.assertTrue(self.store.available('quests',999))
 
     def test_quest_chain_labels_match_only_exact_name_chain_and_class(self):
         row=dict(name='Finding the Instructor',chain="The Warrior's Next Journey",region='Warrior')
@@ -56,6 +59,7 @@ class ExpandedReferenceTests(unittest.TestCase):
             dict(id=10006,name='Active prerequisite',region='Ellinia',requirements=[dict(type='quest',id=10002,state=1)]),
             dict(id=10007,name='Future follow-up',region='Forgotten Hollow',requirements=[dict(type='quest',id=10002,state=2)])]
         self.store.replace(*generation(docs));allow_fixture(self.store)
+        with self.store.connect() as db:db.execute("DELETE FROM availability WHERE kind='quests' AND id=10007")
         self.assertEqual([entry.id for entry,row in self.store.quest_followups(10002)],[10004,10003])
         self.assertEqual(self.store.quest_followups(10003),[])
 

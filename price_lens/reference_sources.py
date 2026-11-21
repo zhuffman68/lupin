@@ -9,6 +9,9 @@ from .http_json import RequestToken,get_bytes,request_scope
 from .reference_data import DAY
 
 BASE='https://meowdb.com/msclassic/'
+SHOP_ICON=re.compile(r'(?:/msclassic/api/assets/icons/(\d{1,10})|https://cdn\.meowdb\.com/icons/(\d{1,10})\.png(?:\?v=\d+)?)')
+SHOP_ALIASES={2060000:('Arrow for Bow','Arrows for Bows'),2061000:('Arrow for Crossbow','Arrows for Crossbows'),
+    2070000:('Subi Throwing-Stars','Subi Throwing Stars')}
 
 
 class Node:
@@ -58,10 +61,11 @@ def npc_shops(raw,store):
             cells=list(tr.walk('td'));items=list(links(tr,'item-db'))
             if len(cells)<3 or len(items)!=1:continue
             icons=[img.attrs.get('src','') for img in tr.walk('img')]
-            identities=[int(m[1]) for url in icons if (m:=re.fullmatch(r'/msclassic/api/assets/icons/(\d{1,10})',url))]
+            identities=[int(m[1] or m[2]) for url in icons if (m:=SHOP_ICON.fullmatch(url))]
             if len(identities)!=1:continue
             iid=identities[0];item=store.entry('items',iid)
-            if not item or name_key(item[0].name)!=name_key(items[0][1]):continue
+            if not item:continue
+            if name_key(item[0].name)!=name_key(items[0][1]) and (items[0][1],item[0].name)!=SHOP_ALIASES.get(iid):continue
             match=re.fullmatch(r'([\d,]+)\s*mesos',cells[-1].text().strip())
             if not match or not re.fullmatch(r'\d{1,3}(?:,\d{3})*|\d+',match[1]):continue
             price=int(match[1].replace(',',''))

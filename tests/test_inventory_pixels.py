@@ -66,6 +66,20 @@ class InventoryPixelsTests(unittest.TestCase):
         self.assertFalse(same_header(before,shifted,0))
         self.assertFalse(same_header(before,np.full_like(before,255),0))
 
+    def test_inactive_flash_keeps_the_selected_tab_and_the_inactive_letters(self):
+        for width in (155,207,259,311,414):
+            before=header(width,1);rect=tab_bounds(width,before.shape[0],4).adjusted(1,1,-1,-1)
+            key=np.s_[rect.top():rect.bottom()+1,rect.left():rect.right()+1]
+            before[key]=(172,172,172)
+            y,x=rect.top()+4,rect.left()+rect.width()//2
+            before[y:y+4,x:x+2]=85
+            after=pulse(pulse(before,1),4)
+            self.assertTrue(same_header(before,after,1),width)
+            self.assertTrue(same_header(after,before,1),width)
+            altered=after.copy();altered[y,x]=after[y,x+3]
+            self.assertFalse(same_header(before,altered,1),width)
+            self.assertFalse(same_header(before,header(width,4),1),width)
+
     def cell(self):
         rgba=np.full((32,32,4),255,np.uint8);rgba[:,:,:3]=(222,222,213)
         rgba[4:25,4:18,:3]=(75,80,95)
@@ -130,3 +144,17 @@ class InventoryPixelsTests(unittest.TestCase):
                           (0,7,(253,158,49,120))):
             bad=new.copy();bad[y,x]=color
             self.assertFalse(same_cell(old.tobytes(),bad.tobytes(),32,32,visible,1),(x,y,color))
+
+    def test_native_gold_can_appear_and_disappear_on_a_proved_cell_rim(self):
+        _,lit=self.highlighted_cap()
+        plain=lit.copy();plain[0,:,:3]=(245,246,247);plain[1,:,:3]=(206,201,190)
+        lit[0,:,:3]=(247,248,198)
+        for y,x in ((0,25),(0,28)):
+            lit[y,x]=plain[y,x]
+        shown=QRegion(QRect(0,0,32,32)).subtracted(QRegion(QRect(10,13,32,37)))
+        check=lambda a,b,visible=shown:same_cell(a.tobytes(),b.tobytes(),32,32,visible,1)
+        self.assertTrue(check(plain,lit));self.assertTrue(check(lit,plain))
+        self.assertFalse(check(plain,lit,shown.subtracted(QRegion(QRect(0,1,32,1)))))
+        for y,x,value in ((1,15,(80,80,80,255)),(3,15,(255,153,0,255)),(1,20,(206,201,190,0))):
+            changed=plain.copy();changed[y,x]=value
+            self.assertFalse(check(changed,lit),(y,x,value))

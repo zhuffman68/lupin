@@ -5,6 +5,15 @@ source for published downloads. A local version note or successful build does no
 mean that version has been published. Current test results and platform limits
 remain in [VERIFICATION.md](../VERIFICATION.md).
 
+## 1.0.8
+
+See [the patch record](PATCH_1.0.8.md) for downloads, installation and verification.
+
+- Inventory prices stay visible through flashing inventory tabs and blinking new-item outlines.
+- Shop price labels fade where they overlap the add-item window, including when those labels cover part of the form as it opens.
+- Price cards stay steady as hovered items appear or disappear.
+- Database adds Forgotten Hollow, including its maps, monsters, quests, gear and shops. Mano and Stumpy Black Sacks show their reported Kerning City Party Quest reward source.
+
 ## 1.0.7
 
 See [the patch record](PATCH_1.0.7.md) for downloads, installation and verification.

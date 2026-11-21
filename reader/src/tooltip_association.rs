@@ -1,6 +1,7 @@
 //! Bind a horizontal native comparison pair to its captured inventory source.
 //! No names, market data, game state or input are used to choose the panel.
 use crate::tooltip_surface::{Dot, rgb, title_light};
+use crate::inventory_pixels::{same_header, selected_pixel};
 use minerva_core::Frame;
 #[cfg(test)]
 use minerva_core::ItemCapture;
@@ -38,9 +39,6 @@ pub struct Selector {
     pair: Option<PairBinding>,
 }
 
-fn pink(p: [u8; 3]) -> bool {
-    p[0] >= 180 && p[0].saturating_sub(p[1]) >= 35 && p[1].abs_diff(p[2]) < 55 && p[2] >= 60
-}
 fn header_guard(frame: &Frame, r: BoxRect, s: f32) -> Vec<u8> {
     let h = (45.0 * s).round() as u32;
     (r.y..(r.y + h).min(frame.height))
@@ -90,19 +88,37 @@ fn source(
         if old.rect.right() <= frame.width
             && old.rect.bottom() <= frame.height
             && old.rect.contains(px, py)
-            && crate::inventory_pixels::same_header(&old.guard,&header_guard(frame,old.rect,old.scale),old.rect.w,old.tab)
         {
-            return Some(old.clone());
+            let current=header_guard(frame,old.rect,old.scale);
+            if old.guard==current || same_header(&old.guard,&current,old.rect.w,old.tab) {
+                return Some(old.clone());
+            }
         }
     }
     // Search only the bounded neighbourhood which can contain this source's
     // header. Its distance from any game/capture edge does not identify the
     // hovered item: a fitted description pair may end well beyond its window.
     let search=source_search(frame,px,py,scale_hint)?;
+    let (x,y,w,h)=(search.x,search.y,search.w,search.h);
+    let pixels=(0..w*h).map(|i|rgb(frame,x+i%w,y+i/w));
+    let mut faded_pixels=0;
+    let strong=pixels.clone().map(|p| {
+        let strong=p[0]>=180&&p[0].saturating_sub(p[1])>=35&&p[1].abs_diff(p[2])<55&&p[2]>=60;
+        faded_pixels+=usize::from(!strong&&selected_pixel(p));
+        u8::from(strong)
+    }).collect();
+    let mut candidates=source_candidates(frame,search,px,py,strong);
+    // Preserve the normal geometry calibration at fractional scaling. A wider
+    // pink mask can pull the tab bounds onto its antialias fringe, so use it
+    // only when the regular mask failed and enough washed-out pink is visible.
+    if candidates.is_empty()&&faded_pixels>=24 {
+        candidates=source_candidates(frame,search,px,py,pixels.map(|p|u8::from(selected_pixel(p))).collect());
+    }
+    if candidates.len()==1 {candidates.pop()} else {None}
+}
+
+fn source_candidates(frame:&Frame,search:BoxRect,px:i32,py:i32,mut mask:Vec<u8>)->Vec<Inventory> {
     let (x0,y0,w,h)=(search.x,search.y,search.w,search.h);
-    let mut mask: Vec<u8> = (0..w * h)
-        .map(|i| u8::from(pink(rgb(frame, x0 + i % w, y0 + i / w))))
-        .collect();
     let mut candidates = Vec::new();
     let mut queue = Vec::new();
     for start in 0..mask.len() {
@@ -229,21 +245,19 @@ fn source(
             if ink < ((30.0 * s * s).round() as usize).max(12) {
                 continue;
             }
+            let guard=header_guard(frame,r,s);
+            if !same_header(&guard,&guard,r.w,tab) {continue}
             candidates.push(Inventory {
                 rect: r,
                 tab,
                 scale: s,
-                guard: header_guard(frame, r, s),
+                guard,
             });
         }
     }
     candidates.sort_by_key(|s| (s.rect.x, s.rect.y));
     candidates.dedup_by_key(|s| (s.rect.x, s.rect.y));
-    if candidates.len() == 1 {
-        candidates.pop()
-    } else {
-        None
-    }
+    candidates
 }
 
 fn adjoining(a: Panel, b: Panel, s: f32) -> bool {

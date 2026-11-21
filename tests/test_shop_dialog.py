@@ -120,6 +120,23 @@ class ShopDialogTests(unittest.TestCase):
         self.assertTrue(state.accept(4,verified=True))
         state.observe(image,shop,hidden,now=5);self.assertIsNone(state.rectangle)
 
+    def test_cold_form_with_clipped_magenta_bands_uses_exposed_footer_and_rails(self):
+        for scale in (.75,1,1.25,1.5,2):
+            with self.subTest(scale=scale):
+                image,shop,_=self.moved_native_form(cover=False,scale=scale)
+                hidden=[QRect(*(round(v*scale) for v in (270,274,235,68)))];p=QPainter(image)
+                p.fillRect(hidden[0],QColor('#171c26'))
+                p.fillRect(QRect(*(round(v*scale) for v in (505,277,30,7))),QColor('white'));p.end()
+                self.assertIsNone(price_entry_dialog(image,shop,hidden))
+                state=ShopPriceEntry();self.assertTrue(state.observe(image,shop,hidden,now=1))
+                self.assertLessEqual(abs(state.rectangle.x()-420*scale),2)
+                self.assertLessEqual(abs(state.rectangle.y()-250*scale),2)
+                for corridor in ((426,255,76,11),(535,297,108,16),(645,250,8,139),(505,277,30,16)):
+                    changed=image.copy();p=QPainter(changed)
+                    p.fillRect(QRect(*(round(v*scale) for v in corridor)),QColor('#495d81'));p.end()
+                    rejected=ShopPriceEntry();rejected.observe(changed,shop,hidden,now=2)
+                    self.assertIsNone(rejected.rectangle,corridor)
+
     def test_annotation_rectangles_cannot_erase_a_completely_intact_native_form(self):
         image,shop,_=self.moved_native_form(cover=False)
         hidden=[QRect(415,245,130,98)]

@@ -16,20 +16,13 @@ API='https://osmsdataexplorer.com/data/api/v1/'
 WIKI='https://mapleclassic.wiki/'
 FILES=('items.json','cash_shop.json','monsters.json','skills.json','maps.json','npcs.json','quests.json')
 RELEASED_KINDS=('items','monsters','maps','quests')
-RELEASE_RULES={
-    'quests':"COALESCE(json_extract(e.body,'$.region'),'')!='Forgotten Hollow'",
-    'maps':"COALESCE(json_extract(e.body,'$.region'),'')!='Dev' AND NOT EXISTS(SELECT 1 FROM json_each(e.body,'$.mobs') p WHERE json_extract(p.value,'$.mob_id') BETWEEN 54 AND 63 OR json_extract(p.value,'$.mob_id')=700003)"}
+RELEASE_RULES={'maps':"COALESCE(json_extract(e.body,'$.region'),'')!='Dev'"}
 DAY=86400
 
 
-def excluded(kind,identity,name):
-    """Content explicitly outside ordinary released play, checked 2026-10-28.
-
-    Forgotten Hollow is scheduled for November 18. A scheduled date alone does
-    not unlock these records: this rule needs a verified release update.
-    """
-    if name.startswith(('GM ','Test(')):return True
-    return kind=='monsters' and (identity in range(54,64) or identity==700003)
+def excluded(name):
+    """GM and test records remain outside released browsing."""
+    return name.startswith(('GM ','Test('))
 
 
 GROUP_FIELDS={'category':'e.category','sub_category':"json_extract(e.body,'$.sub_category')",'weapon.type':"json_extract(e.body,'$.weapon.type')",
@@ -151,9 +144,14 @@ class ReferenceStore:
                 CREATE TABLE IF NOT EXISTS source_checks(item_id INTEGER PRIMARY KEY,saved REAL,error INTEGER);
             ''')
 
-    def save_sources(self,kind,rows,*,item_id=None,guard=lambda:None):
+    def save_sources(self,kind,rows,*,item_id=None,guard=lambda:None,supplement=False):
         with self.connect() as db:
             guard()
+            if supplement:
+                db.executemany('INSERT OR IGNORE INTO item_sources VALUES(?,?,?,?)',
+                    [(kind,row['item_id'],row['id'],json.dumps(row)) for row in rows])
+                guard()
+                return
             if kind=='npc':db.execute('DELETE FROM item_sources WHERE kind=?',(kind,))
             else:db.execute('DELETE FROM item_sources WHERE kind=? AND item_id=?',(kind,item_id))
             db.executemany('INSERT OR REPLACE INTO item_sources VALUES(?,?,?,?)',[(kind,row['item_id'],row['id'],json.dumps(row)) for row in rows])
@@ -334,7 +332,7 @@ class ReferenceStore:
 
     def confirm(self,rows,source,at=None,guard=lambda:None,*,manifest=None,payload=None):
         """Retain positive, exact-ID/name evidence even after a sale/event ends."""
-        if not isinstance(rows,list) or len(rows)>20000 or source not in ('nia-release','market','screen','user-confirmed','recipe'):raise ValueError('Invalid availability evidence')
+        if not isinstance(rows,list) or len(rows)>20000 or source not in ('nia-release','market','screen','user-confirmed','recipe','patch-notes'):raise ValueError('Invalid availability evidence')
         if source=='recipe' and (manifest is None or payload is None):raise ValueError('Recipe proof requires its verified payload')
         if payload is not None and (source!='recipe' or manifest is None):raise ValueError('Recipe payload requires its verified generation')
         at=time.time() if at is None else at;clean=[];guard()
@@ -350,7 +348,7 @@ class ReferenceStore:
             before=db.execute('SELECT COUNT(*) FROM availability').fetchone()[0]
             for row in rows:
                 kind,identity,name=row.get('kind'),row.get('id'),row.get('name')
-                if kind not in RELEASED_KINDS or type(identity) is not int or not isinstance(name,str) or names.get((kind,identity))!=name or excluded(kind,identity,name):continue
+                if kind not in RELEASED_KINDS or type(identity) is not int or not isinstance(name,str) or names.get((kind,identity))!=name or excluded(name):continue
                 detail=row.get('detail') or {}
                 if not isinstance(detail,dict):continue
                 clean.append((kind,identity,name,source,at,at,json.dumps(detail)))
@@ -411,7 +409,6 @@ class ReferenceStore:
                 AND EXISTS(SELECT 1 FROM availability a WHERE a.kind=e.kind AND a.id=e.id AND a.name=e.name)
                 AND EXISTS(SELECT 1 FROM json_each(e.body,'$.rewards') r
                     WHERE json_extract(r.value,'$.type')='item' AND json_extract(r.value,'$.id')=?)
-                AND COALESCE(json_extract(e.body,'$.region'),'')!='Forgotten Hollow'
                 ORDER BY e.level,e.name COLLATE NOCASE""",(item_id,)).fetchall()
         return [self.entry('quests',identity) for identity, in rows]
 
@@ -424,7 +421,6 @@ class ReferenceStore:
         with self.connect() as db:
             rows=db.execute("""SELECT e.id FROM entities e WHERE e.kind='quests' AND e.id!=?
                 AND EXISTS(SELECT 1 FROM availability a WHERE a.kind=e.kind AND a.id=e.id AND a.name=e.name)
-                AND COALESCE(json_extract(e.body,'$.region'),'')!='Forgotten Hollow'
                 AND (e.id=? OR EXISTS(SELECT 1 FROM json_each(e.body,'$.requirements') r
                     WHERE json_extract(r.value,'$.type')='quest' AND json_extract(r.value,'$.id')=?
                     AND json_extract(r.value,'$.state')=2))

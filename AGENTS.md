@@ -110,13 +110,16 @@ also permit antialiased fringe blending immediately around byte-exact opaque
 glyphs; added/moved/recolored opaque strokes, foreign ink and erased edges fail.
 Generic/shop title policies stay strict. Do not weaken shop-row or asking-price
 proofs to achieve this. Inventory source cells and interior header/frame guards
-remain independently verified. With an explicit native sourceTab, recognize
-only the selected-tab white pulse using the shared bounded colour-direction
-fit; retain exact caption/buttons/inactive-tab pixels and visible pink selection.
+remain independently verified. With an explicit native sourceTab, require the
+same visible pink selection. The shared colour-direction fit allows bounded
+white flashes in measured tab sprites. An inactive tab also needs a coherent
+gain across each interior scanline to preserve neutral letter shapes. Caption,
+buttons and pixels outside the tab sprites remain exact.
 Changed native-gold rim pixels may animate within the scaled outermost cell
 pixel. A second inset scanline and its blended fringe are allowed only with
-enough exposed, aligned gold anchors in both frames and bounded native colour
-directions; never ignore a wider border wholesale. Exposed icon interiors must
+enough exposed, aligned rim anchors and bounded native colours. Anchors may
+be gold in both frames or gold against the native plain bevel in one direction.
+Exposed icon interiors must
 match exactly with a scaled 16-pixel
 minimum even on a byte-identical cursor frame. Older metadata retains strict
 guards. Fully covered
